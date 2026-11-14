@@ -143,10 +143,28 @@ def _finish(agent, history, before, result, config):
         agent.smart_board_pending = {"config": config, "before": before}
         return POWER_QUESTION, result["messages"][before:]
     agent.smart_board_pending = None
-    history[:] = result["messages"]
+    history[:] = [_without_thinking(m) for m in result["messages"]]
     if session is not None:
         session.notebook_after_turn()
     reply = result["messages"][-1].content
     if isinstance(reply, list):  # Claude can return a list of content blocks
         reply = "".join(b.get("text", "") for b in reply if isinstance(b, dict))
     return reply, result["messages"][before:]
+
+
+def _without_thinking(message):
+    """The message without Claude's thinking blocks.
+
+    A thinking block is signed for the conversation it was made in. The
+    notebook (memory) changes the start of the conversation every turn, so
+    sending an old thinking block back makes Claude answer "400 Invalid
+    signature in thinking block". The kept history leaves them out.
+    Returns the same message object when there is nothing to remove."""
+    content = getattr(message, "content", None)
+    if not isinstance(content, list):
+        return message
+    kept = [b for b in content
+            if not (isinstance(b, dict) and b.get("type") in ("thinking", "redacted_thinking"))]
+    if len(kept) == len(content):
+        return message
+    return message.model_copy(update={"content": kept})

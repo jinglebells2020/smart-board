@@ -16,6 +16,7 @@ certain, and the model has to try again.
 import json
 import re
 
+from langchain.agents.structured_output import ToolStrategy
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -41,16 +42,19 @@ class DetectiveAnswer(BaseModel):
     @field_validator("questions")
     @classmethod
     def _only_careful_questions(cls, questions):
+        trimmed = []
         for q in questions:
-            q = q.strip()
-            if not q.endswith("?"):
-                raise ValueError(f"every item must be a question ending with '?': {q!r}")
+            if "?" not in q:
+                raise ValueError(f"every item must be a question ending with '?': {q.strip()!r}")
+            # Keep only the question: the text up to and including the first "?".
+            q = q[:q.index("?") + 1].strip()
             if len(q) > 200:
                 raise ValueError(f"keep each question under 200 characters: {q[:60]!r}")
             bad = [w for w in CERTAIN if re.search(rf"\b{re.escape(w)}\b", q.lower())]
             if bad:
                 raise ValueError(f"do not sound certain ({bad[0]!r}): only ask what to look at")
-        return [q.strip() for q in questions]
+            trimmed.append(q)
+        return trimmed
 
 
 DETECTIVE_PROMPT = """\
@@ -185,7 +189,7 @@ def detective_spec(session, model=None, middleware=None):
 
     spec = {"name": "detective", "description": DETECTIVE_DESCRIPTION,
             "system_prompt": DETECTIVE_PROMPT, "tools": [look_at_the_case],
-            "response_format": DetectiveAnswer}
+            "response_format": ToolStrategy(DetectiveAnswer)}
     if model is not None:
         spec["model"] = model
     if middleware:
