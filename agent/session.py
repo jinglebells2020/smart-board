@@ -15,6 +15,7 @@ from pathlib import Path
 from agent.boardlink import BoardLink
 from agent.lessons import SAFETY_MAX_MA, check, load_lessons, summarize
 from agent.notebook import entry_start, mistake_label
+from agent.placement import HOME, describe, find_placement, shift_lesson
 from protocol import is_row, power_cut_words, row_label
 
 WINDOW = 10  # readings per measurement (about 1 second on the fake board)
@@ -84,11 +85,20 @@ class Session:
         # The facts of the latest check, waiting to be written in the
         # notebook (by the agent, or by notebook_after_turn if it forgot).
         self.pending_entry = None
+        # Where the student built the circuit (agent/placement.py): HOME is
+        # the rows the lesson file names. measure() moves it when the same
+        # circuit is clearly built somewhere else on the board.
+        self.placement = HOME
+        self._shifted = {}
 
     # --- Lessons -------------------------------------------------------
     @property
     def lesson(self):
-        return self.lessons[self.lesson_id]
+        """The current lesson, with its rows moved to where the student built it."""
+        key = (self.lesson_id, tuple(self.placement))
+        if key not in self._shifted:
+            self._shifted[key] = shift_lesson(self.lessons[self.lesson_id], self.placement)
+        return self._shifted[key]
 
     def lesson_info(self):
         l = self.lesson
@@ -101,6 +111,8 @@ class Session:
             # would point at rows that mean something else now.
             self.board.clear_lights()
             self.open_mistake = None
+        if lesson_id != self.lesson_id:
+            self.placement = HOME  # a new lesson: guide the student to its own rows
         self.lesson_id = lesson_id
         self.passed_current = False
         self.step = -1
@@ -154,8 +166,19 @@ class Session:
             board_cut = cut
             if board.before_cut:
                 on = list(board.before_cut)
+        moved = None
+        if not self.is_explore():
+            # Built the same circuit somewhere else? Then check it there.
+            new = find_placement(on or readings, self.lessons[self.lesson_id], self.placement)
+            if tuple(new) != tuple(self.placement):
+                self.placement = new
+                board.clear_lights()  # old lights point at the old rows
+                moved = describe(new, self.lessons[self.lesson_id])
         summary = summarize(on or readings, self.lesson)
         result = check(summary, self.lesson)
+        if moved:
+            result["moved"] = (f"You built it in {moved}, not where the lesson shows. "
+                               "That is fine: I am checking it there.")
         if result["status"] == "ok" and self.is_explore():
             result["explore"] = True  # lesson 0: nothing was built, the quiz was answered
         if result["status"] == "ok" and self.is_explore() and not self.intro_answered():

@@ -8,7 +8,8 @@ server sits in between. It uses only Python's built-in http.server.
     GET  /            the page
     GET  /api/state   lesson, latest reading, mistake history (polled ~4x a second)
     POST /api/ask     {"text": "..."}      -> the tutor's reply
-    POST /api/build   {"scenario": "..."}  -> fake board only: change the circuit
+    POST /api/build   {"scenario": "...", "place": "T 15"} -> fake board only: change the circuit
+                      (place, optional: build it in other rows, top T or bottom B)
     POST /api/quiz    {"occurrence": n, "choice": 0..2} -> answer the mini-lesson question
     POST /api/press   {"id": 1..4}         -> fake board only: press a board button
     POST /api/reset   start again with a new student (a fresh notebook)
@@ -432,6 +433,7 @@ class App:
             "sim": self.is_sim,
             "scenarios": SCENARIOS.get(s.lesson_id, []) if self.is_sim else [],
             "scenario": self.raw_board.scenario if self.is_sim else None,
+            "place": list(getattr(self.raw_board, "place", ("T", 0))) if self.is_sim else None,
             "busy": self.agent_lock.locked(),
             # Zip is asking "Turn the power back on?" (Yes / No on the page).
             "asks_power": self.waiting_for_power_answer(),
@@ -513,9 +515,15 @@ class App:
             self.board.send(f"SCENARIO {self.session.lesson_id} correct")
         return {"reply": reply, "tools": tools, "offline": offline}
 
-    def build(self, scenario):
+    def build(self, scenario, place=None):
+        """Fake board only: change the circuit. place, like "T 15" or "B 0",
+        builds it somewhere else on the board (None: leave it where it is)."""
         if not self.is_sim:
             return {"error": "only the fake board can change circuits"}
+        if place:
+            answer = self.board.send(f"PLACE {place}")
+            if answer.get("type") == "error":
+                return answer
         return self.board.send(f"SCENARIO {self.session.lesson_id} {scenario}")
 
 
@@ -550,7 +558,8 @@ def make_handler(app):
             if self.path == "/api/ask":
                 self._send(200, app.ask(body.get("text")))
             elif self.path == "/api/build":
-                self._send(200, app.build(str(body.get("scenario", ""))))
+                self._send(200, app.build(str(body.get("scenario", "")),
+                                          body.get("place") and str(body["place"])))
             elif self.path == "/api/press":
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})

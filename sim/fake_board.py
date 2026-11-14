@@ -187,6 +187,22 @@ class FakeBoard:
         self.lesson = lesson
         self.scenario = scenario
 
+    def set_place(self, half="T", offset=0):
+        """Build the same circuit somewhere else: half "T" (top) or "B"
+        (bottom), moved by offset rows (0 = the rows the lesson names)."""
+        half = half.upper()
+        if half not in ("T", "B"):
+            raise ValueError(f"half must be T or B: {half}")
+        self.place = (half, int(offset))
+
+    def _moved(self, name):
+        half, offset = getattr(self, "place", ("T", 0))
+        if name in ("PT+", "PT-"):
+            return f"P{half}{name[2]}"
+        if name[0] in "TB" and name[1:].isdigit():
+            return f"{half}{int(name[1:]) + offset}"
+        return name
+
     def hello(self):
         return {"type": "hello", "protocol": P.PROTOCOL_VERSION, "rows": list(self.rows),
                 "has_current": self.has_current, "has_power_switch": self.has_power_switch,
@@ -206,6 +222,7 @@ class FakeBoard:
         else:
             supply, current, circuit = _circuit(self.lesson, self.scenario)
         nodes = dict(circuit, **{"PT+": supply, "PT-": 0.0})
+        nodes = {self._moved(k): v for k, v in nodes.items()}
 
         def jitter(value, size=NOISE_V):
             return value + (self._rng.gauss(0, size) if self._noise else 0.0)
@@ -294,6 +311,12 @@ class FakeBoard:
                 return error(f"no button {parts[1]}")
             self._events.append({"type": "button", "id": int(parts[1])})
             return ack(f"PRESS {int(parts[1])}")
+        if cmd == "PLACE" and len(parts) == 3:  # simulator only: PLACE T 15
+            try:
+                self.set_place(parts[1], int(parts[2]))
+            except ValueError as e:
+                return error(str(e))
+            return ack(f"PLACE {self.place[0]} {self.place[1]}")
         if cmd == "SCENARIO" and len(parts) == 3:  # simulator only
             try:
                 self.set_scenario(int(parts[1]), parts[2])
