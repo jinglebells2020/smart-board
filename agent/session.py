@@ -50,6 +50,9 @@ class Session:
         if self.history_path and self.history_path.exists():
             self.history = json.loads(self.history_path.read_text(encoding="utf-8"))
         self.history.setdefault("quiz", [])  # history files from before quizzes
+        # Mini-lessons the lesson writer wrote (and Python accepted), by the
+        # occurrence of the mistake they are for: {"3": {...lesson...}}.
+        self.history.setdefault("ai_lessons", {})
         self.lesson_id = lesson
         self.passed_current = False
         self.step = -1  # building: -1 = not started; else index into layout
@@ -71,6 +74,11 @@ class Session:
         self.last_check = None
         # What Zip did in the current reply, as it happens (agent/trace.py).
         self.trace = []
+        # The mistake a new mini-lesson is wanted for (set by plain Python:
+        # the same mistake a second time, or its quiz answered wrong), and the
+        # occurrence a lesson was just accepted for (for the page's card).
+        self.lesson_request = None
+        self.new_ai_lesson = None
         # The facts of the latest check, waiting to be written in the
         # notebook (by the agent, or by notebook_after_turn if it forgot).
         self.pending_entry = None
@@ -349,16 +357,66 @@ class Session:
         # Rule from CLAUDE.md: hint first, never the full answer on the first try.
         level, say = ("hint", mistake["hint"]) if n == 1 else ("explain", mistake["explain"])
         self.open_mistake = {"lesson": self.lesson_id, "mistake": mistake_id, "level": level}
-        return {"times_seen": n, "level": level, "say": say,
-                "mini_lesson": dict(mistake["mini_lesson"])}
+        result = {"times_seen": n, "level": level, "say": say,
+                  "mini_lesson": dict(mistake["mini_lesson"])}
+        if n >= 2:
+            # The same mistake again: the old mini-lesson did not stick, so ask
+            # the lesson writer for a new one with a different comparison.
+            self.lesson_request = {"lesson": self.lesson_id, "mistake": mistake_id,
+                                   "occurrence": occurrence,
+                                   "reason": "the same mistake happened again"}
+            result["new_lesson_wanted"] = True
+        return result
+
+    # --- Mini-lessons written by the lesson writer ---------------------------
+    def ai_lesson(self, occurrence):
+        return self.history["ai_lessons"].get(str(occurrence))
+
+    def comparisons_used(self, mistake_id=None):
+        mistake_id = mistake_id or (self.lesson_request or {}).get("mistake")
+        return [l["comparison"] for l in self.history["ai_lessons"].values()
+                if l.get("mistake") == mistake_id]
+
+    def lesson_writer_facts(self):
+        """What the lesson writer reads (its get_lesson_facts tool)."""
+        req = self.lesson_request
+        if req is None:
+            return {"error": "No new mini-lesson is wanted right now."}
+        spec = self._mistake_spec(req["lesson"], req["mistake"]) or {}
+        return {"lesson": req["lesson"], "mistake": req["mistake"],
+                "what_went_wrong": spec.get("description", ""),
+                "why_a_new_lesson": req["reason"],
+                "old_mini_lesson": spec.get("mini_lesson", {}),
+                "comparisons_already_used": self.comparisons_used(req["mistake"])}
+
+    def accept_ai_lesson(self, lesson):
+        """Save a lesson that passed the grader and plain Python's checks, and
+        note its comparison in the student's notebook."""
+        req = self.lesson_request
+        if req is None:
+            return None
+        keep = {k: lesson[k] for k in ("title", "idea", "question", "options", "answer", "why",
+                                       "comparison")}
+        self.history["ai_lessons"][str(req["occurrence"])] = dict(
+            keep, lesson=req["lesson"], mistake=req["mistake"])
+        self._save()
+        self.new_ai_lesson = req["occurrence"]
+        self.lesson_request = None
+        if self.notebook is not None:
+            day = time.strftime("%b %d").replace(" 0", " ")
+            label = mistake_label(self.lessons[req["lesson"]], req["mistake"])
+            self.notebook.add(f"- {day}, lesson {req['lesson']}: Zip wrote a new mini-lesson "
+                              f"for {label} using the comparison \"{keep['comparison']}\".")
+        return req["occurrence"]
 
     # --- Mini-lesson quiz ------------------------------------------------
-    def quiz_result(self, occurrence):
-        """The saved answer for one logged mistake, or None if not answered."""
-        return next((q for q in self.history["quiz"] if q.get("occurrence") == occurrence),
-                    None)
+    def quiz_result(self, occurrence, ai=False):
+        """The saved answer for one logged mistake, or None if not answered.
+        ai=True: the answer to the lesson writer's card for it."""
+        return next((q for q in self.history["quiz"] if q.get("occurrence") == occurrence
+                     and bool(q.get("ai")) == ai), None)
 
-    def record_quiz(self, lesson_id, mistake_id, choice, occurrence=None):
+    def record_quiz(self, lesson_id, mistake_id, choice, occurrence=None, ai=False):
         """Save the student's answer to a mini-lesson question.
 
         The right answer comes from the lesson file, never from the page.
@@ -369,15 +427,26 @@ class Session:
             return {"error": f"no mini-lesson for lesson {lesson_id!r}, "
                              f"mistake {mistake_id!r}"}
         ml = mistake["mini_lesson"]
+        if ai:  # the card the lesson writer wrote for this occurrence
+            ml = self.ai_lesson(occurrence)
+            if ml is None:
+                return {"error": "no new mini-lesson for this mistake"}
         if isinstance(choice, bool) or not isinstance(choice, int) \
                 or not 0 <= choice < len(ml["options"]):
             return {"error": f"choice must be 0 to {len(ml['options']) - 1}"}
         correct = choice == ml["answer"]
-        self.history["quiz"].append({
-            "lesson": lesson_id, "mistake": mistake_id, "occurrence": occurrence,
-            "choice": choice, "correct": correct, "time": time.time()})
+        entry = {"lesson": lesson_id, "mistake": mistake_id, "occurrence": occurrence,
+                 "choice": choice, "correct": correct, "time": time.time()}
+        if ai:
+            entry["ai"] = True
+        self.history["quiz"].append(entry)
         self._save()
-        if self.notebook is not None:
+        if not ai and not correct:
+            # Wrong answer: a new mini-lesson with another comparison may help.
+            self.lesson_request = {"lesson": lesson_id, "mistake": mistake_id,
+                                   "occurrence": occurrence,
+                                   "reason": "the quiz was answered wrong"}
+        if self.notebook is not None and not ai:
             self.notebook.fill_quiz(mistake_label(self.lessons[lesson_id], mistake_id), correct)
         return {"correct": correct, "choice": choice, "answer": ml["answer"],
                 "why": ml["why"]}

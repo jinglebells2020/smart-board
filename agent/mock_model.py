@@ -78,6 +78,21 @@ class ScriptedTutorModel(BaseChatModel):
                 return call("get_hint")
             return reply(result_of("get_hint")["say"])
 
+        # The quiz was answered wrong: ask the lesson writer for a new
+        # mini-lesson. No measuring, no power.
+        if "another way" in asked:
+            if not results:
+                return call("task", subagent_type="lesson_writer",
+                            description="The student answered the quiz wrong. Write a new "
+                                        "mini-lesson for the same mistake.")
+            written = result_of("task")
+            if written.get("accepted"):
+                return reply(f"Let's look at it another way. I wrote you a new mini-lesson: "
+                             f"\"{written['title']}\". It compares it to "
+                             f"{written['comparison']}. Have a look and try its question.")
+            return reply("Let's read the mini-lesson again together, slowly. Look at the "
+                         "picture in your head first, then try the question again.")
+
         if not results:
             return call("read_rows")
 
@@ -128,12 +143,21 @@ class ScriptedTutorModel(BaseChatModel):
                 else:
                     note = f"{logged['mini_lesson']['title']}|Red rows: look here."
                 return call("show_on_board", text=note)
+            # The same mistake again: ask the lesson writer for a new mini-lesson.
+            if logged.get("new_lesson_wanted") and "task" not in called:
+                return call("task", subagent_type="lesson_writer",
+                            description=f"The same mistake ({check['mistake_id']}) happened "
+                                        "again. Write a new mini-lesson for it.")
             title = logged["mini_lesson"]["title"]
             note = write_notebook(f"remember the idea \"{title}\" and look at that "
                                   "part first.")
             if note:
                 return note
             say = logged["say"]
+            written = result_of("task")
+            if written.get("accepted"):
+                say += (f" I also wrote you a new mini-lesson: \"{written['title']}\". "
+                        "Press Learn why to read it.")
             if f'mistake "{title}"' in memory:  # loaded before this check was written
                 say = f"Your notebook says this happened before, so look extra carefully. {say}"
             restored = result_of("restore_power")

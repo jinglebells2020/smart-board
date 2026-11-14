@@ -12,6 +12,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from agent.detective import ScriptedDetectiveModel, detective_spec
+from agent.lesson_writer import ScriptedGraderModel, ScriptedLessonWriterModel, lesson_writer_spec
 from agent.mock_model import ScriptedTutorModel
 from agent.notebook import notebook_tools_backend
 from agent.prompts import SYSTEM_PROMPT
@@ -34,7 +35,8 @@ POWER_QUESTION = ("Turn the power back on? I will measure your circuit right awa
                   "and switch it off again if it is still not safe.")
 
 
-def build_agent(session, model=None, detective_model=None, ask_before_power=False):
+def build_agent(session, model=None, detective_model=None, ask_before_power=False,
+                writer_model=None, grader_model=None):
     """The deep agent for one session.
 
     ask_before_power: pause before restore_power and ask the student (deepagents
@@ -46,9 +48,15 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
     # model; with Claude it uses the same model as the tutor.
     if detective_model is None and isinstance(model, ScriptedTutorModel):
         detective_model = ScriptedDetectiveModel()
+    # The lesson writer subagent and its grader (RubricMiddleware). Offline,
+    # scripted models; with Claude, the same model as the tutor.
+    offline = isinstance(model, ScriptedTutorModel)
+    writer_model = writer_model or (ScriptedLessonWriterModel() if offline else model)
+    grader_model = grader_model or (ScriptedGraderModel() if offline else model)
     # Every tool call is recorded as it runs, for "How Zip worked".
     extra = {"subagents": [detective_spec(session, detective_model,
-                                          middleware=[TraceMiddleware(session, "detective")])],
+                                          middleware=[TraceMiddleware(session, "detective")]),
+                           lesson_writer_spec(session, writer_model, grader_model)],
              "middleware": [TraceMiddleware(session, "tutor")]}
     # The student's notebook: loaded as memory at the start of every turn,
     # on disk, and the only place the agent may write.

@@ -229,6 +229,9 @@
   }
   .mini-head h3 { margin: 0; flex: 1 1 auto; font-size: 28px; font-weight: 700; line-height: 1.2; }
   .mini-head .btn { background: transparent; color: var(--ink); }
+  /* A mini-lesson the lesson writer wrote for this student */
+  .zip-tag { display: inline-block; vertical-align: middle; padding: 0 8px; border-radius: 999px;
+             background: var(--white); color: var(--ink); font-size: 16px; font-weight: 700; }
   .mini-body { padding: 16px 24px 24px; }
   .mini .label { font-size: 16px; font-weight: 700; }
   .mini .idea { margin: 0 0 16px; }
@@ -506,7 +509,8 @@
            below the bubble). It never covers the breadboard or Zip's words. -->
       <div class="mini" id="mini" role="region" aria-labelledby="mini-title" hidden>
         <div class="mini-head">
-          <h3><span class="label">Learn why:</span> <span id="mini-title"></span></h3>
+          <h3><span class="label">Learn why:</span> <span id="mini-title"></span>
+            <span class="zip-tag" id="mini-tag" hidden>Written by Zip for you</span></h3>
           <button class="btn btn-round" type="button" id="mini-close" aria-label="Close the mini-lesson">
             <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.8"
                  stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -1318,7 +1322,8 @@
     document.querySelector(".zip").classList.toggle("learning", open);
     if (!card) return;
 
-    $("learn-title").textContent = card.title;
+    $("learn-title").textContent = card.title + (card.written_by_zip ? " (written by Zip for you)" : "");
+    $("mini-tag").hidden = !card.written_by_zip;
     $("mini-title").textContent = card.title;
     $("mini-idea").textContent = card.idea;
     $("mini-question").textContent = card.question;
@@ -1355,7 +1360,8 @@
   async function answerQuiz(occurrence, choice) {
     document.querySelectorAll("#mini-options .opt").forEach((b) => { b.disabled = true; });
     try {
-      const out = await post("/api/quiz", { occurrence, choice });
+      const out = await post("/api/quiz", { occurrence, choice,
+                                            written_by_zip: !!(miniCard && miniCard.written_by_zip) });
       if (out.error) {
         $("mini-result").textContent = out.error;
         return;

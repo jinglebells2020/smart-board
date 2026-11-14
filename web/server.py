@@ -185,7 +185,12 @@ class App:
             return None
         spec = self.session._mistake_spec(self.card["lesson"], self.card["mistake"])
         ml = spec["mini_lesson"]
-        saved = self.session.quiz_result(self.card["occurrence"])
+        # A mini-lesson the lesson writer wrote (and Python accepted) for this
+        # mistake replaces the built-in one, with its own quiz.
+        ai = self.session.ai_lesson(self.card["occurrence"]) if self.card.get("ai") else None
+        if ai is not None:
+            ml = ai
+        saved = self.session.quiz_result(self.card["occurrence"], ai=ai is not None)
         answered = None
         if saved:
             answered = {"choice": saved["choice"], "correct": saved["correct"],
@@ -193,20 +198,35 @@ class App:
         return {"occurrence": self.card["occurrence"], "lesson": self.card["lesson"],
                 "mistake": self.card["mistake"], "title": ml["title"],
                 "idea": ml["idea"], "question": ml["question"],
-                "options": list(ml["options"]), "answered": answered}
+                "options": list(ml["options"]), "answered": answered,
+                "written_by_zip": ai is not None}
 
-    def quiz(self, occurrence, choice):
-        """Save the answer to the mini-lesson card that is on the page."""
+    def quiz(self, occurrence, choice, written_by_zip=False):
+        """Save the answer to the mini-lesson card that is on the page.
+        written_by_zip says which card was clicked (the built-in one, or the
+        one the lesson writer wrote), so a late click never lands on the
+        other card."""
         with self.agent_lock:
             card = self.card
             if card is None or occurrence != card["occurrence"]:
                 return {"error": "that question is no longer on the screen"}
-            saved = self.session.quiz_result(occurrence)
-            if saved:  # one answer per mistake; a second click changes nothing
-                view = self._card_view()["answered"]
-                return dict(view, already_answered=True)
-            return self.session.record_quiz(card["lesson"], card["mistake"],
-                                            choice, occurrence)
+            ai = bool(written_by_zip) and self.session.ai_lesson(occurrence) is not None
+            saved = self.session.quiz_result(occurrence, ai=ai)
+            if saved:  # one answer per card; a second click changes nothing
+                ml = (self.session.ai_lesson(occurrence) if ai else
+                      self.session._mistake_spec(card["lesson"], card["mistake"])["mini_lesson"])
+                return {"choice": saved["choice"], "correct": saved["correct"],
+                        "answer": ml["answer"], "why": ml["why"], "already_answered": True}
+            result = self.session.record_quiz(card["lesson"], card["mistake"],
+                                              choice, occurrence, ai=ai)
+        if result.get("correct") is False and not ai:
+            # A wrong answer: Zip asks the lesson writer for another way to
+            # explain it (in the background, so the page keeps updating).
+            t = threading.Thread(target=self.ask, daemon=True,
+                                 args=("I got the quiz wrong. Can you explain it another way?",))
+            self.button_threads.append(t)
+            t.start()
+        return result
 
     @staticmethod
     def _clean(v, floor=None):
@@ -300,7 +320,8 @@ class App:
             ids = [m["mistake"] for _, m in mistakes]
             passed = passes.get(str(lid), 0) > 0
             no_repeat = passed and len(ids) == len(set(ids))
-            quizzes = [s.quiz_result(i) for i, _ in mistakes]
+            # The latest answer counts: the lesson writer's card if it was answered.
+            quizzes = [s.quiz_result(i, ai=True) or s.quiz_result(i) for i, _ in mistakes]
             quiz_right = passed and all(q is not None and q["correct"] for q in quizzes)
             out.append({"id": lid, "title": s.lessons[lid]["title"],
                         "current": lid == s.lesson_id, "passed": passed,
@@ -405,8 +426,20 @@ class App:
                              "celebrate": False})
             return {"reply": reply, "tools": tools, "pending": True}
         # A mistake was logged in this reply: show its mini-lesson card.
-        # Otherwise (circuit correct, power off, ...) the old card goes away.
+        # Otherwise (circuit correct, power off, ...) the old card goes away,
+        # except after asking the lesson writer: then the card stays.
+        old_card = self.card
         self.card = dict(self.session.last_logged) if self.session.last_logged else None
+        if self.session.new_ai_lesson is not None:
+            # The lesson writer's card was accepted: show it instead.
+            occ = self.session.new_ai_lesson
+            spec = self.session.ai_lesson(occ)
+            self.card = {"lesson": spec["lesson"], "mistake": spec["mistake"],
+                         "occurrence": occ, "ai": True}
+            self.session.new_ai_lesson = None
+        elif self.card is None and old_card is not None and "task" in tools \
+                and self.session.last_check is check_before:  # no new check this reply
+            self.card = old_card
         checked = self.session.last_check is not check_before
         result = self.session.last_check[1] if checked else None
         mood = self.turn_mood(result, tools)
@@ -468,7 +501,8 @@ def make_handler(app):
             elif self.path == "/api/quiz":
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})
-                self._send(200, app.quiz(body.get("occurrence"), body.get("choice")))
+                self._send(200, app.quiz(body.get("occurrence"), body.get("choice"),
+                                         body.get("written_by_zip", False)))
             elif self.path == "/api/reset":
                 self._send(200, app.reset())
             else:
