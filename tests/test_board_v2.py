@@ -231,8 +231,11 @@ class TestSixteenRows(unittest.TestCase):
 
 class TestColorsAndScreen(unittest.TestCase):
     def test_tutor_uses_colors_by_their_meaning(self):
-        board, *_ = run(1, "correct")
-        self.assertEqual(set(board.lights.values()), {"green"})
+        board, session, _, _, calls = run(1, "correct")
+        self.assertIn(("light_row", {"rows": LESSONS[1]["rows"], "color": "green"}), calls)
+        # ...then the lesson moves on, and a new lesson starts with dark lights.
+        self.assertEqual(session.lesson_id, 2)
+        self.assertEqual(board.lights, {})
         board, *_ = run(1, "open_circuit")
         self.assertEqual(board.lights, {"T10": "red"})
         board, *_ = run(2, "bottom_4k7")

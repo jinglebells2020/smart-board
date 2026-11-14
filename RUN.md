@@ -100,10 +100,10 @@ back. A yellow "new release of pip" notice is fine to ignore.
 python -m unittest -v
 ```
 
-Wait about 15 seconds. The last lines should be:
+Wait about 40 seconds. The last lines should be:
 
 ```
-Ran 103 tests in 14.3s
+Ran 184 tests in 30.4s
 
 OK
 ```
@@ -142,12 +142,15 @@ lines are what a student would say.
 | `I fixed it`                | Tutor turns power back on and says it is correct. Because the LED went in backwards twice, it asks for lesson 1 once more |
 | `check`                     | Correct again: tutor moves on to lesson 2         |
 | `/build middle_floating`    | Measuring row not connected                      |
-| `check`                     | Tutor hints and lights up the measuring row      |
+| `check`                     | Tutor hints, and row 10 lights red               |
 | `/build bottom_4k7`         | A mistake that is on no list (4.7k bottom resistor) |
 | `check`                     | "This is not a mistake I know yet, but here is a clue." Then which numbers are off and what that usually means |
 | `/quit`                     | Stop                                              |
 
 `/list` shows every circuit you can `/build` for the current lesson.
+`/press 3` presses board button 3 (next step): it shows where the next
+part goes. `/press 1` checks, `/press 2` asks for a hint, `/press 4`
+switches power. `/board` shows the lights and the board screen.
 
 Mini-lessons and their quiz questions appear only on the web page
 (Part E), not in this terminal.
@@ -203,41 +206,66 @@ The tests in Part B never use the key, even when it is set.
 
 2. Open Chrome or Edge and go to **http://localhost:8000**
 3. Press **F11** for full screen. Everything fits on one 1080p screen.
-4. Run the demo with the mouse:
+4. Run the demo with the mouse. Two places have buttons:
+   - **Pretend board** (top right): the board's own screen and its 4
+     buttons, **1 · Check my circuit**, **2 · I need a hint**,
+     **3 · Next step** and **4 · Power off / on**. They work like the
+     real board's buttons will.
+   - **Practice mode** (right side): pick what the pretend student
+     built.
 
-   | Click                                 | What the audience sees                         |
-   |---------------------------------------|------------------------------------------------|
-   The buttons are on the right: **Check my circuit**, **I fixed it**,
-   and under them the practice-mode buttons that pick what the pretend
-   student built.
+   The **Rows this lesson uses** tile shows rows 5, 10 and 12 with their
+   live voltage and the color of the light beside each row.
 
-   | Click                                 | What the audience sees                         |
-   |---------------------------------------|------------------------------------------------|
-   | **LED backwards**, then **Check my circuit** | Current tile turns red ("NOT YET"). The tutor gives a hint. Under it a purple **Mini-lesson** card appears: "LEDs are one-way doors", a short idea, a question and 3 answer buttons |
-   | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green, with "Right!" and one line saying why. In the mistake history, the Quiz column says "Right" |
-   | **Check my circuit** again            | Same mistake twice: the full explanation, and a fresh card. Click the first answer: it turns red, the right one turns green, and "Not quite." plus why appears. History: "2nd, Full explanation, Wrong" |
-   | **No resistor**, then **Check my circuit** | **POWER OFF** badge turns red, readings drop to 0. Card: "Resistors keep current small" |
-   | **Correct circuit**, then **I fixed it** | Power back on, all green, the card goes away. Tutor asks for lesson 1 once more |
-   | **Check my circuit**                  | Page switches to lesson 2                      |
-   | **Measuring row not connected**, then **Check my circuit** | The voltage at the measuring row jumps around. "Row 15 LED is lit" appears at the top. Card: "Measure only what you touch" |
+   | Click | What the audience sees |
+   |---|---|
+   | **3 · Next step** | Row 5 light turns **blue** (put a part here). Board screen: "Step 1 of 4 / Red wire / top + and row 5". Tutor box: "Put one end in the top + line (5 V) and the other end in row 5" |
+   | **3 · Next step** three more times | Resistor (rows 5 and 10), LED ("long leg: row 10 / short leg: row 12"), black wire (row 12). Each time the part's rows are blue |
+   | **3 · Next step** once more | Lights off. Screen: "All parts placed! / Press 1 to check." |
+   | **LED backwards**, then **1 · Check my circuit** | Rows 10 and 12 turn **red** (problem here). The tutor gives a hint. Screen: "LEDs are one-way doors / Red rows: look here." A purple **Mini-lesson** card appears with a question and 3 answers |
+   | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green: "Right!" and why. History, Quiz column: "Right" |
+   | **2 · I need a hint** | Same mistake twice: the full explanation, and a fresh card. History: "2nd, Full explanation" |
+   | **No resistor**, then **1 · Check my circuit** | **POWER OFF** turns red, rows 5 and 10 red. Card: "Resistors keep current small" |
+   | **Correct circuit**, then **I fixed it** | Power back on, all three rows **green**. Screen: "Correct! Well done." The tutor asks for lesson 1 once more |
+   | **1 · Check my circuit** | Correct again: the page moves to lesson 2 and the lights go off |
+   | **4 · Power off / on** (twice) | Power off, then on again. The screen says which |
 
    Under each hint, a small grey line says what the tutor did, for
-   example "The tutor measured the current, measured the voltages,
-   saved the mistake".
+   example "The tutor measured the rows, saved the mistake, cleared the
+   lights, lit rows, wrote on the screen".
 
    Each quiz takes one answer. A second click does not change it.
 
-   More circuits to try. Pick one, then click **Check my circuit**:
+   More circuits to try. Pick one, then click **1 · Check my circuit**:
 
-   | Lesson | Button                         | What the tutor does                     |
-   |--------|--------------------------------|-----------------------------------------|
-   | 1      | **Resistor too big (1k)**      | Hint: the LED gets much less current, so it is dim. Card: "Bigger resistor, less current" |
-   | 1      | **Current skips the LED**      | Hint: lots of current but 0 V at the LED row. No power cut (22.7 mA is safe). Card: "Current takes the easy path" |
-   | 1      | **Not on the list: 150 ohm resistor** | No card. The tutor gives a clue: the current is a little higher than it should be |
-   | 2      | **Wrong top resistor (1k)**    | Hint: the middle is much higher than half. Card: "Bigger resistor, bigger share" |
-   | 2      | **Bottom resistor missing**    | Hint: no current, full 5 V in the middle. Card: "No flow, no voltage drop" |
-   | 2      | **Top resistor missing**       | Hint: no current, 0 V in the middle. Card: "Voltage needs a path from power" |
-   | 2      | **Not on the list: 4.7k bottom resistor** | No card. Clue: current a little higher, middle voltage lower than it should be |
+   | Lesson | Button | What the tutor does |
+   |---|---|---|
+   | 1 | **Part in wrong row** | Row 10 shows "empty" and lights red. Card: "Circuits must be closed loops" |
+   | 1 | **Resistor too big (1k)** | Hint: the LED gets much less current, so it is dim. Card: "Bigger resistor, less current" |
+   | 1 | **Current skips the LED** | Hint: lots of current but 0 V on row 10. No power cut (22.7 mA is safe). Card: "Current takes the easy path" |
+   | 1 | **Not on the list: 150 ohm resistor** | No card. The tutor gives a clue: the current is a little higher than it should be |
+   | 2 | **Wrong top resistor (1k)** | Hint: the middle is much higher than half. Card: "Bigger resistor, bigger share" |
+   | 2 | **Bottom resistor missing** | Hint: no current, full 5 V in the middle. Card: "No flow, no voltage drop" |
+   | 2 | **Top resistor missing** | Hint: no current, 0 V in the middle. Card: "Voltage needs a path from power" |
+   | 2 | **Not on the list: 4.7k bottom resistor** | No card. Row 10 lights **yellow** (careful), and the tutor gives a clue: row 10 has less voltage than it should |
+
+   **Try a different board.** The real board's details are not decided
+   yet. Stop the server (Ctrl+C in its window) and start it with any of
+   these, then open the page again:
+
+   ```
+   python web\server.py --fresh --no-current --no-power-switch --rows T1-T16
+   ```
+
+   The top-left corner now says "Board: 16 rows measured, current
+   sensor no, power switch no". Both lessons still work. The current tile
+   says "Calculated (no current sensor)". Click **No resistor**, then
+   **1 · Check my circuit**: the tutor says "Switch the power off by hand
+   right now", and the board screen says "DANGER! Switch the power OFF by
+   hand now." **4 · Power off / on** says the board cannot switch power.
+   With `--no-current`, **Resistor too big (1k)** looks correct, and the
+   tutor says plainly that this board cannot measure current, so it could
+   not check for it.
 
 5. **New student** (top right) forgets the history and starts again
    at lesson 1. Use it before each demo.

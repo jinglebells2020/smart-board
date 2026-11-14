@@ -17,18 +17,20 @@ written at about a 6th grade reading level.
 
 | Part                     | Status                                        |
 |--------------------------|-----------------------------------------------|
-| `sim/fake_board.py`      | Done. Simulates lessons 1 and 2 plus every listed mistake |
+| `sim/fake_board.py`      | Done. Speaks serial protocol version 2. Simulates lessons 1 and 2, every listed mistake and two unlisted ones. Starts with any rows, with or without a current sensor, power switch or screen |
 | `lessons/*.json`         | Done for lessons 1 and 2: 10 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). Any other mistake gets a clue from the numbers |
-| `docs/SERIAL_PROTOCOL.md`| Done. The JSON format the board must send     |
+| `docs/SERIAL_PROTOCOL.md`| Done, version 2: a voltage per row, empty rows, current (or null), row lights with colors, screen text, 4 buttons |
+| `protocol.py`            | Done. Row names, light colors, button meanings and screen size, in one place |
 | `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
 | `firmware/`              | Waiting on docs/HARDWARE.md                    |
-| `web/`                   | Done. Projector page: lesson, live readings, hints, mini-lesson card with quiz, mistake history with quiz results (`python web/server.py`) |
+| `web/`                   | Done. Projector page: lesson, live readings, the lesson's rows with their lights, hints, mini-lesson card with quiz, mistake history, and a pretend board (screen + 4 buttons) with the fake board (`python web/server.py`) |
 
 ## Folders
 
 - `docs/` : plans. TRACKS, HARDWARE, LESSONS, SERIAL_PROTOCOL.
 - `lessons/` : one JSON file per lesson: expected values, the accept
   range, how to spot each mistake, and what to teach for it.
+- `protocol.py` : the shared names and rules of the serial protocol.
 - `sim/fake_board.py` : pretends to be the board.
 - `agent/` : the deepagents tutor (see agent/README.md).
 - `tests/` : automatic checks for the simulator, the agent and the web page.
@@ -59,7 +61,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (103 tests). They never call Claude, so
+The last line should say `OK` (184 tests). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -94,31 +96,44 @@ Run lesson 1 with the LED in backwards:
 python3 sim/fake_board.py --lesson 1 --scenario led_backwards
 ```
 
-Readings scroll by, 10 per second. While they scroll, type a command
-and press Enter: `CUT`, `RESTORE`, `LED 5`, or `SCENARIO 1 correct`.
-Press Ctrl+C to stop.
+The first line is the `hello` line (what this board has). Then readings
+scroll by, about 10 per second (the rate is not fixed: each reading has
+`t_ms`). While they scroll, type a command and press Enter, for example
+`LED T10 red`, `LED CLEAR`, `SHOW Hello|world`, `PRESS 1`, `CUT`,
+`RESTORE` or `SCENARIO 1 correct`. Press Ctrl+C to stop.
+
+Try a board with only 16 rows, no current sensor and no power switch:
+
+```bash
+python3 sim/fake_board.py --rows T1-T16 --no-current --no-power-switch
+```
 
 ## Demo script
 
 Works today with the fake board. Show it on the projector page
-(`python web/server.py --fresh`, clicks in RUN.md Part E).
+(`python web/server.py --fresh`, clicks in RUN.md Part E). The
+**pretend board** (top right) has the board's screen and its 4 buttons.
 
-1. LED backwards → the tutor gives a hint, not the answer, and a
-   mini-lesson card appears: "LEDs are one-way doors", with a quiz
-   question. Answer it: right or wrong, the page says why.
-2. Same mistake again → now it explains fully (and a new card).
-3. No resistor → power is cut at once, the tutor asks what keeps the
-   current small, and the card "Resistors keep current small" appears.
-4. Fixed → power back on, the card goes away. Because of the repeated
-   mistake, the tutor asks for lesson 1 once more before lesson 2.
-5. Lesson 2 with the measuring row not connected → hint, the row's LED
-   lights up, and the card "Measure only what you touch" appears.
-6. The mistake history shows each mistake, hint or full explanation,
-   and whether the quiz was answered right or wrong.
-7. A mistake that is on no list ("Not on the list: 150 ohm resistor")
-   → the tutor still explains, with a clue from the numbers: "The
-   current is a little higher than it should be. Something is letting
-   it through more easily than the 220 ohm resistor would."
+1. Build step by step: press **3 · Next step**. The rows for the red
+   wire light blue and the screen says "Step 1 of 4 / Red wire". Keep
+   pressing 3: resistor, LED (long leg row 10, short leg row 12), black
+   wire.
+2. LED backwards, then **1 · Check my circuit** → rows 10 and 12 light
+   red, the tutor gives a hint (not the answer), the screen shows the
+   mini-lesson title, and the card "LEDs are one-way doors" appears with
+   a quiz question. Answer it: right or wrong, the page says why.
+3. **2 · I need a hint** → same mistake again: now the full explanation.
+4. No resistor, then 1 → power is cut at once and the tutor asks what
+   keeps the current small. Card: "Resistors keep current small".
+5. Fixed → power back on, all rows green. Because of the repeated
+   mistake, the tutor asks for lesson 1 once more; then lesson 2.
+6. A mistake on no list ("Not on the list: 4.7k bottom resistor") → the
+   tutor still explains with a clue from the row voltages, and lights
+   that row yellow (careful).
+7. Restart with `--no-power-switch --no-current --rows T1-T16`: the same
+   lessons still work. No resistor now puts "DANGER! Switch the power
+   OFF by hand now" on the board screen, and the current shows as
+   "calculated".
 
 ## Consulted with
 

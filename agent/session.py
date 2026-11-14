@@ -57,6 +57,10 @@ class Session:
                 "rows": list(l["rows"]), "parts": [p["part"] for p in l["layout"]]}
 
     def set_lesson(self, lesson_id):
+        if lesson_id != self.lesson_id:
+            # A new lesson starts with dark lights: old green or red lights
+            # would point at rows that mean something else now.
+            self.board.clear_lights()
         self.lesson_id = lesson_id
         self.passed_current = False
         self.step = -1

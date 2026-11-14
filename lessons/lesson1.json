@@ -169,7 +169,7 @@
         }
       },
       "action": "cut_power",
-      "hint": "Power was cut because the current was far too high. What part in the circuit keeps the current small enough for the LED?",
+      "hint": "The current was far too high, so the power must stay off until it is fixed. What part in the circuit keeps the current small enough for the LED?",
       "explain": "There was no resistor, so the LED was connected straight to 5 volts. Nothing kept the current small, so it shot far past what the LED can handle, and that can burn it out. Put the 220 ohm resistor between 5 V and the LED's long leg.",
       "mini_lesson": {
         "title": "Resistors keep current small",
