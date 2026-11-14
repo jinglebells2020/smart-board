@@ -10,6 +10,7 @@ server sits in between. It uses only Python's built-in http.server.
     POST /api/ask     {"text": "..."}      -> the tutor's reply
     POST /api/build   {"scenario": "..."}  -> fake board only: change the circuit
     POST /api/quiz    {"occurrence": n, "choice": 0..2} -> answer the mini-lesson question
+    POST /api/press   {"id": 1..4}         -> fake board only: press a board button
     POST /api/reset   start again with a new student
 """
 
@@ -24,33 +25,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # so "python web/server.py" can import agent and sim
 
+from agent.boardlink import BoardLink  # noqa: E402
 from agent.build import ask, build_agent, make_model  # noqa: E402
+from agent.buttons import handle_button  # noqa: E402
+from agent.lessons import summarize  # noqa: E402
 from agent.session import Session  # noqa: E402
+from protocol import BUTTON_LABELS, SCREEN_CHARS, SCREEN_LINES, row_label  # noqa: E402
 from sim.fake_board import SCENARIOS, FakeBoard  # noqa: E402
 
 PAGE = Path(__file__).resolve().parent / "index.html"
 
 
-class LockedBoard:
-    """Lets the page and the agent share one board safely."""
-
-    def __init__(self, board):
-        self.inner = board
-        self.lock = threading.Lock()
-
-    def read(self):
-        with self.lock:
-            return self.inner.read()
-
-    def send(self, line):
-        with self.lock:
-            return self.inner.send(line)
-
-
 class App:
     def __init__(self, board, lesson=1, history_path=None, model=None):
         self.is_sim = isinstance(board, FakeBoard)
-        self.board = LockedBoard(board)
+        self.raw_board = board
+        # One shared handle (with a lock) for the page, the tutor and buttons.
+        self.board = BoardLink(board)
         self.start_lesson = lesson
         self.history_path = history_path
         if model is None:
@@ -61,6 +52,7 @@ class App:
         self.model_name = model if is_real else "offline practice tutor"
         self.agent_lock = threading.Lock()  # one question at a time
         self._new_session(lesson)
+        self._welcome()
 
     def _new_session(self, lesson):
         self.session = Session(self.board, lesson=lesson, history_path=self.history_path)
@@ -76,12 +68,66 @@ class App:
         with self.agent_lock:
             if self.history_path and Path(self.history_path).exists():
                 Path(self.history_path).unlink()
-            self.board.send("RESTORE")
+            if self.board.has_power_switch:
+                self.board.restore()
+            self.board.clear_lights()
             if self.is_sim:
                 self.board.send(f"SCENARIO {self.start_lesson} correct")
-                self.board.inner.led_row = None
             self._new_session(self.start_lesson)
+            self._welcome()
         return {"ok": True}
+
+    def _welcome(self):
+        l = self.session.lesson
+        self.board.show(f"Lesson {l['id']}: {l['title']}|Press 3 to see where|the first part goes.")
+
+    # --- Board buttons -------------------------------------------------
+    def press(self, button_id):
+        """A button on the pretend board was clicked: press it on the
+        fake board, so it goes the same way as a real button press."""
+        if not self.is_sim:
+            return {"error": "only the fake board has buttons on the page"}
+        if not isinstance(button_id, int) or isinstance(button_id, bool):
+            return {"error": "id must be a number 1 to 4"}
+        answer = self.board.send(f"PRESS {button_id}")
+        if answer.get("type") == "error":
+            return {"error": answer["msg"]}
+        handled = self.pump_events()
+        return {"ok": True, "handled": handled}
+
+    def pump_events(self):
+        """Handle button presses the board has sent. Questions for the
+        tutor run in the background so the page keeps updating."""
+        events = [e for e in self.board.events() if e.get("type") == "button"]
+        for ev in events:
+            threading.Thread(target=self.on_button, args=(ev["id"],), daemon=True).start()
+        return [e["id"] for e in events]
+
+    def on_button(self, button_id):
+        result = handle_button(button_id, self.session,
+                               lambda text: self.ask(text).get("reply", ""))
+        if "reply" in result:
+            return result  # self.ask already put it in the log
+        if result.get("action") == "next_step":
+            if result.get("done"):
+                text = "All parts are in place. Press 1 (Check my circuit) when you are ready."
+            else:
+                legs = result["legs"]
+                where = " and ".join(f"{l['leg']} in {self._where(l['row'])}" for l in legs)
+                text = (f"Step {result['step']} of {result['of']}: {result['part']}. "
+                        f"Put the {where}. The blue lights show the rows.")
+        elif result.get("action") == "power":
+            text = result.get("say") or ("Power is off." if not result.get("power_on")
+                                         else "Power is on.")
+        else:
+            text = result.get("error", "")
+        self.log.append({"who": "tutor", "text": text, "time": time.time(), "tools": []})
+        return result
+
+    @staticmethod
+    def _where(name):
+        return {"PT+": "the top + line (5 V)", "PT-": "the top - line (ground)"}.get(
+            name, row_label(name))
 
     def _card_view(self):
         """The mini-lesson card as the page needs it. The right answer and
@@ -114,24 +160,51 @@ class App:
                                             choice, occurrence)
 
     @staticmethod
-    def _shown(reading):
-        """Numbers ready to show a student. Current can never be negative
-        (tiny negatives are sensor noise around 0), and no value shows as -0."""
-        def clean(v, floor=None):
-            v = round(float(v), 3)
-            if floor is not None:
-                v = max(floor, v)
-            elif -0.005 < v < 0:
-                v = 0.0
-            return v + 0.0  # turns -0.0 into 0.0
-        return {"current_ma": clean(reading["current_ma"], floor=0.0),
-                "probe1_v": clean(reading["voltages"]["probe1"]),
-                "supply_v": clean(reading["supply_v"])}
+    def _clean(v, floor=None):
+        """A number ready to show a student: tiny negatives are sensor
+        noise around 0, and nothing shows as -0. None stays None."""
+        if v is None:
+            return None
+        v = round(float(v), 3)
+        if floor is not None:
+            v = max(floor, v)
+        elif -0.005 < v < 0:
+            v = 0.0
+        return v + 0.0  # turns -0.0 into 0.0
+
+    def _shown(self, reading, summary):
+        """Numbers for the page. Current is measured when the board has a
+        sensor, otherwise calculated from the rows, or None if unknown.
+        It is never shown below 0."""
+        return {"current_ma": self._clean(summary["current_ma"], floor=0.0),
+                "current_source": summary["current_source"],
+                "supply_v": self._clean(reading["supply_v"])}
+
+    def _board_view(self, reading, summary):
+        """The pretend board for the page: the lesson's rows with their live
+        voltage and light, the screen, the buttons, what the board has."""
+        b = self.board
+        rows = []
+        for name in self.session.lesson["rows"]:
+            measured = name in reading["rows"]
+            rows.append({"name": name, "label": row_label(name), "measured": measured,
+                         "volts": self._clean(reading["rows"][name]) if measured else None,
+                         "floating": name in reading.get("floating", []),
+                         "light": b.lights.get(name, "off")})
+        return {"capabilities": b.capabilities(), "pretend": self.is_sim,
+                "rows": rows, "missing_rows": summary["missing_rows"],
+                "lights": dict(b.lights), "screen": list(b.screen),
+                "screen_size": [SCREEN_LINES, SCREEN_CHARS],
+                "buttons": {str(i): BUTTON_LABELS[i] for i in range(1, b.buttons + 1)},
+                "step": self.session.step + 1 if self.session.step >= 0 else None,
+                "steps": len(self.session.lesson["layout"])}
 
     def state(self):
+        self.pump_events()  # a real board's buttons arrive with the readings
         s = self.session
         lesson = s.lesson
         reading = self.board.read()
+        summary = summarize([reading], lesson)
         counts = {}
         history = []
         for i, m in enumerate(s.history["mistakes"]):
@@ -150,18 +223,19 @@ class App:
             })
         return {
             "lesson": {k: lesson.get(k) for k in
-                       ("id", "title", "circuit", "probe1", "expected", "accept")},
+                       ("id", "title", "circuit", "rows", "expected", "accept")},
             "lesson_count": len(s.lessons),
             "passes": s.history.get("passes", {}),
             "reading": reading,
-            "shown": self._shown(reading),
+            "shown": self._shown(reading, summary),
+            "board": self._board_view(reading, summary),
             "mini_lesson": self._card_view(),
             "history": history,
             "log": self.log,
             "model": self.model_name,
             "sim": self.is_sim,
             "scenarios": SCENARIOS.get(s.lesson_id, []) if self.is_sim else [],
-            "scenario": self.board.inner.scenario if self.is_sim else None,
+            "scenario": self.raw_board.scenario if self.is_sim else None,
             "busy": self.agent_lock.locked(),
         }
 
@@ -223,6 +297,10 @@ def make_handler(app):
                 self._send(200, app.ask(body.get("text")))
             elif self.path == "/api/build":
                 self._send(200, app.build(str(body.get("scenario", ""))))
+            elif self.path == "/api/press":
+                if not isinstance(body, dict):
+                    return self._send(400, {"error": "bad request"})
+                self._send(200, app.press(body.get("id")))
             elif self.path == "/api/quiz":
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})
@@ -249,14 +327,25 @@ def main(argv=None):
     p.add_argument("--scenario", default="correct", help="fake board starting circuit")
     p.add_argument("--history", default=str(ROOT / "agent" / "student_history.json"))
     p.add_argument("--fresh", action="store_true", help="forget the old mistake history")
+    p.add_argument("--rows", default="all", help='rows the fake board measures, e.g. "T1-T16"')
+    p.add_argument("--no-current", action="store_true", help="fake board has no current sensor")
+    p.add_argument("--no-power-switch", action="store_true",
+                   help="fake board cannot switch power")
+    p.add_argument("--no-screen", action="store_true", help="fake board has no screen")
     args = p.parse_args(argv)
 
     if args.fresh and Path(args.history).exists():
         Path(args.history).unlink()
-    app = App(FakeBoard(args.lesson, args.scenario), lesson=args.lesson,
-              history_path=args.history)
+    board = FakeBoard(args.lesson, args.scenario, rows=args.rows,
+                      has_current=not args.no_current,
+                      has_power_switch=not args.no_power_switch,
+                      has_screen=not args.no_screen)
+    app = App(board, lesson=args.lesson, history_path=args.history)
     server = make_server(app, args.port)
-    print(f"Tutor: {app.model_name}. Board: fake board (simulator).")
+    caps = app.board.capabilities()
+    print(f"Tutor: {app.model_name}. Board: fake board, {caps['rows']} rows measured, "
+          f"current sensor {'yes' if caps['has_current'] else 'no'}, "
+          f"power switch {'yes' if caps['has_power_switch'] else 'no'}.")
     print(f"Open http://localhost:{args.port} in your browser. Press Ctrl+C to stop.")
     try:
         server.serve_forever()

@@ -57,7 +57,9 @@ def reading_grade(text):
 
 def student_texts(lesson):
     """Every lesson string a student can see on the page."""
-    texts = [lesson["title"], lesson["circuit"], lesson["probe1"]]
+    texts = [lesson["title"], lesson["circuit"]]
+    for part in lesson["layout"]:
+        texts += [part["part"]] + [leg["leg"] for leg in part["legs"]]
     for m in lesson["mistakes"]:
         ml = m["mini_lesson"]
         texts += [m["description"], m["hint"], m["explain"], ml["title"], ml["idea"],
@@ -261,7 +263,7 @@ class _NegativeCurrentBoard(FakeBoard):
     def read(self):
         r = super().read()
         r["current_ma"] = -0.02
-        r["voltages"]["probe1"] = -0.001
+        r["rows"]["T10"] = -0.001
         return r
 
 
@@ -393,7 +395,9 @@ class TestWebMiniLesson(unittest.TestCase):
         s = self.state()
         self.assertEqual(s["reading"]["current_ma"], -0.02)  # protocol unchanged
         self.assertEqual(s["shown"]["current_ma"], 0.0)
-        self.assertEqual(s["shown"]["probe1_v"], 0.0)
+        t10 = next(r for r in s["board"]["rows"] if r["name"] == "T10")
+        self.assertEqual(t10["volts"], 0.0)
+        self.assertEqual(str(t10["volts"]), "0.0")  # not -0.0
         self.assertEqual(str(s["shown"]["current_ma"]), "0.0")  # not -0.0
 
     def test_shown_values_match_normal_readings(self):

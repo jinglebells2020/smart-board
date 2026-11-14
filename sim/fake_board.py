@@ -1,27 +1,28 @@
-"""Fake smart breadboard.
+"""Fake smart breadboard, speaking serial protocol version 2.
 
 Pretends to be the real board so the agent and web page can be built
-and tested without hardware. It speaks the protocol in
-docs/SERIAL_PROTOCOL.md: JSON readings out, text commands in.
+and tested without hardware. Protocol: docs/SERIAL_PROTOCOL.md.
 
-Two ways to use it:
+The real board is not finished, so many things are still open: how many
+rows are wired, whether there is a current sensor, whether the laptop
+can switch breadboard power, whether there is a screen. The fake board
+can be started with any of those answers:
 
-1. From Python (this is what the agent and tests use):
+    from sim.fake_board import FakeBoard
+    board = FakeBoard(lesson=1, scenario="led_backwards",
+                      rows="T1-T16", has_current=False, has_power_switch=False)
+    board.hello()          # what this board has
+    board.read()           # one reading (dict)
+    board.send("LED T10 red")
+    board.events()         # button presses waiting to be read
 
-       from sim.fake_board import FakeBoard
-       board = FakeBoard(lesson=1, scenario="led_backwards")
-       board.read()          # -> dict, one reading
-       board.send("CUT")     # -> dict, the board's answer
+From a terminal (readings stream; type commands and press Enter):
 
-2. From a terminal, like a serial port (readings print to the
-   screen, type commands and press Enter):
+    python sim/fake_board.py --lesson 1 --scenario correct --rows T1-T16 --no-current
 
-       python sim/fake_board.py --lesson 1 --scenario correct
-
-The voltages and currents are worked out from the circuit using
-Ohm's law, not copied from lessons/*.json. That way the tests can
-check the simulator against the lesson files and catch mistakes in
-either one.
+Voltages and currents are worked out with Ohm's law from the circuit,
+not copied from lessons/*.json, so the tests can check one against the
+other.
 """
 
 import argparse
@@ -30,112 +31,99 @@ import random
 import sys
 import threading
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # for "python sim/fake_board.py"
+
+import protocol as P  # noqa: E402
 
 # --- Board constants -------------------------------------------------
-# docs/HARDWARE.md is not filled in yet. These are placeholders.
-# Update them when the real values are known.
 SUPPLY_V = 5.0  # docs/LESSONS.md uses 5 V for every lesson.
-CURRENT_LIMIT_MA = 100.0  # PLACEHOLDER. Real limit: docs/HARDWARE.md.
-SAMPLE_MS = 100  # One reading every 100 ms (10 per second).
+CURRENT_LIMIT_MA = 100.0  # PLACEHOLDER: the supply's current limit.
+SAMPLE_MS = 100  # Average time between readings. Not fixed: see read().
 
 # --- Part values (from docs/LESSONS.md) ------------------------------
 LED_VF = 2.0  # Red LED forward voltage, volts.
-# When there is no resistor, the supply is held at its current limit
-# and its voltage drops to about the LED voltage at that current.
+# With no resistor the supply runs at its current limit and its voltage
+# drops to about the LED voltage at that current.
 LED_VF_AT_LIMIT = 2.2
 
 # --- Noise -----------------------------------------------------------
-# Real sensors are never perfectly steady. Small random noise makes
-# the agent deal with realistic numbers.
 NOISE_V = 0.01  # volts
 NOISE_MA_ABS = 0.005  # mA
 NOISE_MA_REL = 0.01  # 1 % of the reading
 
+FLOATING = None  # a row nothing drives (empty, or connected to nothing)
 
-def _ideal(lesson, scenario):
-    """Return the noise-free (supply_v, current_ma, probe1_v) for a circuit.
 
-    probe1_v may be None, meaning the probe is not touching anything
-    (it floats). The caller then picks a random voltage.
+def _circuit(lesson, scenario):
+    """Noise-free (supply_v, current_ma, {row: volts or FLOATING}).
+
+    Rows in the dict are the lesson's rows (docs/LESSONS.md). Every other
+    row is empty, so it floats. PT+ is the supply and PT- is ground.
     """
     v = SUPPLY_V
     if lesson == 1:
-        # 5 V -> 220 ohm -> LED -> ground. probe1 = LED anode, the row
-        # between the resistor and the LED.
+        # Red wire PT+ -> T5; 220 ohm T5-T10; LED long leg T10, short
+        # leg T12; black wire T12 -> PT-.
         r = 220.0
         if scenario == "correct":
-            i_ma = (v - LED_VF) / r * 1000  # 13.6 mA
-            return v, i_ma, LED_VF
+            return v, (v - LED_VF) / r * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}  # 13.6 mA
         if scenario == "led_backwards":
-            # A backwards LED blocks current. No current means no
-            # voltage drop across the resistor, so the anode row is 5 V.
-            return v, 0.0, v
+            # A backwards LED blocks current. No current, so no drop across
+            # the resistor: row 10 sits at 5 V. (Same rows if the long leg is
+            # not in row 10: then row 10 touches only the resistor.)
+            return v, 0.0, {"T5": v, "T10": v, "T12": 0.0}
         if scenario == "no_resistor":
-            # LED straight across the supply. Current shoots up until
-            # the supply's limit stops it.
-            return LED_VF_AT_LIMIT, CURRENT_LIMIT_MA, LED_VF_AT_LIMIT
+            # LED straight across the supply: current runs into the supply's
+            # limit and the supply voltage drops to about the LED voltage.
+            return (LED_VF_AT_LIMIT, CURRENT_LIMIT_MA,
+                    {"T5": LED_VF_AT_LIMIT, "T10": LED_VF_AT_LIMIT, "T12": 0.0})
         if scenario == "open_circuit":
-            # A part is in the wrong row, so nothing connects the LED
-            # to 5 V. No current, and the LED node sits at ground.
-            return v, 0.0, 0.0
+            # The resistor is in the wrong row, so row 10 holds only the
+            # LED's long leg: nothing drives it. No current.
+            return v, 0.0, {"T5": v, "T10": FLOATING, "T12": 0.0}
         if scenario == "resistor_too_big":
-            # 1k instead of 220 ohm. The LED still drops its 2 V, so the
-            # resistor gets the other 3 V: (5 - 2) / 1000 = 3.0 mA. Dim LED.
-            # (A 10k would give (5 - 2) / 10000 = 0.3 mA, same row voltage.)
-            r_big = 1_000.0
-            return v, (v - LED_VF) / r_big * 1000, LED_VF
+            # 1k instead of 220: (5 - 2) / 1000 = 3.0 mA. Row 10 still 2 V.
+            return v, (v - LED_VF) / 1000.0 * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}
         if scenario == "led_bypassed":
-            # Both LED legs in one row (or a wire around the LED): the
-            # resistor goes straight to ground. 5 / 220 = 22.7 mA, and the
-            # LED row is tied to ground, so it reads 0 V. The LED is dark.
-            return v, v / r * 1000, 0.0
+            # Current skips the LED: row 10 is joined to ground.
+            # 5 / 220 = 22.7 mA.
+            return v, v / r * 1000, {"T5": v, "T10": 0.0, "T12": 0.0}
         if scenario == "resistor_150":
-            # NOT a listed mistake (see UNLISTED): 150 ohm instead of 220.
-            # (5 - 2) / 150 = 20 mA, LED row 2 V. Shows the clue.
-            return v, (v - LED_VF) / 150.0 * 1000, LED_VF
+            # NOT a listed mistake (see UNLISTED): (5 - 2) / 150 = 20 mA.
+            return v, (v - LED_VF) / 150.0 * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}
     if lesson == 2:
-        # 5 V -> R_top -> middle node -> R_bottom -> ground.
-        # probe1 = middle node.
-        r_top = 10_000.0
+        # Red wire PT+ -> T5; top resistor T5-T10; bottom resistor
+        # T10-T15; black wire T15 -> PT-.
+        def divider(r_top, r_bot):
+            return v, v / (r_top + r_bot) * 1000, {
+                "T5": v, "T10": v * r_bot / (r_top + r_bot), "T15": 0.0}
         if scenario == "correct":
-            r_bot = 10_000.0
-            return v, v / (r_top + r_bot) * 1000, v * r_bot / (r_top + r_bot)
+            return divider(10_000, 10_000)  # 2.5 V, 0.25 mA
         if scenario == "bottom_1k":
-            r_bot = 1_000.0
-            return v, v / (r_top + r_bot) * 1000, v * r_bot / (r_top + r_bot)
-        if scenario == "middle_floating":
-            # The divider itself is fine, so current is normal. But the
-            # probe row is not connected to the middle node, so probe1
-            # reads random junk.
-            r_bot = 10_000.0
-            return v, v / (r_top + r_bot) * 1000, None
+            return divider(10_000, 1_000)  # 5 x 1 / 11 = 0.45 V
         if scenario == "top_1k":
-            # 1k on top, 10k on the bottom: 5 / 11000 = 0.45 mA, and the
-            # middle gets 5 x 10 / 11 = 4.55 V.
-            r_top_small, r_bot = 1_000.0, 10_000.0
-            return (v, v / (r_top_small + r_bot) * 1000,
-                    v * r_bot / (r_top_small + r_bot))
-        if scenario == "bottom_missing":
-            # No bottom resistor: the loop is broken below the middle.
-            # No current, so the top resistor drops nothing: middle = 5 V.
-            return v, 0.0, v
-        if scenario == "top_missing":
-            # No top resistor: the middle only touches ground through
-            # the bottom resistor. No current, middle = 0 V.
-            return v, 0.0, 0.0
+            return divider(1_000, 10_000)  # 5 x 10 / 11 = 4.55 V
         if scenario == "bottom_4k7":
-            # NOT a listed mistake (see UNLISTED): 4.7k on the bottom.
-            # 5 / 14700 = 0.34 mA, middle = 5 x 4.7 / 14.7 = 1.60 V.
-            r_bot = 4_700.0
-            return v, v / (r_top + r_bot) * 1000, v * r_bot / (r_top + r_bot)
+            return divider(10_000, 4_700)  # NOT a listed mistake: 1.60 V
+        if scenario == "middle_floating":
+            # The resistors meet in another row, so row 10 is empty.
+            # The divider still works: 0.25 mA.
+            return v, v / 20_000 * 1000, {"T5": v, "T10": FLOATING, "T15": 0.0}
+        if scenario == "bottom_missing":
+            # Loop broken below the middle: no current, middle keeps 5 V.
+            return v, 0.0, {"T5": v, "T10": v, "T15": 0.0}
+        if scenario == "top_missing":
+            # Middle touches only ground (through the bottom resistor).
+            return v, 0.0, {"T5": v, "T10": 0.0, "T15": 0.0}
     raise ValueError(f"unknown lesson/scenario: {lesson} {scenario}")
 
 
-# Every circuit the simulator can pretend the student built.
-# "correct" is the right circuit. The names in UNLISTED are mistakes the
-# lessons do NOT list, so the tutor must explain them with a clue from
-# the numbers. Every other name is a mistake from docs/LESSONS.md and
-# matches a mistake "id" in lessons/*.json.
+# Every circuit the fake board can pretend the student built. "correct"
+# is the right one; UNLISTED are mistakes no lesson lists (the tutor must
+# explain them with a clue); every other name is a mistake id from
+# lessons/*.json.
 UNLISTED = {
     1: ["resistor_150"],
     2: ["bottom_4k7"],
@@ -149,14 +137,35 @@ SCENARIOS = {
 
 
 class FakeBoard:
-    """A pretend board. Call read() for readings and send() for commands."""
+    """A pretend board. read() for readings, send() for commands,
+    events() for button presses, hello() for what it has."""
 
-    def __init__(self, lesson=1, scenario="correct", seed=None, noise=True):
+    def __init__(self, lesson=1, scenario="correct", seed=None, noise=True,
+                 rows=None, has_current=True, has_power_switch=True,
+                 has_screen=True, buttons=4):
         self._rng = random.Random(seed)
         self._noise = noise
-        self._samples = 0
+        self._t_ms = 0
+        if rows is None:
+            rows = list(P.ALL_NODES)
+        elif isinstance(rows, str):
+            rows = P.parse_rows(rows)
+        else:
+            bad = [r for r in rows if not P.is_node(r)]
+            if bad:
+                raise ValueError(f"not row names: {bad}")
+            rows = P.parse_rows(",".join(rows))
+        self.rows = rows
+        self.has_current = bool(has_current)
+        self.has_power_switch = bool(has_power_switch)
+        self.has_screen = bool(has_screen)
+        if not 0 <= buttons <= 4:
+            raise ValueError("buttons must be 0 to 4")
+        self.buttons = buttons
         self.power_on = True
-        self.led_row = None
+        self.lights = {}   # row -> color
+        self.screen = []   # lines on the screen
+        self._events = []
         self.set_scenario(lesson, scenario)
 
     def set_scenario(self, lesson, scenario):
@@ -166,85 +175,133 @@ class FakeBoard:
         self.lesson = lesson
         self.scenario = scenario
 
+    def hello(self):
+        return {"type": "hello", "protocol": P.PROTOCOL_VERSION, "rows": list(self.rows),
+                "has_current": self.has_current, "has_power_switch": self.has_power_switch,
+                "has_screen": self.has_screen, "buttons": self.buttons}
+
     def read(self):
-        """Return one reading as a dict (see docs/SERIAL_PROTOCOL.md)."""
-        t_ms = self._samples * SAMPLE_MS
-        self._samples += 1
+        """One reading (docs/SERIAL_PROTOCOL.md). The time between
+        readings varies, like a real board: use t_ms."""
+        step = SAMPLE_MS + (self._rng.randint(-30, 30) if self._noise else 0)
+        self._t_ms += step
+        supply, current, circuit = _circuit(self.lesson, self.scenario)
+        nodes = dict(circuit, **{"PT+": supply, "PT-": 0.0})
 
+        def jitter(value, size=NOISE_V):
+            return value + (self._rng.gauss(0, size) if self._noise else 0.0)
+
+        rows, floating = {}, []
+        for name in self.rows:
+            if name not in nodes or nodes[name] is FLOATING:
+                # Nothing drives this row: the number means nothing.
+                rows[name] = round(self._rng.uniform(0.0, SUPPLY_V) if self._noise else 0.0, 3)
+                floating.append(name)
+            elif self.power_on:
+                rows[name] = round(jitter(nodes[name]), 3)
+            else:
+                rows[name] = round(jitter(0.0), 3)
         if not self.power_on:
-            supply_v, current_ma, probe1_v = 0.0, 0.0, 0.0
+            supply, current = 0.0, 0.0
         else:
-            supply_v, current_ma, probe1_v = _ideal(self.lesson, self.scenario)
-            if probe1_v is None:
-                probe1_v = self._rng.uniform(0.0, SUPPLY_V)  # floating
-            if self._noise:
-                supply_v += self._rng.gauss(0, NOISE_V)
-                probe1_v += self._rng.gauss(0, NOISE_V)
-                current_ma += self._rng.gauss(
-                    0, NOISE_MA_ABS + NOISE_MA_REL * current_ma
-                )
-
+            supply = jitter(supply)
+            current = jitter(current, NOISE_MA_ABS + NOISE_MA_REL * current)
         return {
-            "type": "reading",
-            "t_ms": t_ms,
-            "power_on": self.power_on,
-            "supply_v": round(supply_v, 3),
-            "current_ma": round(current_ma, 3),
-            "voltages": {"probe1": round(probe1_v, 3)},
-            "led_row": self.led_row,
+            "type": "reading", "t_ms": self._t_ms, "power_on": self.power_on,
+            "supply_v": round(supply, 3),
+            "current_ma": round(current, 3) if self.has_current else None,
+            "rows": rows, "floating": floating,
         }
 
+    def events(self):
+        """Button presses waiting to be read (and forget them)."""
+        out, self._events = self._events, []
+        return out
+
     def send(self, line):
-        """Handle one text command. Returns the board's answer as a dict."""
-        parts = line.strip().split()
+        """Handle one text command. Returns the board's answer (a dict)."""
+        text = line.strip()
+        parts = text.split()
         if not parts:
             return {"type": "error", "msg": "empty command"}
         cmd = parts[0].upper()
 
-        if cmd == "CUT" and len(parts) == 1:
-            self.power_on = False
-            return {"type": "ack", "cmd": "CUT"}
-        if cmd == "RESTORE" and len(parts) == 1:
-            self.power_on = True
-            return {"type": "ack", "cmd": "RESTORE"}
-        if cmd == "LED" and len(parts) == 2:
-            try:
-                row = int(parts[1])
-            except ValueError:
-                return {"type": "error", "msg": f"bad row: {parts[1]}"}
-            if row < 1:
-                return {"type": "error", "msg": f"bad row: {parts[1]}"}
-            self.led_row = row
-            return {"type": "ack", "cmd": f"LED {row}"}
+        def ack(c=None):
+            return {"type": "ack", "cmd": c or text}
+
+        def error(msg):
+            return {"type": "error", "cmd": cmd, "msg": msg}
+
+        if cmd in ("CUT", "RESTORE") and len(parts) == 1:
+            if not self.has_power_switch:
+                return error("no power switch")
+            self.power_on = cmd == "RESTORE"
+            return ack(cmd)
+        if cmd == "LED" and len(parts) == 2 and parts[1].upper() == "CLEAR":
+            self.lights.clear()
+            return ack("LED CLEAR")
+        if cmd == "LED" and len(parts) == 3:
+            row, color = parts[1].upper(), parts[2].lower()
+            if not P.is_row(row):
+                return error(f"not a row with a light: {parts[1]}")
+            if color not in P.COLORS:
+                return error(f"unknown color: {parts[2]}")
+            if color == "off":
+                self.lights.pop(row, None)
+            else:
+                self.lights[row] = color
+            return ack(f"LED {row} {color}")
+        if cmd == "SHOW":
+            if not self.has_screen:
+                return error("no screen")
+            lines = text[4:].lstrip().split("|") if len(text) > 4 else [""]
+            if len(lines) > P.SCREEN_LINES or any(len(l) > P.SCREEN_CHARS for l in lines):
+                return error("too long")
+            self.screen = lines
+            return ack("SHOW")
+        if cmd == "HELLO" and len(parts) == 1:
+            return self.hello()
+        if cmd == "PRESS" and len(parts) == 2:  # simulator only
+            if not parts[1].isdigit() or not 1 <= int(parts[1]) <= self.buttons:
+                return error(f"no button {parts[1]}")
+            self._events.append({"type": "button", "id": int(parts[1])})
+            return ack(f"PRESS {int(parts[1])}")
         if cmd == "SCENARIO" and len(parts) == 3:  # simulator only
             try:
                 self.set_scenario(int(parts[1]), parts[2])
             except ValueError as e:
-                return {"type": "error", "msg": str(e)}
-            return {"type": "ack", "cmd": f"SCENARIO {parts[1]} {parts[2]}"}
-        return {"type": "error", "msg": f"unknown command: {line.strip()}"}
+                return error(str(e))
+            return ack(f"SCENARIO {parts[1]} {parts[2]}")
+        return error(f"unknown command: {text}")
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description="Fake smart breadboard.")
+    p = argparse.ArgumentParser(description="Fake smart breadboard (protocol version 2).")
     p.add_argument("--lesson", type=int, default=1)
     p.add_argument("--scenario", default="correct")
     p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--rows", default="all",
+                   help='rows it measures, e.g. "T1-T16" or "16" or "all"')
+    p.add_argument("--no-current", action="store_true", help="no current sensor")
+    p.add_argument("--no-power-switch", action="store_true", help="cannot switch power")
+    p.add_argument("--no-screen", action="store_true", help="no screen")
+    p.add_argument("--buttons", type=int, default=4)
     p.add_argument("--count", type=int, default=0,
                    help="stop after this many readings (0 = run forever)")
     p.add_argument("--interval", type=float, default=SAMPLE_MS / 1000,
                    help="seconds between readings")
-    p.add_argument("--list", action="store_true",
-                   help="list lessons and scenarios, then exit")
+    p.add_argument("--list", action="store_true", help="list lessons and circuits, then exit")
     args = p.parse_args(argv)
 
     if args.list:
         for lesson, names in SCENARIOS.items():
             print(f"lesson {lesson}: {', '.join(names)}")
         return 0
-
     try:
-        board = FakeBoard(args.lesson, args.scenario, seed=args.seed)
+        board = FakeBoard(args.lesson, args.scenario, seed=args.seed, rows=args.rows,
+                          has_current=not args.no_current,
+                          has_power_switch=not args.no_power_switch,
+                          has_screen=not args.no_screen, buttons=args.buttons)
     except ValueError as e:
         print(e, file=sys.stderr)
         return 2
@@ -259,9 +316,11 @@ def main(argv=None):
         for line in sys.stdin:
             if line.strip():
                 emit(board.send(line))
+                for ev in board.events():
+                    emit(ev)
 
+    emit(board.hello())
     threading.Thread(target=read_commands, daemon=True).start()
-
     n = 0
     try:
         while args.count == 0 or n < args.count:

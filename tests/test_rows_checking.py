@@ -7,8 +7,7 @@ fake board.
 
 import unittest
 
-from agent.lessons import (calculate_current, check_rows, clue_rows, load_lessons,
-                           matches_rows, summarize_rows)
+from agent.lessons import calculate_current, check, clue, load_lessons, matches, summarize
 from protocol import ALL_NODES, TOP_ROWS, is_node, is_row, parse_rows
 from tests.test_mini_lessons import FIX_WORDS, HARD_WORDS, has_word, reading_grade
 
@@ -64,7 +63,7 @@ def measure(lesson_id, circuit, with_sensor=True, board_rows=None, n=5):
     rows, current, supply = CIRCUITS[lesson_id][circuit]
     readings = [reading(rows, current, supply, board_rows, with_sensor, t_ms=i * 137)
                 for i in range(n)]
-    return summarize_rows(readings, LESSONS[lesson_id])
+    return summarize(readings, LESSONS[lesson_id])
 
 
 def outcome(result):
@@ -98,7 +97,7 @@ class TestLayouts(unittest.TestCase):
 
     def test_rules_only_use_lesson_rows(self):
         for lid, lesson in LESSONS.items():
-            rules = [lesson["accept_rows"]] + [m["detect_rows"] for m in lesson["mistakes"]]
+            rules = [lesson["accept"]] + [m["detect"] for m in lesson["mistakes"]]
             for rule in rules:
                 used = set(rule.get("rows", {})) | set(rule.get("floating", [])) | set(rule.get("driven", []))
                 self.assertTrue(used <= set(lesson["rows"]), (lid, used))
@@ -162,7 +161,7 @@ class TestDetection(unittest.TestCase):
             for circuit in circuits:
                 for with_sensor in (True, False):
                     with self.subTest(lesson=lid, circuit=circuit, sensor=with_sensor):
-                        result = check_rows(measure(lid, circuit, with_sensor), LESSONS[lid])
+                        result = check(measure(lid, circuit, with_sensor), LESSONS[lid])
                         self.assertEqual(outcome(result), self.expected(lid, circuit, with_sensor))
 
     def test_every_mistake_matches_only_itself(self):
@@ -171,7 +170,7 @@ class TestDetection(unittest.TestCase):
                 for with_sensor in (True, False):
                     s = measure(lid, circuit, with_sensor)
                     hits = [m["id"] for m in LESSONS[lid]["mistakes"]
-                            if matches_rows(s, m["detect_rows"])]
+                            if matches(s, m["detect"])]
                     if circuit in UNLISTED or circuit == "correct":
                         self.assertEqual(hits, [], (lid, circuit, with_sensor))
                     elif circuit == "resistor_too_big" and not with_sensor:
@@ -180,18 +179,18 @@ class TestDetection(unittest.TestCase):
                         self.assertEqual(hits, [circuit], (lid, circuit, with_sensor))
 
     def test_mistake_names_its_rows(self):
-        result = check_rows(measure(1, "led_backwards"), LESSONS[1])
+        result = check(measure(1, "led_backwards"), LESSONS[1])
         self.assertEqual(result["rows"], ["T10", "T12"])
 
     def test_no_resistor_without_a_sensor_is_still_dangerous(self):
-        result = check_rows(measure(1, "no_resistor", with_sensor=False), LESSONS[1])
+        result = check(measure(1, "no_resistor", with_sensor=False), LESSONS[1])
         self.assertEqual((result["mistake_id"], result["action"]), ("no_resistor", "cut_power"))
 
     def test_not_checked_without_a_sensor_is_said_plainly(self):
-        result = check_rows(measure(1, "correct", with_sensor=False), LESSONS[1])
+        result = check(measure(1, "correct", with_sensor=False), LESSONS[1])
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["not_checked"], ["resistor_too_big"])
-        self.assertNotIn("not_checked", check_rows(measure(1, "correct"), LESSONS[1]))
+        self.assertNotIn("not_checked", check(measure(1, "correct"), LESSONS[1]))
 
     def test_led_backwards_still_names_two_causes(self):
         m = next(m for m in LESSONS[1]["mistakes"] if m["id"] == "led_backwards")
@@ -200,15 +199,15 @@ class TestDetection(unittest.TestCase):
 
     def test_power_off(self):
         rows, cur, sup = CIRCUITS[1]["correct"]
-        s = summarize_rows([reading(rows, cur, sup, power_on=False)], LESSONS[1])
-        self.assertEqual(check_rows(s, LESSONS[1])["status"], "power_off")
+        s = summarize([reading(rows, cur, sup, power_on=False)], LESSONS[1])
+        self.assertEqual(check(s, LESSONS[1])["status"], "power_off")
 
     def test_floating_needs_most_readings(self):
         rows, cur, sup = CIRCUITS[1]["correct"]
         readings = [reading(rows, cur, sup) for _ in range(10)]
         for r in readings[:3]:
             r["floating"].append("T10")  # 3 of 10 readings only
-        s = summarize_rows(readings, LESSONS[1])
+        s = summarize(readings, LESSONS[1])
         self.assertNotIn("T10", s["floating"])
 
 
@@ -219,13 +218,13 @@ class TestRowsTheBoardDoesNotMeasure(unittest.TestCase):
             for with_sensor in (True, False):
                 s = measure(lid, "correct", with_sensor, board_rows=board)
                 self.assertEqual(s["missing_rows"], [])
-                self.assertEqual(check_rows(s, LESSONS[lid])["status"], "ok")
+                self.assertEqual(check(s, LESSONS[lid])["status"], "ok")
 
     def test_missing_rows_are_said_clearly_not_guessed(self):
         board = parse_rows("T1-T8")
         s = measure(1, "correct", board_rows=board)
         self.assertEqual(s["missing_rows"], ["T10", "T12"])
-        result = check_rows(s, LESSONS[1])
+        result = check(s, LESSONS[1])
         self.assertEqual(result["status"], "missing_rows")
         self.assertIn("T10", result["message"])
         self.assertIn("cannot check", result["message"])
@@ -233,27 +232,27 @@ class TestRowsTheBoardDoesNotMeasure(unittest.TestCase):
 
     def test_missing_row_for_lesson_2_only(self):
         board = parse_rows("T1-T12")  # lesson 2 needs T15
-        self.assertEqual(check_rows(measure(1, "correct", board_rows=board), LESSONS[1])["status"], "ok")
+        self.assertEqual(check(measure(1, "correct", board_rows=board), LESSONS[1])["status"], "ok")
         self.assertEqual(measure(2, "correct", board_rows=board)["missing_rows"], ["T15"])
 
 
 class TestRowClue(unittest.TestCase):
     def test_unlisted_4k7_gets_a_row_clue_without_a_sensor_too(self):
         for with_sensor in (True, False):
-            result = check_rows(measure(2, "bottom_4k7", with_sensor), LESSONS[2])
+            result = check(measure(2, "bottom_4k7", with_sensor), LESSONS[2])
             self.assertEqual(result["status"], "unknown")
             d = result["clue"]["details"][0]
             self.assertEqual((d["row"], d["direction"]), ("T10", "lower"))
             self.assertIn("Row 10 has less voltage than it should.", result["clue"]["text"])
 
     def test_measured_current_clue_is_kept(self):
-        result = check_rows(measure(1, "resistor_150"), LESSONS[1])
+        result = check(measure(1, "resistor_150"), LESSONS[1])
         self.assertEqual(result["clue"]["details"][0]["direction"], "a little higher")
 
     def test_empty_row_clue(self):
         s = measure(1, "correct")
         s["floating"] = ["T12"]
-        c = clue_rows(s, LESSONS[1])
+        c = clue(s, LESSONS[1])
         self.assertEqual(c["details"][0]["direction"], "empty")
         self.assertIn("Row 12 has nothing connected to it", c["text"])
 
@@ -269,7 +268,7 @@ class TestRowClue(unittest.TestCase):
                         s["floating"] = floating
                         for supply in (5.0, 4.2):
                             s["supply_v"] = supply
-                            c = clue_rows(s, lesson)
+                            c = clue(s, lesson)
                             texts.add(c["text"])
                             texts.update(d["meaning"] for d in c["details"])
         self.assertGreater(len(texts), 10)
