@@ -100,10 +100,10 @@ back. A yellow "new release of pip" notice is fine to ignore.
 python -m unittest -v
 ```
 
-Wait about 5 seconds. The last lines should be:
+Wait about 10 seconds. The last lines should be:
 
 ```
-Ran 39 tests in 1.5s
+Ran 46 tests in 5.5s
 
 OK
 ```
@@ -185,6 +185,44 @@ The tests in Part B never use the key, even when it is set.
 
 ---
 
+## Part E: the projector page
+
+1. In Command Prompt (with `(.venv)` showing), start the page's server:
+
+   ```
+   python web\server.py --fresh
+   ```
+
+   It prints `Open http://localhost:8000 in your browser`. Leave this
+   window open: closing it stops the page.
+
+2. Open Chrome or Edge and go to **http://localhost:8000**
+3. Press **F11** for full screen. Everything fits on one 1080p screen.
+4. Run the demo with the mouse:
+
+   | Click                                 | What the audience sees                         |
+   |---------------------------------------|------------------------------------------------|
+   | **LED backwards**, then **Check my circuit** | Current tile turns red. Tutor gives a hint about the legs |
+   | **Check my circuit** again            | Same mistake twice: full explanation. History shows "2nd, Full explanation" |
+   | **No resistor**, then **Check my circuit** | **POWER OFF** badge turns red, readings drop to 0 |
+   | **Correct circuit**, then **I fixed it** | Power back on, all green. Tutor asks for lesson 1 once more |
+   | **Check my circuit**                  | Page switches to lesson 2                      |
+   | **Probe not connected**, then **Check my circuit** | Probe voltage jumps around. "Row 15 LED is lit" appears |
+
+   Under each hint, "Agent used: ..." lists the tools the agent called.
+
+5. **New student** (top right) forgets the history and starts again
+   at lesson 1. Use it before each demo.
+6. To stop: click the Command Prompt window and press **Ctrl+C**.
+
+With `set ANTHROPIC_API_KEY=...` done first (Part D), the page uses
+Claude. The bottom of the tutor box says which tutor is running.
+
+If the page shows a red bar saying it can't reach the server, the
+server window was closed. Run step 1 again.
+
+---
+
 ## Every time after the first
 
 1. Press the Windows key, type `cmd`, press Enter.
@@ -205,7 +243,7 @@ The tests in Part B never use the key, even when it is set.
    ```
 
 4. If `requirements.txt` changed, run Step 6 again. Then run Part B,
-   C or D.
+   C, D or E.
 
 ---
 
@@ -219,3 +257,4 @@ The tests in Part B never use the key, even when it is set.
 | `'git' is not recognized`                       | Do Step 2, then close and reopen Command Prompt |
 | Error with `401` or `authentication` in Part D  | The key is wrong or has spaces. Run the `set` line again |
 | The tutor says `These readings don't match`     | The fake board circuit is for a different lesson. Type `/list` and `/build` one of those |
+| `OSError: ... address already in use` (Part E)  | The server is already running in another window. Use that one, or run `python web\server.py --port 8001` and open http://localhost:8001 |

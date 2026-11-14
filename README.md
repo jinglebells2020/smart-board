@@ -18,7 +18,7 @@ the answer.
 | `docs/SERIAL_PROTOCOL.md`| Done. The JSON format the board must send     |
 | `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
 | `firmware/`              | Waiting on docs/HARDWARE.md                    |
-| `web/`                   | Not started                                   |
+| `web/`                   | Done. Projector page: lesson, live readings, hints, mistake history (`python web/server.py`) |
 
 ## Folders
 
@@ -27,8 +27,9 @@ the answer.
   range, and how to spot each mistake.
 - `sim/fake_board.py` : pretends to be the board.
 - `agent/` : the deepagents tutor (see agent/README.md).
-- `tests/` : automatic checks for the simulator and the agent.
-- `firmware/`, `web/` : coming later.
+- `tests/` : automatic checks for the simulator, the agent and the web page.
+- `web/` : the projector page and its small local server.
+- `firmware/` : coming later.
 
 ## Setup (step by step)
 
@@ -54,10 +55,18 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (39 tests). They never call Claude, so
+The last line should say `OK` (46 tests). They never call Claude, so
 they work without an API key.
 
-## Run the tutor
+## Run the projector page
+
+```bash
+python web/server.py --fresh
+```
+
+Then open http://localhost:8000.
+
+## Run the tutor in a terminal
 
 ```bash
 python -m agent --fresh
@@ -87,8 +96,8 @@ Press Ctrl+C to stop.
 
 ## Demo script
 
-Works today with the fake board (exact typing in RUN.md Part C). The
-web page will replace the terminal later.
+Works today with the fake board. Show it on the projector page
+(`python web/server.py --fresh`, clicks in RUN.md Part E).
 
 1. LED in backwards → the tutor gives a polarity hint, not the answer.
 2. Same mistake again → now it explains fully.
