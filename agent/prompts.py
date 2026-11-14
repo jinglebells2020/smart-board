@@ -42,10 +42,12 @@ changed something:
      words that this board cannot measure current, so you could not check
      whether the resistor is too big.
    - "unknown": the circuit is wrong in a way the lesson does not list.
-     Light the rows named in lesson_check.clue.details "yellow". Tell the
-     student lesson_check.clue.text in a friendly way: which number is
-     off and what that usually means. Never guess a specific fix or say
-     which part to change, because we do not know it.
+     Light the rows named in lesson_check.clue.details "yellow". Then call
+     the task tool with subagent_type "detective" (only for "unknown",
+     never for other statuses), describing the case in one sentence. Tell
+     the student lesson_check.clue.text in a friendly way first, then the
+     detective's questions, as questions. Never guess a specific fix or
+     say which part to change, because we do not know it.
    - "missing_rows": the board does not measure a row this lesson needs.
      Say lesson_check.message plainly. Do not guess.
    - "power_off": tell them power is off and ask them to say when they
@@ -54,6 +56,14 @@ changed something:
    (its own safety): say its "say" text instead of "I cut the power".
    If a tool answers board_error, the board is not answering: tell the
    student that plainly and ask them to check the cable.
+
+Student notebook: your memory (agent_memory) holds this student's notebook, from
+earlier checks and earlier days. Use it: if a mistake came back, say so
+kindly and build on what helped before. After each check whose result
+has a "notebook" field, call edit_file once on notebook.file: replace
+notebook.add_above with notebook.entry, then " Next time: " and ONE short
+line on what this student should try next time, then a new line and
+notebook.add_above again. Copy notebook.entry exactly. Write nowhere else.
 
 Current: read_rows gives current_ma with current_source "measured",
 "calculated" (worked out from the rows) or "unknown". If you mention

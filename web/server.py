@@ -11,7 +11,8 @@ server sits in between. It uses only Python's built-in http.server.
     POST /api/build   {"scenario": "..."}  -> fake board only: change the circuit
     POST /api/quiz    {"occurrence": n, "choice": 0..2} -> answer the mini-lesson question
     POST /api/press   {"id": 1..4}         -> fake board only: press a board button
-    POST /api/reset   start again with a new student
+    POST /api/reset   start again with a new student (a fresh notebook)
+    GET  /api/notebook the student's notebook, as plain text
 """
 
 import argparse
@@ -29,6 +30,7 @@ from agent.boardlink import BoardLink  # noqa: E402
 from agent.build import ask, build_agent, make_model  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
 from agent.lessons import summarize  # noqa: E402
+from agent.notebook import Notebook  # noqa: E402
 from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E402
 from agent.session import Session  # noqa: E402
 from protocol import (BUTTON_LABELS, COLORS, DEFAULT_BAUD, SCREEN_CHARS,  # noqa: E402
@@ -39,13 +41,14 @@ PAGE = Path(__file__).resolve().parent / "index.html"
 
 
 class App:
-    def __init__(self, board, lesson=1, history_path=None, model=None):
+    def __init__(self, board, lesson=1, history_path=None, model=None, notebook=None):
         self.is_sim = isinstance(board, FakeBoard)
         self.raw_board = board
         # One shared handle (with a lock) for the page, the tutor and buttons.
         self.board = BoardLink(board)
         self.start_lesson = lesson
         self.history_path = history_path
+        self.notebook = notebook  # the student's notebook (agent/notebook.py) or None
         if model is None:
             model, is_real = make_model()
         else:
@@ -58,7 +61,8 @@ class App:
         self._welcome()
 
     def _new_session(self, lesson):
-        self.session = Session(self.board, lesson=lesson, history_path=self.history_path)
+        self.session = Session(self.board, lesson=lesson, history_path=self.history_path,
+                               notebook=self.notebook)
         self.agent = build_agent(self.session, self.model)
         self.chat = []  # agent message history
         self.log = []   # what the page shows: [{"who", "text", "time"}]
@@ -71,6 +75,8 @@ class App:
         with self.agent_lock:
             if self.history_path and Path(self.history_path).exists():
                 Path(self.history_path).unlink()
+            if self.notebook is not None:
+                self.notebook.start_over()  # the old one is kept under a dated name
             if self.board.has_power_switch:
                 self.board.restore()
             self.board.clear_lights()
@@ -326,6 +332,9 @@ def make_handler(app):
                 self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
             elif self.path == "/api/state":
                 self._send(200, app.state())
+            elif self.path == "/api/notebook":
+                text = app.notebook.text() if app.notebook else "No notebook for this session.\n"
+                self._send(200, text.encode("utf-8"), "text/plain; charset=utf-8")
             else:
                 self._send(404, {"error": "not found"})
 
@@ -358,6 +367,15 @@ def make_handler(app):
     return Handler
 
 
+def default_history(student):
+    """The mistake history file: the old name for the default student, so
+    nothing is lost, and one file per other student."""
+    from agent.notebook import safe_name
+    name = safe_name(student)
+    folder = ROOT / "agent"
+    return folder / ("student_history.json" if name == "student" else f"history_{name}.json")
+
+
 def open_board(args):
     """The fake board, or with --serial a real one. Problems are printed
     in plain words and give None."""
@@ -384,7 +402,12 @@ def main(argv=None):
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--lesson", type=int, default=1)
     p.add_argument("--scenario", default="correct", help="fake board starting circuit")
-    p.add_argument("--history", default=str(ROOT / "agent" / "student_history.json"))
+    p.add_argument("--history", default=None,
+                   help="file that keeps the mistake history (default: one per student)")
+    p.add_argument("--student", default="student",
+                   help="the student's name: their notebook is notebooks/<name>.md")
+    p.add_argument("--notebooks", default=str(ROOT / "notebooks"),
+                   help="folder for the student notebooks")
     p.add_argument("--fresh", action="store_true", help="forget the old mistake history")
     p.add_argument("--rows", default="all", help='rows the fake board measures, e.g. "T1-T16"')
     p.add_argument("--no-current", action="store_true", help="fake board has no current sensor")
@@ -396,19 +419,23 @@ def main(argv=None):
     p.add_argument("--baud", type=int, default=DEFAULT_BAUD,
                    help=f"serial speed for --serial (default {DEFAULT_BAUD})")
     args = p.parse_args(argv)
+    if args.history is None:
+        args.history = str(default_history(args.student))
 
     if args.fresh and Path(args.history).exists():
         Path(args.history).unlink()
     board = open_board(args)
     if board is None:
         return 2
-    app = App(board, lesson=args.lesson, history_path=args.history)
+    notebook = Notebook(args.notebooks, args.student)
+    app = App(board, lesson=args.lesson, history_path=args.history, notebook=notebook)
     server = make_server(app, args.port)
     caps = app.board.capabilities()
     where = f"real board on {board.port}" if args.serial else "fake board"
     print(f"Tutor: {app.model_name}. Board: {where}, {caps['rows']} rows measured, "
           f"current sensor {'yes' if caps['has_current'] else 'no'}, "
           f"power switch {'yes' if caps['has_power_switch'] else 'no'}.")
+    print(f"Notebook for {args.student}: {notebook.path}")
     print(f"Open http://localhost:{args.port} in your browser. Press Ctrl+C to stop.")
     try:
         server.serve_forever()

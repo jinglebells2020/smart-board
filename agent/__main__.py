@@ -11,6 +11,7 @@ Commands for testing with the fake board:
     /press <1-4>        press a board button (1 check, 2 hint,
                         3 next step, 4 power off/on)
     /board              show the board's lights and screen
+    /notebook           show the student's notebook
     /quit               stop
 """
 
@@ -19,12 +20,14 @@ from pathlib import Path
 
 from agent.build import ask, build_agent, make_model
 from agent.buttons import handle_button
+from agent.notebook import Notebook, safe_name
 from agent.serial_board import BoardError, SerialBoard, choose_port
 from agent.session import Session
 from protocol import BUTTON_LABELS, DEFAULT_BAUD
 from sim.fake_board import SCENARIOS, FakeBoard
 
 DEFAULT_HISTORY = Path(__file__).resolve().parent / "student_history.json"
+NOTEBOOKS = Path(__file__).resolve().parent.parent / "notebooks"
 
 
 def show_board(session):
@@ -41,8 +44,11 @@ def main(argv=None):
     p.add_argument("--lesson", type=int, default=1)
     p.add_argument("--scenario", default="correct",
                    help="circuit the fake board starts with")
-    p.add_argument("--history", default=str(DEFAULT_HISTORY),
+    p.add_argument("--history", default=None,
                    help="file that keeps the student's mistake history")
+    p.add_argument("--student", default="student",
+                   help="the student's name: their notebook is notebooks/<name>.md")
+    p.add_argument("--notebooks", default=str(NOTEBOOKS), help="folder for the notebooks")
     p.add_argument("--fresh", action="store_true", help="forget the old history")
     p.add_argument("--rows", default="all", help='rows the fake board measures, e.g. "T1-T16"')
     p.add_argument("--no-current", action="store_true", help="no current sensor")
@@ -53,6 +59,10 @@ def main(argv=None):
     p.add_argument("--baud", type=int, default=DEFAULT_BAUD,
                    help=f"serial speed for --serial (default {DEFAULT_BAUD})")
     args = p.parse_args(argv)
+    if args.history is None:
+        name = safe_name(args.student)
+        args.history = str(DEFAULT_HISTORY if name == "student"
+                           else DEFAULT_HISTORY.with_name(f"history_{name}.json"))
 
     if args.fresh and Path(args.history).exists():
         Path(args.history).unlink()
@@ -71,7 +81,8 @@ def main(argv=None):
                           has_power_switch=not args.no_power_switch,
                           has_screen=not args.no_screen)
     fake = isinstance(board, FakeBoard)
-    session = Session(board, lesson=args.lesson, history_path=args.history)
+    notebook = Notebook(args.notebooks, args.student)
+    session = Session(board, lesson=args.lesson, history_path=args.history, notebook=notebook)
     model, is_real = make_model()
     agent = build_agent(session, model)
     caps = session.board.capabilities()
@@ -81,6 +92,7 @@ def main(argv=None):
           f"{'yes' if caps['has_current'] else 'no'}, power switch "
           f"{'yes' if caps['has_power_switch'] else 'no'}, screen "
           f"{'yes' if caps['has_screen'] else 'no'}")
+    print(f"Notebook for {args.student}: {notebook.path}")
     if is_real:
         print(f"Model: {model}")
     else:
@@ -124,6 +136,9 @@ def main(argv=None):
             continue
         if text == "/list":
             print(", ".join(SCENARIOS[session.lesson_id]))
+            continue
+        if text == "/notebook":
+            print(notebook.text())
             continue
         if text == "/board":
             show_board(session)

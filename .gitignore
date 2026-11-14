@@ -3,3 +3,6 @@ __pycache__/
 .env
 .venv/
 agent/student_history.json
+agent/history_*.json
+# Student notebooks stay on this computer (they are about real students).
+notebooks/

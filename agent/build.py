@@ -8,7 +8,9 @@ import os
 
 from deepagents import create_deep_agent
 
+from agent.detective import ScriptedDetectiveModel, detective_spec
 from agent.mock_model import ScriptedTutorModel
+from agent.notebook import notebook_tools_backend
 from agent.prompts import SYSTEM_PROMPT
 from agent.tools import make_tools
 
@@ -23,13 +25,25 @@ def make_model():
     return ScriptedTutorModel(), False
 
 
-def build_agent(session, model=None):
+def build_agent(session, model=None, detective_model=None):
     if model is None:
         model, _ = make_model()
+    # The detective subagent (task tool). Offline, it gets its own scripted
+    # model; with Claude it uses the same model as the tutor.
+    if detective_model is None and isinstance(model, ScriptedTutorModel):
+        detective_model = ScriptedDetectiveModel()
+    extra = {"subagents": [detective_spec(session, detective_model)]}
+    # The student's notebook: loaded as memory at the start of every turn,
+    # on disk, and the only place the agent may write.
+    if session.notebook is not None:
+        backend, permissions = notebook_tools_backend(session.notebook)
+        extra.update(backend=backend, permissions=permissions,
+                     memory=[session.notebook.agent_path])
     agent = create_deep_agent(
         model=model,
         tools=make_tools(session),
         system_prompt=SYSTEM_PROMPT,
+        **extra,
     )
     # ask() tells the session what the student said, so plain Python (not
     # the AI) decides whether this message may turn power on.
@@ -46,6 +60,8 @@ def ask(agent, history, text):
     before = len(history)
     result = agent.invoke({"messages": history + [{"role": "user", "content": text}]})
     history[:] = result["messages"]
+    if session is not None:
+        session.notebook_after_turn()
     reply = result["messages"][-1].content
     if isinstance(reply, list):  # Claude can return a list of content blocks
         reply = "".join(b.get("text", "") for b in reply if isinstance(b, dict))

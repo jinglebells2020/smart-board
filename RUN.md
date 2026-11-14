@@ -175,15 +175,22 @@ test without paying for Claude.
 
    No spaces around `=`. No quotes.
 
-4. Start the tutor:
+4. Start the tutor, with the student's first name:
 
    ```
-   python -m agent --fresh
+   python -m agent --fresh --student Maya
    ```
 
-   The second line now says `Model: anthropic:claude-opus-5-5`
-   instead of "offline practice tutor". Use the same steps as Part C.
-   Replies are in Claude's own words now and take a few seconds.
+   A line now says `Model: anthropic:claude-opus-5-5` instead of
+   "offline practice tutor". Use the same steps as Part C. Replies are
+   in Claude's own words now and take a few seconds.
+
+5. The line above it says where Maya's **notebook** is
+   (`notebooks\maya.md`). Claude reads it at the start of every
+   message and adds one line after each check. Type `/notebook` to see
+   it. It stays on the laptop: next time, start with the same
+   `--student Maya` and the tutor remembers her. Leave out `--student`
+   and the notebook is `notebooks\student.md`.
 
 The `set` command only lasts until you close this window. Next time,
 run it again. To use a different model, also run
@@ -273,8 +280,15 @@ The tests in Part B never use the key, even when it is set.
    not check for it.
 
 5. **New student** (top right) forgets the history and starts again
-   at lesson 1. Use it before each demo.
-6. To stop: click the Command Prompt window and press **Ctrl+C**.
+   at lesson 1, with an empty notebook. (The old notebook is kept in
+   the `notebooks` folder with the date in its name.) Use it before
+   each demo.
+6. To see the student's notebook, open http://localhost:8000/api/notebook
+   in a second browser tab, and press F5 to refresh it after a check.
+   To give the notebook a name, start the server with
+   `--student Maya`. `--fresh` forgets the history but keeps the
+   notebook.
+7. To stop: click the Command Prompt window and press **Ctrl+C**.
 
 With `set ANTHROPIC_API_KEY=...` done first (Part D), the page uses
 Claude. The top-left corner, under "Smart Breadboard", says which

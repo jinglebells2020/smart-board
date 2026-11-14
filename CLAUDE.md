@@ -29,7 +29,9 @@ The software must work with any of those answers.
 - agent/ : Python, built with LangChain deepagents
   (create_deep_agent). Tools: read_rows, read_current, cut_power,
   restore_power, get_hint, light_row, clear_lights, show_on_board,
-  log_mistake, next_lesson.
+  log_mistake, next_lesson. Subagent "detective" (task tool, only for
+  unknown mistakes, at most two causes as questions). Memory: one
+  notebook per student in notebooks/, the only place it may write.
 - web/index.html : one page UI. Shows lesson, live readings, the rows
   the lesson uses with their lights, hints, a mini-lesson card with a
   quiz after each mistake, and (with the fake board) a pretend board

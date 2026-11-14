@@ -9,7 +9,7 @@ real deepagents loop and the real tools in tests and offline demos.
 import json
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 
@@ -58,6 +58,19 @@ class ScriptedTutorModel(BaseChatModel):
 
         last_human = max(i for i, m in enumerate(messages) if isinstance(m, HumanMessage))
         asked = str(messages[last_human].content).lower()
+        # deepagents puts the student's notebook (memory) in the system prompt.
+        memory = " ".join(m.text for m in messages if isinstance(m, SystemMessage))
+        memory = memory.split("<agent_memory>", 1)[1].split("</agent_memory>", 1)[0] \
+            if "<agent_memory>" in memory else ""
+
+        def write_notebook(next_time):
+            """Add this check to the notebook with the built-in edit_file."""
+            task = last_read.get("notebook") if last_read else None
+            if not task or "edit_file" in called:
+                return None
+            return call("edit_file", file_path=task["file"], old_string=task["add_above"],
+                        new_string=f"{task['entry']} Next time: {next_time}\n"
+                                   f"{task['add_above']}")
 
         # A hint request: only the next level of help. No measuring, no power.
         if "hint" in asked:
@@ -111,7 +124,14 @@ class ScriptedTutorModel(BaseChatModel):
                 else:
                     note = f"{logged['mini_lesson']['title']}|Red rows: look here."
                 return call("show_on_board", text=note)
+            title = logged["mini_lesson"]["title"]
+            note = write_notebook(f"remember the idea \"{title}\" and look at that "
+                                  "part first.")
+            if note:
+                return note
             say = logged["say"]
+            if f'mistake "{title}"' in memory:  # loaded before this check was written
+                say = f"Your notebook says this happened before, so look extra carefully. {say}"
             restored = result_of("restore_power")
             if restored.get("recut"):
                 return reply(f"{restored['why']} {say}")
@@ -136,6 +156,11 @@ class ScriptedTutorModel(BaseChatModel):
             if "show_on_board" not in called:
                 where = f"Next: lesson {nxt['lesson']}" if nxt["lesson"] else "All done!"
                 return call("show_on_board", text=f"Correct! Well done.|{where}")
+            note = write_notebook(f"start lesson {nxt['lesson']}, {nxt['title']}, the same "
+                                  "careful way." if nxt["lesson"] else "try building a circuit "
+                                  "of your own.")
+            if note:
+                return note
             note = ""
             if check.get("not_checked"):
                 note = (" This board cannot measure current, so I could not check "
@@ -168,5 +193,21 @@ class ScriptedTutorModel(BaseChatModel):
         if "show_on_board" not in called:
             return call("show_on_board", text="Something is off.|Yellow rows: careful.|"
                                               "Clue on the laptop.")
-        text = clue.get("text", "")
-        return reply(f"This is not a mistake I know yet, but here is a clue. {text}".strip())
+        # Not on the list: ask the detective subagent for likely causes.
+        if status == "unknown" and "task" not in called:
+            return call("task", subagent_type="detective",
+                        description=f"Lesson {last_read['lesson']['id']}: a mistake that is "
+                                    f"not on the list. Clue: {clue.get('text', '')}")
+        questions = []
+        found = result_of("task")
+        if isinstance(found, dict):
+            questions = found.get("questions", [])
+        note = write_notebook(f"check first: {questions[0]}" if questions else
+                              "compare each part with the lesson plan, one at a time.")
+        if note:
+            return note
+        text = f"This is not a mistake I know yet, but here is a clue. {clue.get('text', '')}"
+        if questions:
+            text += " The detective has " + ("a question" if len(questions) == 1 else
+                                             "two questions") + " for you: " + " ".join(questions)
+        return reply(text.strip())

@@ -13,6 +13,8 @@ How to run it: see RUN.md in the main folder.
 | `buttons.py`    | What the 4 board buttons do (the meanings are in `protocol.py`) |
 | `lessons.py`    | Checks a circuit from row voltages against lessons/*.json, calculates current when there is no sensor, and writes the clue for unknown mistakes |
 | `prompts.py`    | The instructions Claude follows                           |
+| `detective.py`  | The detective subagent: for mistakes not on the lesson's list, at most two likely causes as questions (structured answer, checked in Python) |
+| `notebook.py`   | The student notebook: one Markdown file per student, loaded as memory, written by the agent with edit_file; the agent may write only there |
 | `mock_model.py` | Offline stand-in for Claude, used in tests and without a key |
 | `__main__.py`   | The chat in a terminal (`python -m agent`)                |
 
