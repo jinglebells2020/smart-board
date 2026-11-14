@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Breadboard</title>
+<style>
+  /* Built for a projector: big text, strong contrast, light background
+     (dark themes wash out on most projectors). Every colour also has a
+     text label, so nothing depends on colour alone. */
+  :root {
+    --bg: #f4f4f1;
+    --card: #ffffff;
+    --ink: #111418;
+    --muted: #4a5058;
+    --line: #c9ccd1;
+    --good: #0b7a35;
+    --good-bg: #e3f4e8;
+    --bad: #b3261e;
+    --bad-bg: #fbe4e2;
+    --warn: #8a5a00;
+    --warn-bg: #fff1d1;
+    --accent: #1f4fd1;
+    --accent-ink: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { font-size: 22px; }
+  @media (min-width: 1400px) { html { font-size: 24px; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    line-height: 1.35;
+  }
+  .wrap { max-width: 1900px; margin: 0 auto; padding: 0.6rem 1rem 0.6rem; }
+
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.2rem;
+    padding-bottom: 0.5rem; border-bottom: 3px solid var(--ink); margin-bottom: 0.8rem;
+  }
+  .brand { font-weight: 800; font-size: 1.1rem; color: var(--muted); }
+  .lesson { flex: 1 1 24rem; }
+  .lesson h1 { margin: 0; font-size: 2rem; line-height: 1.15; }
+  .lesson .circuit { font-size: 1.15rem; color: var(--muted); font-weight: 600; }
+  .badge {
+    font-weight: 800; font-size: 1.3rem; padding: 0.3rem 0.9rem; border-radius: 0.4rem;
+    border: 3px solid currentColor; white-space: nowrap;
+  }
+  .badge.on { color: var(--good); background: var(--good-bg); }
+  .badge.off { color: var(--bad); background: var(--bad-bg); }
+  .small-btn {
+    font: inherit; font-size: 0.8rem; font-weight: 700; padding: 0.35rem 0.7rem;
+    background: var(--card); color: var(--ink); border: 2px solid var(--line);
+    border-radius: 0.4rem; cursor: pointer;
+  }
+
+  .grid { display: grid; gap: 0.8rem; grid-template-columns: 1fr; }
+  .grid > * { min-width: 0; }
+  @media (min-width: 1100px) { .grid { grid-template-columns: 1.25fr 1fr; } }
+  .readings { margin-bottom: 0.8rem; }
+  .readings-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-bottom: 0.6rem; }
+  .readings-head h2 { margin: 0; }
+  section {
+    background: var(--card); border: 2px solid var(--line); border-radius: 0.6rem;
+    padding: 0.7rem 1rem;
+  }
+  h2 {
+    margin: 0 0 0.6rem; font-size: 1rem; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted);
+  }
+
+  /* Readings */
+  .tiles { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
+  .tile { border: 3px solid var(--line); border-radius: 0.5rem; padding: 0.45rem 0.9rem; }
+  .tile.good { border-color: var(--good); background: var(--good-bg); }
+  .tile.bad { border-color: var(--bad); background: var(--bad-bg); }
+  .tile .name { font-weight: 700; font-size: 1rem; }
+  .tile .where { font-size: 0.8rem; color: var(--muted); }
+  .tile .value {
+    font-size: 3rem; font-weight: 800; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+  .tile .unit { font-size: 1.6rem; font-weight: 700; margin-left: 0.2rem; }
+  .tile .target { font-size: 0.95rem; font-weight: 600; }
+  .tile .verdict { font-weight: 800; }
+  .tile.good .verdict { color: var(--good); }
+  .tile.bad .verdict { color: var(--bad); }
+  .row-led {
+    font-size: 1rem; font-weight: 800; padding: 0.4rem 0.8rem;
+    background: var(--warn-bg); color: var(--warn); border: 3px solid var(--warn);
+    border-radius: 0.4rem; display: inline-block;
+  }
+
+  /* Tutor */
+  .hint {
+    font-size: 1.5rem; font-weight: 600; line-height: 1.3; min-height: 3.6em;
+    overflow-wrap: anywhere;
+    padding: 0.8rem 1rem; border-left: 0.5rem solid var(--accent);
+    background: #eef2fd; border-radius: 0.3rem;
+  }
+  .hint.thinking { color: var(--muted); font-style: italic; }
+  .agent-tools { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; min-height: 1.2em; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.7rem 0 0; }
+  .big-btn {
+    font: inherit; font-size: 1.15rem; font-weight: 800; padding: 0.6rem 1.1rem;
+    border-radius: 0.5rem; border: 3px solid var(--accent); cursor: pointer;
+    background: var(--accent); color: var(--accent-ink);
+  }
+  .big-btn.secondary { background: var(--card); color: var(--accent); }
+  .big-btn:disabled, .small-btn:disabled, .scenario:disabled { opacity: 0.45; cursor: wait; }
+  .actions input {
+    flex: 1 1 7rem; min-width: 0; font: inherit; font-size: 1.05rem; padding: 0.5rem 0.7rem;
+    border: 3px solid var(--line); border-radius: 0.5rem;
+  }
+  .actions input:focus { outline: none; border-color: var(--accent); }
+  /* Wide but short screens (a 1080p projector): hide the older messages so
+     everything fits without scrolling. The big hint and history stay. */
+  @media (min-width: 1100px) and (max-height: 1150px) { .log { display: none; } }
+  .log { margin-top: 0.8rem; overflow-wrap: anywhere; overflow-y: auto; font-size: 0.95rem; }
+  .log p { margin: 0 0 0.45rem; }
+  .log .who { font-weight: 800; }
+
+  /* Simulator controls */
+  .sim { margin-top: 0.9rem; padding-top: 0.7rem; border-top: 2px dashed var(--line); }
+  .table-scroll { overflow-x: auto; }
+  .more { font-size: 0.85rem; color: var(--muted); margin: 0.4rem 0 0; }
+  .sim .note { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin: 0 0 0.45rem; }
+  .scenarios { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .scenario {
+    font: inherit; font-size: 0.95rem; font-weight: 700; padding: 0.45rem 0.8rem;
+    border-radius: 0.4rem; border: 2px solid var(--ink); background: var(--card);
+    color: var(--ink); cursor: pointer;
+  }
+  .scenario.active { background: var(--ink); color: var(--card); }
+
+  /* History */
+  table { width: 100%; border-collapse: collapse; font-size: 1rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 2px solid var(--line); }
+  th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  td.nowrap { white-space: nowrap; }
+  @media (max-width: 600px) { th:first-child, td:first-child { display: none; } }
+  td.given-hint { color: var(--accent); font-weight: 700; }
+  td.given-full { color: var(--warn); font-weight: 700; }
+  .empty { color: var(--muted); font-size: 1rem; }
+  .passes { font-size: 1rem; margin: 0 0 0.6rem; font-weight: 600; }
+
+  .offline {
+    display: none; background: var(--bad); color: #fff; font-weight: 800;
+    padding: 0.7rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 1.1rem;
+  }
+  .offline code { background: rgba(255,255,255,0.2); padding: 0.1rem 0.4rem; border-radius: 0.2rem; }
+  .model { font-size: 0.75rem; color: var(--muted); margin-top: 0.4rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="offline" id="offline">
+    Can't reach the tutor server. In Command Prompt run
+    <code>python web\server.py</code> and open <code>http://localhost:8000</code>
+  </div>
+
+  <header>
+    <div class="brand">Smart Breadboard</div>
+    <div class="lesson">
+      <h1 id="lesson-title">Loading&hellip;</h1>
+      <div class="circuit" id="lesson-circuit"></div>
+    </div>
+    <div class="badge" id="power">&nbsp;</div>
+    <button class="small-btn" id="reset" title="Forget the mistake history and start at lesson 1">New student</button>
+  </header>
+
+  <section class="readings">
+    <div class="readings-head">
+      <h2>Live readings</h2>
+      <div class="row-led" id="row-led" hidden></div>
+    </div>
+    <div class="tiles">
+      <div class="tile" id="tile-current">
+        <div class="name">Current</div>
+        <div class="where">Flowing out of the 5 V supply</div>
+        <div><span class="value" id="v-current">&ndash;</span><span class="unit">mA</span></div>
+        <div class="target" id="t-current"></div>
+      </div>
+      <div class="tile" id="tile-probe">
+        <div class="name">Probe 1 voltage</div>
+        <div class="where" id="probe-where"></div>
+        <div><span class="value" id="v-probe">&ndash;</span><span class="unit">V</span></div>
+        <div class="target" id="t-probe"></div>
+      </div>
+      <div class="tile" id="tile-supply">
+        <div class="name">Supply voltage</div>
+        <div class="where">Breadboard power rail</div>
+        <div><span class="value" id="v-supply">&ndash;</span><span class="unit">V</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section>
+      <h2>Tutor</h2>
+      <div class="hint" id="hint">Build the circuit, then press "Check my circuit".</div>
+      <div class="agent-tools" id="agent-tools"></div>
+      <form class="actions" id="say">
+        <button class="big-btn" type="button" id="check">Check my circuit</button>
+        <button class="big-btn secondary" type="button" id="fixed">I fixed it</button>
+        <input id="say-text" autocomplete="off" placeholder="Or ask something&hellip;" maxlength="500">
+        <button class="big-btn secondary" type="submit">Send</button>
+      </form>
+      <div class="sim" id="sim" hidden>
+        <div class="note">Fake board (simulator): what the student built</div>
+        <div class="scenarios" id="scenarios"></div>
+      </div>
+      <div class="log" id="log"></div>
+      <div class="model" id="model"></div>
+    </section>
+
+    <div>
+      <section>
+        <h2>Mistake history</h2>
+        <p class="passes" id="passes"></p>
+        <div class="table-scroll" id="history"></div>
+      </section>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+  "use strict";
+
+  const SCENARIO_NAMES = {
+    correct: "Correct circuit",
+    led_backwards: "LED backwards",
+    no_resistor: "No resistor",
+    open_circuit: "Part in wrong row",
+    bottom_1k: "Bottom resistor is 1k",
+    middle_floating: "Probe not connected",
+  };
+  const POLL_MS = 250;
+
+  const $ = (id) => document.getElementById(id);
+  let busy = false;
+  let lastLogKey = "";
+  let lastHistoryKey = "";
+  let lastScenarioKey = "";
+
+  function fmt(value, digits) {
+    return Number(value).toFixed(digits);
+  }
+
+  function inRange(value, range) {
+    return value >= range[0] && value <= range[1];
+  }
+
+  // A reading tile turns green/red only for values the lesson checks.
+  function renderTile(tile, valueEl, targetEl, value, digits, unit, expected, range, powerOn) {
+    valueEl.textContent = fmt(value, digits);
+    tile.classList.remove("good", "bad");
+    targetEl.textContent = "";
+    if (expected === undefined) return;
+    if (!range) {
+      targetEl.textContent = `Expected about ${expected} ${unit}`;
+      return;
+    }
+    const ok = powerOn && inRange(value, range);
+    tile.classList.add(ok ? "good" : "bad");
+    const verdict = document.createElement("span");
+    verdict.className = "verdict";
+    verdict.textContent = ok ? "IN RANGE" : "OUT OF RANGE";
+    targetEl.append(verdict, ` · target ${range[0]} to ${range[1]} ${unit}`);
+  }
+
+  function currentDigits(mA) {
+    return Math.abs(mA) < 10 ? 2 : 1;
+  }
+
+  function renderLog(log) {
+    const key = log.length + ":" + (log.length ? log[log.length - 1].time : "");
+    if (key === lastLogKey) return;
+    lastLogKey = key;
+
+    const tutor = log.filter((m) => m.who === "tutor");
+    const latest = tutor[tutor.length - 1];
+    $("agent-tools").textContent = latest && latest.tools && latest.tools.length
+      ? "Agent used: " + latest.tools.join(" \u2192 ")
+      : "";
+    if (!busy) {
+      $("hint").textContent = tutor.length
+        ? tutor[tutor.length - 1].text
+        : 'Build the circuit, then press "Check my circuit".';
+      $("hint").classList.remove("thinking");
+    }
+
+    // Older messages, newest first, below the big hint.
+    const box = $("log");
+    box.replaceChildren();
+    // Only the 2 messages before the latest reply: whole lines, no scrolling.
+    log.slice(Math.max(0, log.length - 3), Math.max(0, log.length - 1)).reverse().forEach((m) => {
+      const p = document.createElement("p");
+      const who = document.createElement("span");
+      who.className = "who";
+      who.textContent = m.who === "tutor" ? "Tutor: " : "Student: ";
+      p.append(who, m.text);
+      box.append(p);
+    });
+  }
+
+  function renderHistory(history, passes, lessonCount) {
+    const key = history.length + JSON.stringify(passes);
+    if (key === lastHistoryKey) return;
+    lastHistoryKey = key;
+
+    const passed = Object.keys(passes).filter((k) => passes[k] > 0).sort();
+    $("passes").textContent = passed.length
+      ? `Lessons passed: ${passed.join(", ")} of ${lessonCount}`
+      : `Lessons passed: none yet (${lessonCount} lessons)`;
+
+    const box = $("history");
+    box.replaceChildren();
+    if (!history.length) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = "No mistakes yet.";
+      box.append(p);
+      return;
+    }
+    const table = document.createElement("table");
+    const head = table.createTHead().insertRow();
+    ["Time", "Lesson", "Mistake", "Try", "Tutor gave"].forEach((h) => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      head.append(th);
+    });
+    const body = table.createTBody();
+    const SHOW = 4;
+    history.slice().reverse().slice(0, SHOW).forEach((m) => {
+      const row = body.insertRow();
+      const time = new Date(m.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      [time, m.lesson, m.description, ordinal(m.try)].forEach((v, i) => {
+        const cell = row.insertCell();
+        cell.textContent = v;
+        if (i !== 2) cell.className = "nowrap";
+      });
+      const given = row.insertCell();
+      given.textContent = m.given === "hint" ? "Hint" : "Full explanation";
+      given.className = m.given === "hint" ? "given-hint" : "given-full";
+    });
+    box.append(table);
+    if (history.length > SHOW) {
+      const more = document.createElement("p");
+      more.className = "more";
+      more.textContent = `and ${history.length - SHOW} earlier`;
+      box.append(more);
+    }
+  }
+
+  function ordinal(n) {
+    return n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : n + "th";
+  }
+
+  function renderScenarios(state) {
+    $("sim").hidden = !state.sim;
+    if (!state.sim) return;
+    const key = state.scenarios.join(",") + "|" + state.scenario + "|" + busy;
+    if (key === lastScenarioKey) return;
+    lastScenarioKey = key;
+    const box = $("scenarios");
+    box.replaceChildren();
+    state.scenarios.forEach((name) => {
+      const b = document.createElement("button");
+      b.className = "scenario" + (name === state.scenario ? " active" : "");
+      b.textContent = SCENARIO_NAMES[name] || name;
+      b.disabled = busy;
+      b.addEventListener("click", () => post("/api/build", { scenario: name }));
+      box.append(b);
+    });
+  }
+
+  function render(state) {
+    const L = state.lesson;
+    const r = state.reading;
+    $("lesson-title").textContent = `Lesson ${L.id} of ${state.lesson_count}: ${L.title}`;
+    $("lesson-circuit").textContent = L.circuit;
+    $("probe-where").textContent = L.probe1;
+
+    const power = $("power");
+    power.textContent = r.power_on ? "POWER ON" : "POWER OFF";
+    power.className = "badge " + (r.power_on ? "on" : "off");
+
+    const accept = L.accept || {};
+    const expected = L.expected || {};
+    renderTile($("tile-current"), $("v-current"), $("t-current"), r.current_ma,
+      currentDigits(r.current_ma), "mA", expected.current_ma, accept.current_ma, r.power_on);
+    renderTile($("tile-probe"), $("v-probe"), $("t-probe"), r.voltages.probe1,
+      2, "V", expected.probe1_v, accept.probe1_v, r.power_on);
+    $("v-supply").textContent = fmt(r.supply_v, 2);
+
+    const led = $("row-led");
+    led.hidden = r.led_row === null || r.led_row === undefined;
+    led.textContent = `Row ${r.led_row} LED is lit: look here`;
+
+    $("model").textContent = "Tutor: " + state.model;
+    renderLog(state.log);
+    renderHistory(state.history, state.passes, state.lesson_count);
+    renderScenarios(state);
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch("/api/state", { cache: "no-store" });
+      if (!res.ok) throw new Error(res.status);
+      render(await res.json());
+      $("offline").style.display = "none";
+    } catch (e) {
+      $("offline").style.display = "block";
+    }
+    setTimeout(poll, POLL_MS);
+  }
+
+  async function post(path, body) {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    return res.json();
+  }
+
+  function setBusy(on) {
+    busy = on;
+    ["check", "fixed", "reset"].forEach((id) => { $(id).disabled = on; });
+    document.querySelectorAll("#say input, #say button[type=submit]").forEach((el) => { el.disabled = on; });
+    lastScenarioKey = ""; // redraw circuit buttons enabled/disabled
+    if (on) {
+      $("hint").textContent = "Tutor is measuring and thinking…";
+      $("hint").classList.add("thinking");
+    }
+  }
+
+  async function askTutor(text) {
+    if (busy || !text.trim()) return;
+    setBusy(true);
+    try {
+      const out = await post("/api/ask", { text });
+      $("hint").textContent = out.reply || out.error || "(no reply)";
+    } catch (e) {
+      $("hint").textContent = "Could not reach the tutor server.";
+    } finally {
+      $("hint").classList.remove("thinking");
+      setBusy(false);
+      lastLogKey = "";
+    }
+  }
+
+  $("check").addEventListener("click", () => askTutor("Check my circuit"));
+  $("fixed").addEventListener("click", () => askTutor("I fixed it, check again"));
+  $("say").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = $("say-text");
+    const text = input.value;
+    input.value = "";
+    askTutor(text);
+  });
+  $("reset").addEventListener("click", async () => {
+    if (!confirm("Start again with a new student? This forgets the mistake history.")) return;
+    await post("/api/reset");
+    lastLogKey = lastHistoryKey = lastScenarioKey = "";
+  });
+
+  poll();
+</script>
+</body>
+</html>

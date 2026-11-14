@@ -1,0 +1,47 @@
+{
+  "id": 2,
+  "title": "Voltage divider",
+  "circuit": "5 V -> 10k -> middle node -> 10k -> ground",
+  "probe1": "Middle node: the row between the two resistors",
+  "probe1_row": 15,
+  "notes": "probe1_row is a placeholder until docs/HARDWARE.md lists the real probe rows.",
+  "expected": {
+    "current_ma": 0.25,
+    "probe1_v": 2.5,
+    "math": "V = 5 x 10 / (10 + 10) = 2.5 V, I = 5 / 20000 = 0.25 mA"
+  },
+  "accept": {
+    "probe1_v": [
+      2.3,
+      2.7
+    ]
+  },
+  "mistakes": [
+    {
+      "id": "bottom_1k",
+      "description": "Bottom resistor is 1k instead of 10k (5 x 1 / 11 = 0.45 V)",
+      "detect": {
+        "probe1_v": {
+          "min": 0.3,
+          "max": 0.6
+        }
+      },
+      "action": "hint",
+      "hint": "The middle voltage is much lower than half. The split depends on the ratio of the two resistors. Are they really the same?",
+      "explain": "The bottom resistor is 1k (brown-black-red) instead of 10k (brown-black-orange). With 10k on top and 1k on the bottom the middle gets only 1/11 of 5 V, about 0.45 V. Swap in a 10k so both are equal and the middle reads 2.5 V."
+    },
+    {
+      "id": "middle_floating",
+      "description": "Probe row is not connected to the middle node, so the reading floats",
+      "detect": {
+        "probe1_v_spread": {
+          "min": 1.0
+        }
+      },
+      "action": "hint",
+      "hint": "The middle voltage keeps jumping around. That happens when a probe is not touching anything. Check the probe row.",
+      "show_row": true,
+      "explain": "The probe is not in the same row as the middle node, so it measures nothing and the number drifts. Move the jumper so it sits in the row where the two resistors meet. The lit row shows where the probe is."
+    }
+  ]
+}
