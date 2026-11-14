@@ -8,7 +8,12 @@
   "expected": {
     "current_ma": 13.6,
     "probe1_v": 2.0,
-    "math": "(5 - 2) / 220 = 0.0136 A = 13.6 mA"
+    "math": "(5 - 2) / 220 = 0.0136 A = 13.6 mA",
+    "rows": {
+      "T5": 5.0,
+      "T10": 2.0,
+      "T12": 0.0
+    }
   },
   "accept": {
     "current_ma": [
@@ -42,6 +47,29 @@
         ],
         "answer": 1,
         "why": "An LED lets current through only one way, and only when both of its legs are connected."
+      },
+      "rows": [
+        "T10",
+        "T12"
+      ],
+      "detect_rows": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 4.5
+          },
+          "T12": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ],
+        "current_ma": {
+          "max": 1
+        }
       }
     },
     {
@@ -66,6 +94,24 @@
         ],
         "answer": 2,
         "why": "The resistor limits the current, so the LED gets only as much as it can handle."
+      },
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "detect_rows": {
+        "supply_v": {
+          "max": 4.0
+        },
+        "rows": {
+          "T10": {
+            "min": 1.0,
+            "max": 4.0
+          },
+          "T12": {
+            "max": 0.5
+          }
+        }
       }
     },
     {
@@ -94,6 +140,22 @@
         ],
         "answer": 0,
         "why": "Current flows only around a closed loop, so one gap stops it everywhere."
+      },
+      "rows": [
+        "T10"
+      ],
+      "detect_rows": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T12": {
+            "max": 0.5
+          }
+        },
+        "floating": [
+          "T10"
+        ]
       }
     },
     {
@@ -123,6 +185,29 @@
         ],
         "answer": 1,
         "why": "A bigger resistor pushes back harder, so less current flows."
+      },
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "needs_current_sensor": true,
+      "detect_rows": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 1.5,
+            "max": 2.6
+          },
+          "T12": {
+            "max": 0.5
+          }
+        },
+        "current_ma": {
+          "min": 0.1,
+          "max": 9.5
+        }
       }
     },
     {
@@ -151,8 +236,124 @@
         ],
         "answer": 1,
         "why": "A plain wire is the easiest path, so almost all the current skips the bulb."
+      },
+      "rows": [
+        "T10",
+        "T12"
+      ],
+      "detect_rows": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "max": 0.5
+          },
+          "T12": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ],
+        "current_ma": {
+          "min": 18,
+          "max": 30
+        }
       }
     }
   ],
-  "resistor_words": "the 220 ohm resistor"
+  "resistor_words": "the 220 ohm resistor",
+  "layout": [
+    {
+      "part": "Red wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "PT+"
+        },
+        {
+          "leg": "other end",
+          "row": "T5"
+        }
+      ]
+    },
+    {
+      "part": "220 ohm resistor",
+      "legs": [
+        {
+          "leg": "one leg",
+          "row": "T5"
+        },
+        {
+          "leg": "other leg",
+          "row": "T10"
+        }
+      ]
+    },
+    {
+      "part": "Red LED",
+      "legs": [
+        {
+          "leg": "long leg (+)",
+          "row": "T10"
+        },
+        {
+          "leg": "short leg (-)",
+          "row": "T12"
+        }
+      ]
+    },
+    {
+      "part": "Black wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "T12"
+        },
+        {
+          "leg": "other end",
+          "row": "PT-"
+        }
+      ]
+    }
+  ],
+  "rows": [
+    "T5",
+    "T10",
+    "T12"
+  ],
+  "current_from": [
+    {
+      "part": "220 ohm resistor",
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "ohms": 220
+    }
+  ],
+  "accept_rows": {
+    "rows": {
+      "T5": {
+        "min": 4.5
+      },
+      "T10": {
+        "min": 1.6,
+        "max": 2.4
+      },
+      "T12": {
+        "max": 0.5
+      }
+    },
+    "driven": [
+      "T5",
+      "T10",
+      "T12"
+    ],
+    "current_ma": {
+      "min": 10,
+      "max": 17
+    }
+  }
 }

@@ -6,6 +6,71 @@ texts in `lessons/*.json`: a hint (first time), a full explanation
 short idea with one everyday comparison, and a 3-choice question.
 Student text is written at about a 6th grade reading level.
 
+## Where every part goes (protocol version 2)
+
+The board measures breadboard rows by name: `T1`..`T63` are rows 1 to 63,
+holes a-e (top half). `PT+` and `PT-` are the top power strip. Both
+lessons use only rows 5 to 15, so a board that measures just the first
+16 rows (`T1`-`T16`) can check them. If a board does not measure a row
+a lesson needs, the tutor says so plainly and does not guess.
+
+**Lesson 1**, in build order:
+
+| Step | Part | Legs |
+|---|---|---|
+| 1 | Red wire | `PT+` (5 V) -> row 5 (`T5`) |
+| 2 | 220 ohm resistor | row 5 (`T5`) and row 10 (`T10`) |
+| 3 | Red LED | long leg (+) in row 10 (`T10`), short leg (-) in row 12 (`T12`) |
+| 4 | Black wire | row 12 (`T12`) -> `PT-` (ground) |
+
+Correct voltages: `T5` = 5 V, `T10` = 2 V (the LED takes 2 V), `T12` = 0 V.
+
+**Lesson 2**, in build order:
+
+| Step | Part | Legs |
+|---|---|---|
+| 1 | Red wire | `PT+` (5 V) -> row 5 (`T5`) |
+| 2 | Top 10k resistor | row 5 (`T5`) and row 10 (`T10`) |
+| 3 | Bottom 10k resistor | row 10 (`T10`) and row 15 (`T15`) |
+| 4 | Black wire | row 15 (`T15`) -> `PT-` (ground) |
+
+Correct voltages: `T5` = 5 V, `T10` = 5 x 10 / (10 + 10) = 2.5 V, `T15` = 0 V.
+
+## Current without a current sensor
+
+When the board has no current sensor (`current_ma` is null), the
+current is **calculated** from the voltage on both sides of a resistor
+the lesson knows, and the page says "calculated":
+
+- Lesson 1: (`T5` - `T10`) / 220 = (5 - 2) / 220 = 0.0136 A = 13.6 mA.
+- Lesson 2: (`T5` - `T10`) / 10000 = 0.25 mA, and also
+  (`T10` - `T15`) / 10000 = 0.25 mA. If these two answers disagree, one
+  resistor is not what the lesson expects, so the current is shown as
+  unknown instead of a wrong number.
+
+A resistor with an end in an empty (floating) row carries no current.
+
+**What a board without a current sensor cannot catch**, said plainly:
+
+- **Resistor too big (lesson 1).** A 1k or 10k resistor still leaves
+  the LED at about 2 V, so the rows look exactly like the correct
+  circuit, and the calculated current (which assumes 220 ohm) says
+  13.6 mA. The tutor will call it correct, even though the LED is dim.
+  Only a current sensor can catch this one. The check reports it under
+  `not_checked`.
+- **No resistor (lesson 1)** is caught from the rows only because the
+  power supply voltage drops when too much current flows (rows 5 and 10
+  both sag below 4 V). If a power supply holds a steady 5 V, the rows
+  look the same as an LED put in backwards. A current sensor, or a power
+  supply with a current limit, is needed to be sure.
+- **Not on the list: 150 ohm resistor** looks correct from the rows for
+  the same reason as "resistor too big".
+
+Every other mistake is found from row voltages and empty rows alone.
+"LED backwards" keeps its two possible causes: the LED backwards, or its
+long leg not in row 10. Row voltages cannot tell these apart either: in
+both, row 10 sits at 5 V and row 12 at 0 V.
+
 ## Lesson 1: LED with resistor
 - Circuit: 5 V → 220 ohm → red LED → ground
 - Expected current: (5 - 2) / 220 = 0.0136 A = 13.6 mA

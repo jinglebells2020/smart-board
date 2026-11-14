@@ -8,7 +8,12 @@
   "expected": {
     "current_ma": 0.25,
     "probe1_v": 2.5,
-    "math": "V = 5 x 10 / (10 + 10) = 2.5 V, I = 5 / 20000 = 0.25 mA"
+    "math": "V = 5 x 10 / (10 + 10) = 2.5 V, I = 5 / 20000 = 0.25 mA",
+    "rows": {
+      "T5": 5.0,
+      "T10": 2.5,
+      "T15": 0.0
+    }
   },
   "accept": {
     "probe1_v": [
@@ -43,6 +48,27 @@
         ],
         "answer": 1,
         "why": "The bigger resistor always gets the bigger share of the voltage."
+      },
+      "rows": [
+        "T10",
+        "T15"
+      ],
+      "detect_rows": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 0.3,
+            "max": 0.6
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ]
       }
     },
     {
@@ -68,6 +94,22 @@
         ],
         "answer": 0,
         "why": "A wire that touches nothing picks up random noise instead of a real voltage."
+      },
+      "rows": [
+        "T10"
+      ],
+      "detect_rows": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "floating": [
+          "T10"
+        ]
       }
     },
     {
@@ -96,6 +138,27 @@
         ],
         "answer": 1,
         "why": "More steps take more height, just like a bigger resistor takes more of the voltage."
+      },
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "detect_rows": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 4.3,
+            "max": 4.75
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ]
       }
     },
     {
@@ -126,6 +189,23 @@
         ],
         "answer": 1,
         "why": "With no current, a resistor takes away no voltage, so the full push passes along."
+      },
+      "rows": [
+        "T10",
+        "T15"
+      ],
+      "detect_rows": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 4.85
+          }
+        },
+        "driven": [
+          "T10"
+        ]
       }
     },
     {
@@ -156,8 +236,122 @@
         ],
         "answer": 2,
         "why": "Without a path to the power supply, nothing pushes on that row, so it reads 0 volts."
+      },
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "detect_rows": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "max": 0.2
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ]
       }
     }
   ],
-  "resistor_words": "the two 10k resistors"
+  "resistor_words": "the two 10k resistors",
+  "layout": [
+    {
+      "part": "Red wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "PT+"
+        },
+        {
+          "leg": "other end",
+          "row": "T5"
+        }
+      ]
+    },
+    {
+      "part": "Top 10k resistor",
+      "legs": [
+        {
+          "leg": "one leg",
+          "row": "T5"
+        },
+        {
+          "leg": "other leg",
+          "row": "T10"
+        }
+      ]
+    },
+    {
+      "part": "Bottom 10k resistor",
+      "legs": [
+        {
+          "leg": "one leg",
+          "row": "T10"
+        },
+        {
+          "leg": "other leg",
+          "row": "T15"
+        }
+      ]
+    },
+    {
+      "part": "Black wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "T15"
+        },
+        {
+          "leg": "other end",
+          "row": "PT-"
+        }
+      ]
+    }
+  ],
+  "rows": [
+    "T5",
+    "T10",
+    "T15"
+  ],
+  "current_from": [
+    {
+      "part": "Top 10k resistor",
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "ohms": 10000
+    },
+    {
+      "part": "Bottom 10k resistor",
+      "rows": [
+        "T10",
+        "T15"
+      ],
+      "ohms": 10000
+    }
+  ],
+  "accept_rows": {
+    "rows": {
+      "T5": {
+        "min": 4.5
+      },
+      "T10": {
+        "min": 2.3,
+        "max": 2.7
+      },
+      "T15": {
+        "max": 0.5
+      }
+    },
+    "driven": [
+      "T10"
+    ]
+  }
 }
