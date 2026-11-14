@@ -2,30 +2,133 @@
   "id": 1,
   "title": "LED with resistor",
   "circuit": "5 V -> 220 ohm resistor -> red LED -> ground",
-  "probe1": "The row between the resistor and the LED",
-  "probe1_row": 10,
-  "notes": "probe1_row is a placeholder until docs/HARDWARE.md lists the real probe rows.",
+  "layout": [
+    {
+      "part": "Red wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "PT+"
+        },
+        {
+          "leg": "other end",
+          "row": "T5"
+        }
+      ]
+    },
+    {
+      "part": "220 ohm resistor",
+      "legs": [
+        {
+          "leg": "one leg",
+          "row": "T5"
+        },
+        {
+          "leg": "other leg",
+          "row": "T10"
+        }
+      ]
+    },
+    {
+      "part": "Red LED",
+      "legs": [
+        {
+          "leg": "long leg (+)",
+          "row": "T10"
+        },
+        {
+          "leg": "short leg (-)",
+          "row": "T12"
+        }
+      ]
+    },
+    {
+      "part": "Black wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "T12"
+        },
+        {
+          "leg": "other end",
+          "row": "PT-"
+        }
+      ]
+    }
+  ],
+  "rows": [
+    "T5",
+    "T10",
+    "T12"
+  ],
+  "current_from": [
+    {
+      "part": "220 ohm resistor",
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "ohms": 220
+    }
+  ],
   "expected": {
+    "rows": {
+      "T5": 5.0,
+      "T10": 2.0,
+      "T12": 0.0
+    },
     "current_ma": 13.6,
-    "probe1_v": 2.0,
     "math": "(5 - 2) / 220 = 0.0136 A = 13.6 mA"
   },
   "accept": {
-    "current_ma": [
-      10,
-      17
-    ]
+    "rows": {
+      "T5": {
+        "min": 4.5
+      },
+      "T10": {
+        "min": 1.6,
+        "max": 2.4
+      },
+      "T12": {
+        "max": 0.5
+      }
+    },
+    "driven": [
+      "T5",
+      "T10",
+      "T12"
+    ],
+    "current_ma": {
+      "min": 10,
+      "max": 17
+    }
   },
+  "resistor_words": "the 220 ohm resistor",
   "mistakes": [
     {
       "id": "led_backwards",
       "description": "LED may be backwards, or its long leg may not be in the resistor's row",
+      "rows": [
+        "T10",
+        "T12"
+      ],
       "detect": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 4.5
+          },
+          "T12": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ],
         "current_ma": {
           "max": 1
-        },
-        "probe1_v": {
-          "min": 4
         }
       },
       "action": "hint",
@@ -47,13 +150,26 @@
     {
       "id": "no_resistor",
       "description": "No resistor: LED connected straight to 5 V",
+      "rows": [
+        "T5",
+        "T10"
+      ],
       "detect": {
-        "current_ma": {
-          "min": 30
+        "supply_v": {
+          "max": 4.0
+        },
+        "rows": {
+          "T10": {
+            "min": 1.0,
+            "max": 4.0
+          },
+          "T12": {
+            "max": 0.5
+          }
         }
       },
       "action": "cut_power",
-      "hint": "Power was cut because the current was far too high. What part in the circuit keeps the current small enough for the LED?",
+      "hint": "The current was far too high, so the power must stay off until it is fixed. What part in the circuit keeps the current small enough for the LED?",
       "explain": "There was no resistor, so the LED was connected straight to 5 volts. Nothing kept the current small, so it shot far past what the LED can handle, and that can burn it out. Put the 220 ohm resistor between 5 V and the LED's long leg.",
       "mini_lesson": {
         "title": "Resistors keep current small",
@@ -71,16 +187,23 @@
     {
       "id": "open_circuit",
       "description": "Circuit is not a closed loop (a part is in the wrong row)",
+      "rows": [
+        "T10"
+      ],
       "detect": {
-        "current_ma": {
-          "max": 1
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T12": {
+            "max": 0.5
+          }
         },
-        "probe1_v": {
-          "max": 0.5
-        }
+        "floating": [
+          "T10"
+        ]
       },
       "action": "hint",
-      "show_row": true,
       "hint": "No current, and no voltage at the LED. Something is not connected. Check that each leg is in the row you think it is.",
       "explain": "The circuit is not a closed loop. Each part must share a row with the next one: 5 V to the resistor, the resistor to the LED's long leg, and the LED's short leg to ground. The lit row is the measuring row, so make sure the resistor and the LED both reach it.",
       "mini_lesson": {
@@ -94,6 +217,91 @@
         ],
         "answer": 0,
         "why": "Current flows only around a closed loop, so one gap stops it everywhere."
+      }
+    },
+    {
+      "id": "resistor_too_big",
+      "description": "Resistor is bigger than 220 ohm, so the LED is dim",
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "detect": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 1.5,
+            "max": 2.6
+          },
+          "T12": {
+            "max": 0.5
+          }
+        },
+        "current_ma": {
+          "min": 0.1,
+          "max": 9.5
+        }
+      },
+      "needs_current_sensor": true,
+      "action": "hint",
+      "hint": "The LED is getting much less current than it should, so it is dim. Something is holding the current back more than a 220 ohm resistor would. Look closely at the resistor.",
+      "explain": "The resistor seems to be bigger than 220 ohm, for example 1k (brown-black-red) or 10k (brown-black-orange) instead of 220 (red-red-brown). A bigger resistor lets less current through, so the LED is dim. Use the 220 ohm resistor.",
+      "mini_lesson": {
+        "title": "Bigger resistor, less current",
+        "idea": "A resistor works like a doorway that people have to squeeze through. The narrower the doorway, the fewer people get through each second. A bigger resistor is a narrower doorway, so less current gets through and an LED glows dimmer.",
+        "question": "What happens to the current when a circuit has a bigger resistor?",
+        "options": [
+          "The current gets bigger",
+          "The current gets smaller",
+          "The current stays the same"
+        ],
+        "answer": 1,
+        "why": "A bigger resistor pushes back harder, so less current flows."
+      }
+    },
+    {
+      "id": "led_bypassed",
+      "description": "Current skips the LED (both legs in one row, or a wire around it)",
+      "rows": [
+        "T10",
+        "T12"
+      ],
+      "detect": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "max": 0.5
+          },
+          "T12": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ],
+        "current_ma": {
+          "min": 18,
+          "max": 30
+        }
+      },
+      "action": "hint",
+      "hint": "Lots of current is flowing, but the LED row has almost 0 volts. The current seems to be going around the LED instead of through it. Look at where the LED's two legs are.",
+      "explain": "The current is skipping the LED. Both LED legs may be in the same row, or a wire may join the two sides of the LED. Each LED leg needs its own row, and nothing else should join those two rows.",
+      "mini_lesson": {
+        "title": "Current takes the easy path",
+        "idea": "Current always takes the easiest path, like water running downhill. If there is a shortcut around the LED, almost all of the current goes through the shortcut. Then the LED gets almost nothing and stays dark.",
+        "question": "Current can go through a light bulb or through a plain wire next to it. Which way does most of it go?",
+        "options": [
+          "Through the light bulb",
+          "Through the plain wire",
+          "Half and half"
+        ],
+        "answer": 1,
+        "why": "A plain wire is the easiest path, so almost all the current skips the bulb."
       }
     }
   ]

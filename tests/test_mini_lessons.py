@@ -18,7 +18,7 @@ from pathlib import Path
 from agent.lessons import load_lessons
 from agent.mock_model import ScriptedTutorModel
 from agent.session import Session
-from sim.fake_board import SCENARIOS, FakeBoard
+from sim.fake_board import SCENARIOS, UNLISTED, FakeBoard
 from web.server import App, make_server
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -57,7 +57,9 @@ def reading_grade(text):
 
 def student_texts(lesson):
     """Every lesson string a student can see on the page."""
-    texts = [lesson["title"], lesson["circuit"], lesson["probe1"]]
+    texts = [lesson["title"], lesson["circuit"]]
+    for part in lesson["layout"]:
+        texts += [part["part"]] + [leg["leg"] for leg in part["legs"]]
     for m in lesson["mistakes"]:
         ml = m["mini_lesson"]
         texts += [m["description"], m["hint"], m["explain"], ml["title"], ml["idea"],
@@ -261,7 +263,7 @@ class _NegativeCurrentBoard(FakeBoard):
     def read(self):
         r = super().read()
         r["current_ma"] = -0.02
-        r["voltages"]["probe1"] = -0.001
+        r["rows"]["T10"] = -0.001
         return r
 
 
@@ -314,7 +316,7 @@ class TestWebMiniLesson(unittest.TestCase):
     def test_every_mistake_shows_its_own_card(self):
         for lesson, scenarios in SCENARIOS.items():
             for scenario in scenarios:
-                if scenario == "correct":
+                if scenario == "correct" or scenario in UNLISTED[lesson]:
                     continue
                 with self.subTest(lesson=lesson, mistake=scenario):
                     self.post("/api/reset", {})
@@ -393,7 +395,9 @@ class TestWebMiniLesson(unittest.TestCase):
         s = self.state()
         self.assertEqual(s["reading"]["current_ma"], -0.02)  # protocol unchanged
         self.assertEqual(s["shown"]["current_ma"], 0.0)
-        self.assertEqual(s["shown"]["probe1_v"], 0.0)
+        t10 = next(r for r in s["board"]["rows"] if r["name"] == "T10")
+        self.assertEqual(t10["volts"], 0.0)
+        self.assertEqual(str(t10["volts"]), "0.0")  # not -0.0
         self.assertEqual(str(s["shown"]["current_ma"]), "0.0")  # not -0.0
 
     def test_shown_values_match_normal_readings(self):
@@ -418,7 +422,7 @@ class TestPage(unittest.TestCase):
     def test_no_hard_words_on_the_page(self):
         text = visible_page_text()
         self.assertIn("Check my circuit", text)  # the extraction works
-        self.assertIn("Voltage at the measuring row", text)
+        self.assertIn("Rows this lesson uses", text)
         for word in HARD_WORDS:
             with self.subTest(word=word):
                 self.assertFalse(has_word(text, word),

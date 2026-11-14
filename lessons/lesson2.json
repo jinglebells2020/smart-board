@@ -2,29 +2,134 @@
   "id": 2,
   "title": "Voltage divider",
   "circuit": "5 V -> 10k resistor -> middle -> 10k resistor -> ground",
-  "probe1": "The middle row, where the two resistors meet",
-  "probe1_row": 15,
-  "notes": "probe1_row is a placeholder until docs/HARDWARE.md lists the real probe rows.",
+  "layout": [
+    {
+      "part": "Red wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "PT+"
+        },
+        {
+          "leg": "other end",
+          "row": "T5"
+        }
+      ]
+    },
+    {
+      "part": "Top 10k resistor",
+      "legs": [
+        {
+          "leg": "one leg",
+          "row": "T5"
+        },
+        {
+          "leg": "other leg",
+          "row": "T10"
+        }
+      ]
+    },
+    {
+      "part": "Bottom 10k resistor",
+      "legs": [
+        {
+          "leg": "one leg",
+          "row": "T10"
+        },
+        {
+          "leg": "other leg",
+          "row": "T15"
+        }
+      ]
+    },
+    {
+      "part": "Black wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "T15"
+        },
+        {
+          "leg": "other end",
+          "row": "PT-"
+        }
+      ]
+    }
+  ],
+  "rows": [
+    "T5",
+    "T10",
+    "T15"
+  ],
+  "current_from": [
+    {
+      "part": "Top 10k resistor",
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "ohms": 10000
+    },
+    {
+      "part": "Bottom 10k resistor",
+      "rows": [
+        "T10",
+        "T15"
+      ],
+      "ohms": 10000
+    }
+  ],
   "expected": {
+    "rows": {
+      "T5": 5.0,
+      "T10": 2.5,
+      "T15": 0.0
+    },
     "current_ma": 0.25,
-    "probe1_v": 2.5,
     "math": "V = 5 x 10 / (10 + 10) = 2.5 V, I = 5 / 20000 = 0.25 mA"
   },
   "accept": {
-    "probe1_v": [
-      2.3,
-      2.7
+    "rows": {
+      "T5": {
+        "min": 4.5
+      },
+      "T10": {
+        "min": 2.3,
+        "max": 2.7
+      },
+      "T15": {
+        "max": 0.5
+      }
+    },
+    "driven": [
+      "T10"
     ]
   },
+  "resistor_words": "the two 10k resistors",
   "mistakes": [
     {
       "id": "bottom_1k",
       "description": "Bottom resistor is 1k instead of 10k",
+      "rows": [
+        "T10",
+        "T15"
+      ],
       "detect": {
-        "probe1_v": {
-          "min": 0.3,
-          "max": 0.6
-        }
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 0.3,
+            "max": 0.6
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ]
       },
       "action": "hint",
       "hint": "The middle voltage is much lower than half of 5 volts. How the voltage splits depends on the sizes of the two resistors. Are they really the same size?",
@@ -32,11 +137,11 @@
       "mini_lesson": {
         "title": "Resistors share the voltage",
         "idea": "Two resistors in a line share the voltage, like friends sharing a pizza. The bigger resistor gets the bigger share, just like the hungrier friend gets more slices. If both resistors are the same size, each one gets exactly half.",
-        "question": "The top resistor is 10k and the bottom one is 1k. Which one gets more of the voltage?",
+        "question": "Two resistors share 5 volts, and one is much bigger than the other. Which one gets more of the voltage?",
         "options": [
-          "The 1k on the bottom",
-          "The 10k on the top",
-          "They get the same amount"
+          "The smaller one",
+          "The bigger one",
+          "They always get the same amount"
         ],
         "answer": 1,
         "why": "The bigger resistor always gets the bigger share of the voltage."
@@ -45,13 +150,23 @@
     {
       "id": "middle_floating",
       "description": "Measuring row not connected to the middle, so the number jumps",
+      "rows": [
+        "T10"
+      ],
       "detect": {
-        "probe1_v_spread": {
-          "min": 1.0
-        }
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "floating": [
+          "T10"
+        ]
       },
       "action": "hint",
-      "show_row": true,
       "hint": "The middle voltage keeps jumping around. That happens when the measuring row is not touching anything. Check the measuring row.",
       "explain": "The measuring row is not connected to the middle, where the two resistors meet, so it measures nothing and the number drifts. Move the wire so the measuring row connects to the middle. The lit row shows the measuring row.",
       "mini_lesson": {
@@ -65,6 +180,121 @@
         ],
         "answer": 0,
         "why": "A wire that touches nothing picks up random noise instead of a real voltage."
+      }
+    },
+    {
+      "id": "top_1k",
+      "description": "Top resistor is 1k instead of 10k",
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "detect": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 4.3,
+            "max": 4.75
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ]
+      },
+      "action": "hint",
+      "hint": "The middle voltage is much higher than half of 5 volts. How the voltage splits depends on the sizes of the two resistors. Are they really the same size?",
+      "explain": "The top resistor is 1k (brown-black-red) instead of 10k (brown-black-orange). With 1k on top and 10k on the bottom, the middle gets 10/11 of 5 volts, about 4.55 V. Use a 10k on top too, so both match and the middle reads 2.5 V.",
+      "mini_lesson": {
+        "title": "Bigger resistor, bigger share",
+        "idea": "Going from 5 volts down to 0 is like walking down two sets of stairs. Each resistor is one set, and a bigger resistor has more steps, so it takes more of the height. The middle of the circuit is the landing between the two sets.",
+        "question": "Two sets of stairs go from 5 volts down to 0. Which set takes more of the height?",
+        "options": [
+          "The set with fewer steps",
+          "The set with more steps",
+          "Both always take the same"
+        ],
+        "answer": 1,
+        "why": "More steps take more height, just like a bigger resistor takes more of the voltage."
+      }
+    },
+    {
+      "id": "bottom_missing",
+      "description": "Bottom resistor (or the ground wire) may not be connected",
+      "rows": [
+        "T10",
+        "T15"
+      ],
+      "detect": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "min": 4.85
+          }
+        },
+        "driven": [
+          "T10"
+        ]
+      },
+      "action": "hint",
+      "hint": "No current is flowing, and the middle row has the full 5 volts. The current cannot get from the middle down to ground. Look at every part between the middle and ground.",
+      "explain": "The bottom resistor may not be connected, or the ground wire may not reach it. Either way the loop is broken below the middle, so no current flows and the middle keeps the full 5 volts. The bottom 10k resistor should go from the middle row to the ground row.",
+      "mini_lesson": {
+        "title": "No flow, no voltage drop",
+        "idea": "A resistor only lowers the voltage when current flows through it. It is like a garden hose with the end blocked: no water flows, so the pressure is the same all along the hose. With no current, every point keeps the full push of the power supply.",
+        "question": "No current is flowing through a resistor. How much voltage does it take away?",
+        "options": [
+          "All of it",
+          "None",
+          "Exactly half"
+        ],
+        "answer": 1,
+        "why": "With no current, a resistor takes away no voltage, so the full push passes along."
+      }
+    },
+    {
+      "id": "top_missing",
+      "description": "Top resistor (or the 5 V wire) may not be connected",
+      "rows": [
+        "T5",
+        "T10"
+      ],
+      "detect": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T10": {
+            "max": 0.2
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T10"
+        ]
+      },
+      "action": "hint",
+      "hint": "No current is flowing, and the middle row has 0 volts. The middle seems to have no path to the 5 volt side. Look at every part between 5 V and the middle.",
+      "explain": "The top resistor may not be connected, or the 5 V wire may not reach it. Either way nothing joins the middle to 5 V, so no current flows and the middle sits at 0 volts. The top 10k resistor should go from the 5 V row to the middle row.",
+      "mini_lesson": {
+        "title": "Voltage needs a path from power",
+        "idea": "A row only gets voltage if it has a path back to the power supply. It is like a room that gets light only through one door: shut the door, and the room goes dark. A row that touches only ground stays at 0 volts.",
+        "question": "A row touches ground but has no path to the power supply. What voltage will it read?",
+        "options": [
+          "5 volts",
+          "About 2.5 volts",
+          "0 volts"
+        ],
+        "answer": 2,
+        "why": "Without a path to the power supply, nothing pushes on that row, so it reads 0 volts."
       }
     }
   ]

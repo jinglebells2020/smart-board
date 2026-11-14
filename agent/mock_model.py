@@ -53,56 +53,92 @@ class ScriptedTutorModel(BaseChatModel):
         def reply(text):
             return AIMessage(content=text)
 
-        if not results:
-            return call("read_current")
+        def result_of(name):
+            return next((d for n, d in reversed(results) if n == name), {})
 
-        reads = [d for n, d in results if n in ("read_current", "read_voltages")]
+        if not results:
+            return call("read_rows")
+
+        reads = [d for n, d in results if n in ("read_rows", "read_current")]
         last_read = reads[-1] if reads else None
         check = last_read["lesson_check"] if last_read else {}
+        status = check.get("status")
 
         # Power is off and the student is back: turn it on and measure again.
-        if (check.get("status") == "power_off" and "restore_power" not in called
+        if (status == "power_off" and "restore_power" not in called
                 and not last_read["safety_cut"]):
             return call("restore_power")
         if called[-1] == "restore_power":
-            return call("read_current")
-        if (called[-1] == "read_current" and not last_read["safety_cut"]
-                and check.get("status") != "power_off"):
-            return call("read_voltages")
+            if "do_instead" in result_of("restore_power"):
+                return reply("This board cannot switch the power for you. Please switch "
+                             "the power back on by hand, then tell me to check again.")
+            return call("read_rows")
 
-        status = check.get("status")
         if status == "mistake":
             if check["action"] == "cut_power" and "cut_power" not in called:
                 return call("cut_power")
             if "log_mistake" not in called:
                 return call("log_mistake", mistake_id=check["mistake_id"])
-            if "row" in check and "light_row_led" not in called:
-                return call("light_row_led", row=check["row"])
-            say = next(d for n, d in results if n == "log_mistake")["say"]
+            if "clear_lights" not in called:
+                return call("clear_lights")
+            if "light_row" not in called:
+                return call("light_row", rows=check["rows"], color="red")
+            logged = result_of("log_mistake")
+            manual = "do_instead" in result_of("cut_power")
+            if "show_on_board" not in called:
+                if manual:
+                    note = "DANGER!|Switch the power OFF|by hand now."
+                else:
+                    note = f"{logged['mini_lesson']['title']}|Red rows: look here."
+                return call("show_on_board", text=note)
+            say = logged["say"]
+            if manual:
+                return reply(f"Switch the power off by hand right now, to keep your parts "
+                             f"safe. {say}")
             if check["action"] == "cut_power":
                 return reply(f"I cut the power to keep your parts safe. {say}")
-            if "row" in check:
-                return reply(f"{say} I lit up row {check['row']} to show you where to look.")
-            return reply(say)
+            return reply(f"{say} The red lights show where to look.")
 
         if status == "ok":
+            if "clear_lights" not in called:
+                return call("clear_lights")
+            if "light_row" not in called:
+                return call("light_row", rows=last_read["lesson"]["rows"], color="green")
             if "next_lesson" not in called:
                 return call("next_lesson")
-            nxt = next(d for n, d in results if n == "next_lesson")
+            nxt = result_of("next_lesson")
+            if "show_on_board" not in called:
+                where = f"Next: lesson {nxt['lesson']}" if nxt["lesson"] else "All done!"
+                return call("show_on_board", text=f"Correct! Well done.|{where}")
+            note = ""
+            if check.get("not_checked"):
+                note = (" This board cannot measure current, so I could not check "
+                        "whether the resistor is too big.")
             if nxt["lesson"] is None:
-                return reply(f"Your circuit is correct! {nxt['reason']}")
+                return reply(f"Your circuit is correct! {nxt['reason']}{note}")
             return reply(f"Your circuit is correct! Next: lesson {nxt['lesson']}, "
-                         f"{nxt['title']} ({nxt['circuit']}). {nxt['reason']}")
+                         f"{nxt['title']} ({nxt['circuit']}). {nxt['reason']}{note}")
 
         if status == "power_off":
             return reply("Power is off. Tell me when you have fixed the circuit "
                          "and I will turn it back on.")
 
-        parts = []
-        if "current_ma" in last_read:
-            parts.append(f"current {max(0.0, last_read['current_ma']):.2f} mA")
-        if "probe1_v" in last_read:
-            parts.append(f"voltage at the measuring row {max(0.0, last_read['probe1_v']):.2f} V")
-        numbers = ", ".join(parts) or "no numbers"
-        return reply(f"The numbers don't match lesson {last_read['lesson']['id']} yet "
-                     f"({numbers}). Check your wiring against the lesson circuit.")
+        if status == "missing_rows":
+            if "show_on_board" not in called:
+                return call("show_on_board", text="Cannot check:|this board does not|"
+                                                  "measure every row.")
+            return reply(check["message"])
+
+        # Unknown mistake: light the rows the clue is about yellow (careful),
+        # and say the clue, never a guessed fix.
+        clue = check.get("clue", {})
+        rows = [d["row"] for d in clue.get("details", []) if d.get("row")]
+        if rows and "light_row" not in called:
+            if "clear_lights" not in called:
+                return call("clear_lights")
+            return call("light_row", rows=rows, color="yellow")
+        if "show_on_board" not in called:
+            return call("show_on_board", text="Something is off.|Yellow rows: careful.|"
+                                              "Clue on the laptop.")
+        text = clue.get("text", "")
+        return reply(f"This is not a mistake I know yet, but here is a clue. {text}".strip())

@@ -18,7 +18,7 @@ from agent.lessons import SAFETY_MAX_MA, load_lessons
 from agent.mock_model import ScriptedTutorModel
 from agent.session import Session
 from agent.tools import make_tools
-from sim.fake_board import SCENARIOS, FakeBoard
+from sim.fake_board import SCENARIOS, UNLISTED, FakeBoard
 
 LESSONS = load_lessons()
 
@@ -60,9 +60,10 @@ class TestModelSwitch(unittest.TestCase):
 
     def test_agent_gets_the_claude_md_tools(self):
         names = {f.__name__ for f in make_tools(Session(FakeBoard()))}
-        for required in ["read_voltages", "read_current", "cut_power",
-                         "light_row_led", "log_mistake", "next_lesson"]:
+        for required in ["read_rows", "read_current", "cut_power", "light_row",
+                         "clear_lights", "show_on_board", "log_mistake", "next_lesson"]:
             self.assertIn(required, names)
+        self.assertNotIn("read_voltages", names)  # replaced by read_rows
 
 
 class TestLessonFiles(unittest.TestCase):
@@ -91,8 +92,8 @@ class TestEveryLessonAndMistake(unittest.TestCase):
     def test_each_mistake(self):
         for lesson_id in LESSONS:
             for scenario in SCENARIOS[lesson_id]:
-                if scenario == "correct":
-                    continue
+                if scenario == "correct" or scenario in UNLISTED[lesson_id]:
+                    continue  # unlisted circuits get a clue: test_unknown_mistakes.py
                 with self.subTest(lesson=lesson_id, mistake=scenario):
                     board, session, agent = setup(lesson_id, scenario)
                     reply, new = ask(agent, [], "Can you check my circuit?")
@@ -112,12 +113,10 @@ class TestEveryLessonAndMistake(unittest.TestCase):
                     else:
                         self.assertTrue(board.power_on)
 
-                    if m.get("show_row"):
-                        row = LESSONS[lesson_id]["probe1_row"]
-                        self.assertIn(("light_row_led", {"row": row}), calls)
-                        self.assertEqual(board.led_row, row)
-                    else:
-                        self.assertIsNone(board.led_row)
+                    # The rows of the mistake light red ("problem here").
+                    self.assertIn(("light_row", {"rows": m["rows"], "color": "red"}), calls)
+                    self.assertEqual(board.lights, {r: "red" for r in m["rows"]})
+                    self.assertTrue(board.screen)
 
 
 class TestHintsFirst(unittest.TestCase):
@@ -169,7 +168,7 @@ class TestSafety(unittest.TestCase):
 
 class TestNextLesson(unittest.TestCase):
     def pass_lesson(self, session, lesson_id):
-        session.board.set_scenario(lesson_id, "correct")
+        session.board.board.set_scenario(lesson_id, "correct")  # the fake board
         session.measure()
         return session.next_lesson()
 
