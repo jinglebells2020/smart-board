@@ -12,6 +12,7 @@ server sits in between. It uses only Python's built-in http.server.
     POST /api/quiz    {"occurrence": n, "choice": 0..2} -> answer the mini-lesson question
     POST /api/press   {"id": 1..4}         -> fake board only: press a board button
     POST /api/reset   start again with a new student (a fresh notebook)
+    POST /api/restart-demo  start the demo again: Maya, lesson 1, fresh history and notebook
     POST /api/power-answer {"yes": true|false} -> answer "Turn the power back on?"
     GET  /api/notebook the student's notebook, as plain text
 """
@@ -28,7 +29,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # so "python web/server.py" can import agent and sim
 
 from agent.boardlink import BoardLink  # noqa: E402
-from agent.build import POWER_QUESTION, answer_power, ask, build_agent, make_model  # noqa: E402
+from agent.build import CLAUDE_TIMEOUT, POWER_QUESTION, build_agent, make_model  # noqa: E402
+from agent.fallback import OFFLINE_NOTE, SafeReplies  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
 from agent.lessons import summarize  # noqa: E402
 from agent.notebook import Notebook  # noqa: E402
@@ -44,7 +46,7 @@ PAGE = Path(__file__).resolve().parent / "index.html"
 
 class App:
     def __init__(self, board, lesson=1, history_path=None, model=None, notebook=None,
-                 confirm_power=False):
+                 confirm_power=False, log=None, timeout=CLAUDE_TIMEOUT, demo=None):
         self.is_sim = isinstance(board, FakeBoard)
         self.raw_board = board
         # One shared handle (with a lock) for the page, the tutor and buttons.
@@ -55,6 +57,12 @@ class App:
         # Ask "Turn the power back on?" before the tutor turns power on
         # (deepagents human in the loop). The real page turns this on.
         self.confirm_power = confirm_power
+        # Where "Restart demo" starts: {"student", "lesson", "history"}.
+        self.demo = demo
+        # One line per Claude reply in the server window (how long it took,
+        # or why the offline tutor answered). None: quiet (tests).
+        self.log_line = log
+        self.timeout = timeout  # seconds Claude may take before the offline tutor answers
         if model is None:
             model, is_real = make_model()
         else:
@@ -70,6 +78,9 @@ class App:
         self.session = Session(self.board, lesson=lesson, history_path=self.history_path,
                                notebook=self.notebook)
         self.agent = build_agent(self.session, self.model, ask_before_power=self.confirm_power)
+        # Claude's reply, or the offline tutor's when Claude fails or is slow.
+        self.replies = SafeReplies(self.session, ask_before_power=self.confirm_power,
+                                   timeout=self.timeout, log=self.log_line)
         self.chat = []  # agent message history
         self.log = []   # what the page shows: [{"who", "text", "time"}]
         # The mistake whose mini-lesson card is on the page, or None:
@@ -79,18 +90,38 @@ class App:
 
     def reset(self):
         with self.agent_lock:
-            if self.history_path and Path(self.history_path).exists():
-                Path(self.history_path).unlink()
-            if self.notebook is not None:
-                self.notebook.start_over()  # the old one is kept under a dated name
-            if self.board.has_power_switch:
-                self.board.restore()
-            self.board.clear_lights()
-            self._new_session(self.start_lesson)
-            if self.is_sim:  # the pretend student starts with a correct build
-                self.board.send(f"SCENARIO {self.session.lesson_id} correct")
-            self._welcome()
+            self._reset()
         return {"ok": True}
+
+    def restart_demo(self):
+        """Teacher view → Restart demo: the student "Maya" at lesson 1, with a
+        fresh history and notebook (the old notebook is kept under a dated
+        name), the pretend board back to a correct build, power on."""
+        demo = self.demo or {
+            "student": "Maya", "lesson": 1,
+            "history": str((Path(self.history_path).parent if self.history_path
+                            else ROOT / "agent") / "history_maya.json")}
+        with self.agent_lock:
+            self.history_path = demo["history"]
+            self.start_lesson = demo["lesson"]
+            if self.notebook is not None:
+                self.notebook = Notebook(self.notebook.folder, demo["student"])
+            self._reset()
+        return {"ok": True, "student": demo["student"], "lesson": demo["lesson"]}
+
+    def _reset(self):
+        """Start again (called with agent_lock held)."""
+        if self.history_path and Path(self.history_path).exists():
+            Path(self.history_path).unlink()
+        if self.notebook is not None:
+            self.notebook.start_over()  # the old one is kept under a dated name
+        if self.board.has_power_switch:
+            self.board.restore()
+        self.board.clear_lights()
+        self._new_session(self.start_lesson)
+        if self.is_sim:  # the pretend student starts with a correct build
+            self.board.send(f"SCENARIO {self.session.lesson_id} correct")
+        self._welcome()
 
     def student_name(self):
         return self.notebook.student if self.notebook is not None else "the student"
@@ -397,6 +428,7 @@ class App:
             "history": history,
             "log": self.log,
             "model": self.model_name,
+            "offline_note": OFFLINE_NOTE,
             "sim": self.is_sim,
             "scenarios": SCENARIOS.get(s.lesson_id, []) if self.is_sim else [],
             "scenario": self.raw_board.scenario if self.is_sim else None,
@@ -407,7 +439,7 @@ class App:
 
     def waiting_for_power_answer(self):
         """Is a reply paused on "Turn the power back on?"?"""
-        return getattr(self.agent, "smart_board_pending", None) is not None
+        return self.replies.paused(self.agent) is not None
 
     def ask(self, text):
         text = (text or "").strip()[:500]
@@ -416,8 +448,9 @@ class App:
         with self.agent_lock:
             if self.waiting_for_power_answer():
                 # A new message instead of Yes or No: that is a no.
-                self._turn("No", lambda: answer_power(self.agent, self.chat, False), resume=True)
-            return self._turn(text, lambda: ask(self.agent, self.chat, text))
+                self._turn("No", lambda: self.replies.answer_power(self.agent, self.chat, False),
+                           resume=True)
+            return self._turn(text, lambda: self.replies.ask(self.agent, self.chat, text))
 
     def answer_power(self, yes):
         """The student's Yes or No to "Turn the power back on?"."""
@@ -425,7 +458,8 @@ class App:
             if not self.waiting_for_power_answer():
                 return {"error": "Zip is not asking about the power right now"}
             return self._turn("Yes" if yes else "No",
-                              lambda: answer_power(self.agent, self.chat, bool(yes)), resume=True)
+                              lambda: self.replies.answer_power(self.agent, self.chat, bool(yes)),
+                              resume=True)
 
     def _turn(self, text, run, resume=False):
         """Run one tutor reply (or the rest of a paused one) and log it."""
@@ -438,15 +472,17 @@ class App:
             reply, new = run()
         except Exception as e:  # show the problem on the page, keep running
             reply, new = f"Sorry, the tutor hit an error: {e}", []
-            self.agent.smart_board_pending = None
+            self.replies.forget_pause(self.agent)
+        # The offline tutor answered because Claude failed or was slow.
+        offline = self.replies.offline
         tools = [c["name"] for m in new for c in (getattr(m, "tool_calls", None) or [])]
         steps = describe_steps(self.session.trace, self.student_name())
         if self.waiting_for_power_answer():
             # Paused: Zip asks before the power comes back on.
             self.log.append({"who": "tutor", "text": reply, "time": time.time(), "steps": steps,
                              "tools": tools, "mood": "curious", "asks_power": True,
-                             "celebrate": False})
-            return {"reply": reply, "tools": tools, "pending": True}
+                             "celebrate": False, "offline": offline})
+            return {"reply": reply, "tools": tools, "pending": True, "offline": offline}
         # A mistake was logged in this reply: show its mini-lesson card.
         # Otherwise (circuit correct, power off, ...) the old card goes away,
         # except after asking the lesson writer: then the card stays.
@@ -470,11 +506,12 @@ class App:
                          "steps": steps,
                          "tools": tools, "mood": mood,
                          # The page shows a short celebration for this reply.
-                         "celebrate": bool(result and result.get("status") == "ok")})
+                         "celebrate": bool(result and result.get("status") == "ok"),
+                         "offline": offline})
         if self.is_sim and self.session.lesson_id != before:
             # New lesson: the pretend student starts with a correct build.
             self.board.send(f"SCENARIO {self.session.lesson_id} correct")
-        return {"reply": reply, "tools": tools}
+        return {"reply": reply, "tools": tools, "offline": offline}
 
     def build(self, scenario):
         if not self.is_sim:
@@ -527,6 +564,8 @@ def make_handler(app):
                                          body.get("written_by_zip", False)))
             elif self.path == "/api/reset":
                 self._send(200, app.reset())
+            elif self.path == "/api/restart-demo":
+                self._send(200, app.restart_demo())
             else:
                 self._send(404, {"error": "not found"})
 
@@ -534,6 +573,10 @@ def make_handler(app):
             pass  # keep the terminal quiet (the page polls 4x a second)
 
     return Handler
+
+
+DEMO_STUDENT = "Maya"
+DEMO_LESSON = 1
 
 
 def default_history(student):
@@ -568,13 +611,15 @@ def make_server(app, port=8000, host="127.0.0.1"):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Genesis: the smart breadboard web page")
+    p.add_argument("--demo", action="store_true",
+                   help='start the demo: student "Maya", lesson 1, fresh history and notebook')
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--lesson", type=int, default=None,
                    help="lesson to start at (default: lesson 0 for a new student)")
     p.add_argument("--scenario", default="correct", help="fake board starting circuit")
     p.add_argument("--history", default=None,
                    help="file that keeps the mistake history (default: one per student)")
-    p.add_argument("--student", default="student",
+    p.add_argument("--student", default=None,
                    help="the student's name: their notebook is notebooks/<name>.md")
     p.add_argument("--notebooks", default=str(ROOT / "notebooks"),
                    help="folder for the student notebooks")
@@ -589,6 +634,12 @@ def main(argv=None):
     p.add_argument("--baud", type=int, default=DEFAULT_BAUD,
                    help=f"serial speed for --serial (default {DEFAULT_BAUD})")
     args = p.parse_args(argv)
+    if args.demo:
+        # One command for the demo: Maya, lesson 1, a fresh start.
+        args.student = args.student or DEMO_STUDENT
+        args.lesson = DEMO_LESSON if args.lesson is None else args.lesson
+        args.fresh = True
+    args.student = args.student or "student"
     if args.history is None:
         args.history = str(default_history(args.student))
 
@@ -598,9 +649,13 @@ def main(argv=None):
     if board is None:
         return 2
     notebook = Notebook(args.notebooks, args.student)
+    if args.demo:
+        notebook.start_over()  # a fresh notebook; the old one is kept with the date in its name
+    demo = {"student": DEMO_STUDENT, "lesson": DEMO_LESSON,
+            "history": str(default_history(DEMO_STUDENT))}
     app = App(board, lesson="start" if args.lesson is None else args.lesson,
               history_path=args.history, notebook=notebook,
-              confirm_power=True)
+              confirm_power=True, log=lambda line: print(line, flush=True), demo=demo)
     if app.is_sim and app.session.lesson_id != board.lesson:
         # A new student starts at lesson 0: the pretend board shows that lesson.
         board.send(f"SCENARIO {app.session.lesson_id} correct")
@@ -612,7 +667,17 @@ def main(argv=None):
           f"current sensor {'yes' if caps['has_current'] else 'no'}, "
           f"power switch {'yes' if caps['has_power_switch'] else 'no'}.")
     print(f"Notebook for {args.student}: {notebook.path}")
-    print(f"Open http://localhost:{args.port} in your browser. Press Ctrl+C to stop.")
+    if app.model_name == "offline practice tutor":
+        print("No ANTHROPIC_API_KEY set: Zip uses the offline tutor for every answer.")
+    else:
+        print(f"Each Claude reply prints how long it took. After {app.timeout:g} seconds, or "
+              f"with no internet, the offline tutor answers that message instead.")
+    if args.demo:
+        print(f"DEMO READY: student {args.student}, lesson {app.session.lesson_id}, fresh start.")
+        print(f"Demo URL: http://localhost:{args.port}   (press F11 in the browser for full screen)")
+        print("Press Ctrl+C here to stop.")
+    else:
+        print(f"Open http://localhost:{args.port} in your browser. Press Ctrl+C to stop.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -62,7 +62,8 @@ changed something:
    - "quiz_first": lesson 0 has no circuit; it passes once the student
      answered its question about which holes are joined. Say the message.
    - A mistake with "light" (for example a loose leg: "yellow") lights its
-     rows in that color instead of red.
+     rows in that color instead of red, and your words name that color
+     ("the yellow light"), never "red lights".
    - "missing_rows": the board does not measure a row this lesson needs.
      Say lesson_check.message plainly. Do not guess.
    - "power_off": tell them power is off and ask them to say when they

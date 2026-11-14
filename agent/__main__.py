@@ -19,7 +19,8 @@ Commands for testing with the fake board:
 import argparse
 from pathlib import Path
 
-from agent.build import answer_power, ask, build_agent, make_model
+from agent.build import build_agent, make_model
+from agent.fallback import OFFLINE_NOTE, SafeReplies
 from agent.buttons import handle_button
 from agent.notebook import Notebook, safe_name
 from agent.serial_board import BoardError, SerialBoard, choose_port
@@ -90,6 +91,9 @@ def main(argv=None):
         board.send(f"SCENARIO {session.lesson_id} correct")  # lesson 0 for a new student
     model, is_real = make_model()
     agent = build_agent(session, model, ask_before_power=True)
+    # Claude's reply, or the offline tutor's for that message when Claude
+    # fails, is slow or there is no internet. Prints each Claude reply's time.
+    replies = SafeReplies(session, ask_before_power=True, log=print)
     caps = session.board.capabilities()
 
     print("Genesis tutor (" + ("fake board" if fake else f"real board on {board.port}") + ")")
@@ -127,18 +131,20 @@ def main(argv=None):
     def tutor(text):
         lesson_before = session.lesson_id
         try:
-            reply, _ = ask(agent, history, text)
-            while agent.smart_board_pending is not None:  # Zip asks before power on
+            reply, _ = replies.ask(agent, history, text)
+            while replies.paused(agent) is not None:  # Zip asks before power on
                 print(f"tutor> {reply}")
                 try:
                     yes = input("you (yes/no)> ").strip().lower().startswith("y")
                 except (EOFError, KeyboardInterrupt):
                     yes = False
-                reply, _ = answer_power(agent, history, yes)
+                reply, _ = replies.answer_power(agent, history, yes)
         except BoardError as e:
             print(f"board> {e}")
             return str(e)
         print(f"tutor> {reply}")
+        if replies.offline:
+            print(f"({OFFLINE_NOTE}.)")
         if session.lesson_id != lesson_before and fake:
             # New lesson: the pretend student starts it with a correct build.
             board.send(f"SCENARIO {session.lesson_id} correct")

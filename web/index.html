@@ -321,6 +321,7 @@
     padding: 16px 24px; overflow-y: auto; overflow-wrap: anywhere;
   }
   .hint.thinking { color: var(--ink-2); font-weight: 400; }
+  .offline-note { margin: 8px 0 0; padding: 0 24px; }
   .actions { margin-top: auto; padding-top: 24px; display: flex; flex-direction: column; gap: 16px; }
   .actions .row { display: flex; flex-wrap: wrap; gap: 16px; }
   .actions .row .btn { flex: 1 1 224px; white-space: nowrap; }
@@ -569,6 +570,8 @@
       <div class="bubble" id="bubble">
         <div class="hint" id="hint" aria-live="polite" tabindex="0">Build the circuit, then press "Check my circuit".</div>
       </div>
+      <!-- Claude did not answer in time: the offline tutor answered this one -->
+      <p class="offline-note small muted" id="offline-note" role="status" hidden>Zip is in offline mode for this answer</p>
       <button class="btn btn-soft btn-small learn" type="button" id="mini-open" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5C3 4.7 3.7 4 4.5 4H10a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4.5A1.5 1.5 0 0 1 3 16.5zM21 5.5c0-.8-.7-1.5-1.5-1.5H14a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h5.5a1.5 1.5 0 0 0 1.5-1.5z"
               fill="#FFC93C" stroke="#1D2742" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -636,6 +639,8 @@
       <div class="row">
         <button class="btn btn-soft btn-small" type="button" id="reset"
                 title="Forget the mistake history and start at lesson 1">New student</button>
+        <button class="btn btn-soft btn-small" type="button" id="restart-demo"
+                title="Maya, lesson 1, a fresh history and notebook">Restart demo</button>
         <a href="/api/notebook" target="_blank" rel="noopener">Open the student's notebook</a>
       </div>
       <p class="small muted">Stars: 1 for passing a lesson, 2 with no mistake made twice,
@@ -834,6 +839,8 @@
       ? "The tutor " + latest.tools.map((t) => TOOL_WORDS[t] || t).join(", ")
       : "Nothing yet.";
     if (!busy) showWords(latest ? latest.text : welcome(), false);
+    // Claude was slow or unreachable: the offline tutor gave this answer.
+    $("offline-note").hidden = busy || !(latest && latest.offline);
     renderHow(latest);
     // A short celebration for a new "correct!" reply (not for old ones
     // already there when the page opened).
@@ -1597,12 +1604,13 @@
 
   function setBusy(on) {
     busy = on;
-    ["check", "fixed", "reset"].forEach((id) => { $(id).disabled = on; });
+    ["check", "fixed", "reset", "restart-demo"].forEach((id) => { $(id).disabled = on; });
     document.querySelectorAll("#say input, #say button[type=submit]").forEach((el) => { el.disabled = on; });
     lastScenarioKey = ""; // redraw circuit buttons enabled/disabled
     lastMiniKey = "";     // hide or show the mini-lesson
     lastButtonsKey = "";  // board buttons enabled/disabled
     if (on) {
+      $("offline-note").hidden = true;
       showWords("Let me look at your circuit…", true);
       setMood("thinking");
     }
@@ -1614,6 +1622,7 @@
     try {
       const out = await post("/api/ask", { text });
       showWords(out.reply || out.error || "(no reply)");
+      $("offline-note").hidden = !out.offline;
     } catch (e) {
       showWords("Zip cannot reach the tutor program right now.");
     } finally {
@@ -1679,6 +1688,13 @@
     const text = input.value;
     input.value = "";
     askTutor(text);
+  });
+  $("restart-demo").addEventListener("click", async () => {
+    if (!confirm("Restart the demo? Maya starts lesson 1 again with a fresh history.")) return;
+    await post("/api/restart-demo");
+    lastLogKey = lastHistoryKey = lastScenarioKey = lastMiniKey = lastButtonsKey = lastPathKey = "";
+    lastStars = null;
+    miniOpen = null;
   });
   $("reset").addEventListener("click", async () => {
     if (!confirm("Start again with a new student? This forgets the mistake history.")) return;
