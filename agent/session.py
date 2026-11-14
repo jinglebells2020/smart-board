@@ -69,6 +69,8 @@ class Session:
             notebook.ensure()
         # The latest check: (summary, result). The detective looks at it.
         self.last_check = None
+        # What Zip did in the current reply, as it happens (agent/trace.py).
+        self.trace = []
         # The facts of the latest check, waiting to be written in the
         # notebook (by the agent, or by notebook_after_turn if it forgot).
         self.pending_entry = None

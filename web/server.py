@@ -31,6 +31,7 @@ from agent.build import ask, build_agent, make_model  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
 from agent.lessons import summarize  # noqa: E402
 from agent.notebook import Notebook  # noqa: E402
+from agent.trace import describe_steps  # noqa: E402
 from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E402
 from agent.session import Session  # noqa: E402
 from protocol import (BUTTON_LABELS, COLORS, DEFAULT_BAUD, SCREEN_CHARS,  # noqa: E402
@@ -85,6 +86,9 @@ class App:
             self._new_session(self.start_lesson)
             self._welcome()
         return {"ok": True}
+
+    def student_name(self):
+        return self.notebook.student if self.notebook is not None else "the student"
 
     def _welcome(self):
         l = self.session.lesson
@@ -368,6 +372,8 @@ class App:
             result = self.session.last_check[1] if checked else None
             mood = self.turn_mood(result, tools)
             self.log.append({"who": "tutor", "text": reply, "time": time.time(),
+                             # "How Zip worked": the recorded steps of this reply.
+                             "steps": describe_steps(self.session.trace, self.student_name()),
                              "tools": tools, "mood": mood,
                              # The page shows a short celebration for this reply.
                              "celebrate": bool(result and result.get("status") == "ok")})

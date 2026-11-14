@@ -318,6 +318,11 @@
   .tutor-did, .log { font-size: 16px; }
   .log p { margin: 0 0 8px; }
   .log .who { font-weight: 700; }
+  /* "How Zip worked": the real steps of the latest reply */
+  .how { margin: 0; padding: 0 0 0 24px; font-size: 16px; }
+  .how li { margin: 0 0 8px; }
+  .how .sub { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px;
+              background: var(--yellow); color: var(--ink); font-size: 16px; font-weight: 700; }
   .table-scroll { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 16px; }
   th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
@@ -574,6 +579,10 @@
       <p class="small muted">Stars: 1 for passing a lesson, 2 with no mistake made twice,
         3 when every quiz in it was answered right.</p>
 
+      <h3>How Zip worked</h3>
+      <p class="small muted" id="how-none">Each step of Zip's latest reply shows here.</p>
+      <ol class="how" id="how"></ol>
+
       <h3>What the tutor did</h3>
       <div class="tutor-did" id="tutor-did"></div>
       <div class="log" id="log"></div>
@@ -702,6 +711,29 @@
     setTimeout(() => box.replaceChildren(), 2200);
   }
 
+  // "How Zip worked" (Teacher view): the steps recorded while Zip worked on
+  // the latest reply. Steps done by a helper (subagent) get a small badge.
+  const HELPERS = { detective: "detective", "lesson writer": "lesson writer", grader: "grader" };
+  function renderHow(latest) {
+    const list = $("how");
+    list.replaceChildren();
+    const steps = (latest && latest.steps) || [];
+    $("how-none").textContent = !latest ? "Each step of Zip's latest reply shows here."
+      : steps.length ? "" : "This reply came straight from a board button: Zip did not need to think.";
+    $("how-none").hidden = !!steps.length;
+    steps.forEach((step) => {
+      const li = document.createElement("li");
+      li.append(step.text);
+      if (HELPERS[step.who]) {
+        const badge = document.createElement("span");
+        badge.className = "sub";
+        badge.textContent = HELPERS[step.who];
+        li.append(badge);
+      }
+      list.append(li);
+    });
+  }
+
   function renderLog(log) {
     const key = log.length + ":" + (log.length ? log[log.length - 1].time : "");
     if (key === lastLogKey) return;
@@ -713,6 +745,7 @@
       ? "The tutor " + latest.tools.map((t) => TOOL_WORDS[t] || t).join(", ")
       : "Nothing yet.";
     if (!busy) showWords(latest ? latest.text : WELCOME, false);
+    renderHow(latest);
     // A short celebration for a new "correct!" reply (not for old ones
     // already there when the page opened).
     if (lastCelebrated === null) {

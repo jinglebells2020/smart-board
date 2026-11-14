@@ -174,7 +174,7 @@ def case_file(session):
     }
 
 
-def detective_spec(session, model=None):
+def detective_spec(session, model=None, middleware=None):
     """The deepagents SubAgent for create_deep_agent(subagents=[...])."""
 
     def look_at_the_case() -> str:
@@ -188,6 +188,8 @@ def detective_spec(session, model=None):
             "response_format": DetectiveAnswer}
     if model is not None:
         spec["model"] = model
+    if middleware:
+        spec["middleware"] = list(middleware)
     return spec
 
 

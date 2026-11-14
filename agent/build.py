@@ -13,6 +13,7 @@ from agent.mock_model import ScriptedTutorModel
 from agent.notebook import notebook_tools_backend
 from agent.prompts import SYSTEM_PROMPT
 from agent.tools import make_tools
+from agent.trace import TraceMiddleware
 
 DEFAULT_MODEL = "claude-opus-5-5"
 
@@ -32,11 +33,16 @@ def build_agent(session, model=None, detective_model=None):
     # model; with Claude it uses the same model as the tutor.
     if detective_model is None and isinstance(model, ScriptedTutorModel):
         detective_model = ScriptedDetectiveModel()
-    extra = {"subagents": [detective_spec(session, detective_model)]}
+    # Every tool call is recorded as it runs, for "How Zip worked".
+    extra = {"subagents": [detective_spec(session, detective_model,
+                                          middleware=[TraceMiddleware(session, "detective")])],
+             "middleware": [TraceMiddleware(session, "tutor")]}
     # The student's notebook: loaded as memory at the start of every turn,
     # on disk, and the only place the agent may write.
     if session.notebook is not None:
-        backend, permissions = notebook_tools_backend(session.notebook)
+        backend, permissions = notebook_tools_backend(
+            session.notebook,
+            on_memory_read=lambda: session.trace.append({"who": "memory", "tool": "memory"}))
         extra.update(backend=backend, permissions=permissions,
                      memory=[session.notebook.agent_path])
     agent = create_deep_agent(
@@ -57,6 +63,7 @@ def ask(agent, history, text):
     session = getattr(agent, "smart_board_session", None)
     if session is not None:
         session.hear(text)
+        session.trace = []  # a new reply: a new "How Zip worked"
     before = len(history)
     result = agent.invoke({"messages": history + [{"role": "user", "content": text}]})
     history[:] = result["messages"]
