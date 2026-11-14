@@ -1,0 +1,37 @@
+{
+  "id": 1,
+  "title": "LED with resistor",
+  "circuit": "5 V -> 220 ohm -> red LED -> ground",
+  "probe1": "LED anode: the row between the resistor and the LED",
+  "expected": {
+    "current_ma": 13.6,
+    "probe1_v": 2.0,
+    "math": "(5 - 2) / 220 = 0.0136 A = 13.6 mA"
+  },
+  "accept": {
+    "current_ma": [10, 17]
+  },
+  "mistakes": [
+    {
+      "id": "led_backwards",
+      "description": "LED is in backwards",
+      "detect": {"current_ma": {"max": 1}, "probe1_v": {"min": 4}},
+      "action": "hint",
+      "hint": "Current is almost zero, but the LED row still has full voltage. LEDs only let current flow one way. Look at its two legs."
+    },
+    {
+      "id": "no_resistor",
+      "description": "No resistor, LED connected straight to 5 V",
+      "detect": {"current_ma": {"min": 30}},
+      "action": "cut_power",
+      "hint": "Power was cut because the current was far too high. What part in the circuit limits how much current flows through the LED?"
+    },
+    {
+      "id": "open_circuit",
+      "description": "Circuit is not closed (part in the wrong row)",
+      "detect": {"current_ma": {"max": 1}, "probe1_v": {"max": 0.5}},
+      "action": "hint",
+      "hint": "No current and no voltage at the LED. Something is not connected. Check that each leg is in the row you think it is."
+    }
+  ]
+}

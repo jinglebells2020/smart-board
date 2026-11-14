@@ -1,0 +1,30 @@
+{
+  "id": 2,
+  "title": "Voltage divider",
+  "circuit": "5 V -> 10k -> middle node -> 10k -> ground",
+  "probe1": "Middle node: the row between the two resistors",
+  "expected": {
+    "current_ma": 0.25,
+    "probe1_v": 2.5,
+    "math": "V = 5 x 10 / (10 + 10) = 2.5 V, I = 5 / 20000 = 0.25 mA"
+  },
+  "accept": {
+    "probe1_v": [2.3, 2.7]
+  },
+  "mistakes": [
+    {
+      "id": "bottom_1k",
+      "description": "Bottom resistor is 1k instead of 10k (5 x 1 / 11 = 0.45 V)",
+      "detect": {"probe1_v": {"min": 0.3, "max": 0.6}},
+      "action": "hint",
+      "hint": "The middle voltage is much lower than half. The split depends on the ratio of the two resistors. Are they really the same?"
+    },
+    {
+      "id": "middle_floating",
+      "description": "Probe row is not connected to the middle node, so the reading floats",
+      "detect": {"probe1_v_spread": {"min": 1.0}},
+      "action": "hint",
+      "hint": "The middle voltage keeps jumping around. That happens when a probe is not touching anything. Check the probe row."
+    }
+  ]
+}
