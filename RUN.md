@@ -103,7 +103,7 @@ python -m unittest -v
 Wait about 15 seconds. The last lines should be:
 
 ```
-Ran 76 tests in 13.0s
+Ran 103 tests in 14.3s
 
 OK
 ```
@@ -143,6 +143,8 @@ lines are what a student would say.
 | `check`                     | Correct again: tutor moves on to lesson 2         |
 | `/build middle_floating`    | Measuring row not connected                      |
 | `check`                     | Tutor hints and lights up the measuring row      |
+| `/build bottom_4k7`         | A mistake that is on no list (4.7k bottom resistor) |
+| `check`                     | "This is not a mistake I know yet, but here is a clue." Then which numbers are off and what that usually means |
 | `/quit`                     | Stop                                              |
 
 `/list` shows every circuit you can `/build` for the current lesson.
@@ -225,6 +227,18 @@ The tests in Part B never use the key, even when it is set.
 
    Each quiz takes one answer. A second click does not change it.
 
+   More circuits to try. Pick one, then click **Check my circuit**:
+
+   | Lesson | Button                         | What the tutor does                     |
+   |--------|--------------------------------|-----------------------------------------|
+   | 1      | **Resistor too big (1k)**      | Hint: the LED gets much less current, so it is dim. Card: "Bigger resistor, less current" |
+   | 1      | **Current skips the LED**      | Hint: lots of current but 0 V at the LED row. No power cut (22.7 mA is safe). Card: "Current takes the easy path" |
+   | 1      | **Not on the list: 150 ohm resistor** | No card. The tutor gives a clue: the current is a little higher than it should be |
+   | 2      | **Wrong top resistor (1k)**    | Hint: the middle is much higher than half. Card: "Bigger resistor, bigger share" |
+   | 2      | **Bottom resistor missing**    | Hint: no current, full 5 V in the middle. Card: "No flow, no voltage drop" |
+   | 2      | **Top resistor missing**       | Hint: no current, 0 V in the middle. Card: "Voltage needs a path from power" |
+   | 2      | **Not on the list: 4.7k bottom resistor** | No card. Clue: current a little higher, middle voltage lower than it should be |
+
 5. **New student** (top right) forgets the history and starts again
    at lesson 1. Use it before each demo.
 6. To stop: click the Command Prompt window and press **Ctrl+C**.
@@ -271,5 +285,5 @@ server window was closed. Run step 1 again.
 | `No module named agent` or `Ran 0 tests`        | You are in the wrong folder. Run the `cd ...\smart-board` command |
 | `'git' is not recognized`                       | Do Step 2, then close and reopen Command Prompt |
 | Error with `401` or `authentication` in Part D  | The key is wrong or has spaces. Run the `set` line again |
-| The tutor says `The numbers don't match lesson` | The fake board circuit is for a different lesson. Type `/list` and `/build` one of those |
+| The tutor says `This is not a mistake I know yet` | Normal for the "Not on the list" circuits. Otherwise the fake board may show a circuit for another lesson: type `/list` and `/build` one of those |
 | `OSError: ... address already in use` (Part E)  | The server is already running in another window. Use that one, or run `python web\server.py --port 8001` and open http://localhost:8001 |

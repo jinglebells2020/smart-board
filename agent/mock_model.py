@@ -98,11 +98,6 @@ class ScriptedTutorModel(BaseChatModel):
             return reply("Power is off. Tell me when you have fixed the circuit "
                          "and I will turn it back on.")
 
-        parts = []
-        if "current_ma" in last_read:
-            parts.append(f"current {max(0.0, last_read['current_ma']):.2f} mA")
-        if "probe1_v" in last_read:
-            parts.append(f"voltage at the measuring row {max(0.0, last_read['probe1_v']):.2f} V")
-        numbers = ", ".join(parts) or "no numbers"
-        return reply(f"The numbers don't match lesson {last_read['lesson']['id']} yet "
-                     f"({numbers}). Check your wiring against the lesson circuit.")
+        # Unknown mistake: say the clue from lesson_check, never a guessed fix.
+        text = check.get("clue", {}).get("text", "")
+        return reply(f"This is not a mistake I know yet, but here is a clue. {text}".strip())

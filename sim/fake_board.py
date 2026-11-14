@@ -78,6 +78,21 @@ def _ideal(lesson, scenario):
             # A part is in the wrong row, so nothing connects the LED
             # to 5 V. No current, and the LED node sits at ground.
             return v, 0.0, 0.0
+        if scenario == "resistor_too_big":
+            # 1k instead of 220 ohm. The LED still drops its 2 V, so the
+            # resistor gets the other 3 V: (5 - 2) / 1000 = 3.0 mA. Dim LED.
+            # (A 10k would give (5 - 2) / 10000 = 0.3 mA, same row voltage.)
+            r_big = 1_000.0
+            return v, (v - LED_VF) / r_big * 1000, LED_VF
+        if scenario == "led_bypassed":
+            # Both LED legs in one row (or a wire around the LED): the
+            # resistor goes straight to ground. 5 / 220 = 22.7 mA, and the
+            # LED row is tied to ground, so it reads 0 V. The LED is dark.
+            return v, v / r * 1000, 0.0
+        if scenario == "resistor_150":
+            # NOT a listed mistake (see UNLISTED): 150 ohm instead of 220.
+            # (5 - 2) / 150 = 20 mA, LED row 2 V. Shows the clue.
+            return v, (v - LED_VF) / 150.0 * 1000, LED_VF
     if lesson == 2:
         # 5 V -> R_top -> middle node -> R_bottom -> ground.
         # probe1 = middle node.
@@ -94,15 +109,42 @@ def _ideal(lesson, scenario):
             # reads random junk.
             r_bot = 10_000.0
             return v, v / (r_top + r_bot) * 1000, None
+        if scenario == "top_1k":
+            # 1k on top, 10k on the bottom: 5 / 11000 = 0.45 mA, and the
+            # middle gets 5 x 10 / 11 = 4.55 V.
+            r_top_small, r_bot = 1_000.0, 10_000.0
+            return (v, v / (r_top_small + r_bot) * 1000,
+                    v * r_bot / (r_top_small + r_bot))
+        if scenario == "bottom_missing":
+            # No bottom resistor: the loop is broken below the middle.
+            # No current, so the top resistor drops nothing: middle = 5 V.
+            return v, 0.0, v
+        if scenario == "top_missing":
+            # No top resistor: the middle only touches ground through
+            # the bottom resistor. No current, middle = 0 V.
+            return v, 0.0, 0.0
+        if scenario == "bottom_4k7":
+            # NOT a listed mistake (see UNLISTED): 4.7k on the bottom.
+            # 5 / 14700 = 0.34 mA, middle = 5 x 4.7 / 14.7 = 1.60 V.
+            r_bot = 4_700.0
+            return v, v / (r_top + r_bot) * 1000, v * r_bot / (r_top + r_bot)
     raise ValueError(f"unknown lesson/scenario: {lesson} {scenario}")
 
 
 # Every circuit the simulator can pretend the student built.
-# "correct" is the right circuit. Every other name is a mistake from
-# docs/LESSONS.md and matches a mistake "id" in lessons/*.json.
+# "correct" is the right circuit. The names in UNLISTED are mistakes the
+# lessons do NOT list, so the tutor must explain them with a clue from
+# the numbers. Every other name is a mistake from docs/LESSONS.md and
+# matches a mistake "id" in lessons/*.json.
+UNLISTED = {
+    1: ["resistor_150"],
+    2: ["bottom_4k7"],
+}
 SCENARIOS = {
-    1: ["correct", "led_backwards", "no_resistor", "open_circuit"],
-    2: ["correct", "bottom_1k", "middle_floating"],
+    1: ["correct", "led_backwards", "no_resistor", "open_circuit",
+        "resistor_too_big", "led_bypassed"] + UNLISTED[1],
+    2: ["correct", "bottom_1k", "middle_floating", "top_1k",
+        "bottom_missing", "top_missing"] + UNLISTED[2],
 }
 
 

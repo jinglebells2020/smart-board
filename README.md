@@ -18,7 +18,7 @@ written at about a 6th grade reading level.
 | Part                     | Status                                        |
 |--------------------------|-----------------------------------------------|
 | `sim/fake_board.py`      | Done. Simulates lessons 1 and 2 plus every listed mistake |
-| `lessons/*.json`         | Done for lessons 1 and 2, with a hint, full explanation and mini-lesson (idea + quiz question) for every mistake |
+| `lessons/*.json`         | Done for lessons 1 and 2: 10 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). Any other mistake gets a clue from the numbers |
 | `docs/SERIAL_PROTOCOL.md`| Done. The JSON format the board must send     |
 | `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
 | `firmware/`              | Waiting on docs/HARDWARE.md                    |
@@ -59,7 +59,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (76 tests). They never call Claude, so
+The last line should say `OK` (103 tests). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -115,6 +115,10 @@ Works today with the fake board. Show it on the projector page
    lights up, and the card "Measure only what you touch" appears.
 6. The mistake history shows each mistake, hint or full explanation,
    and whether the quiz was answered right or wrong.
+7. A mistake that is on no list ("Not on the list: 150 ohm resistor")
+   → the tutor still explains, with a clue from the numbers: "The
+   current is a little higher than it should be. Something is letting
+   it through more easily than the 220 ohm resistor would."
 
 ## Consulted with
 

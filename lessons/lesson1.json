@@ -95,6 +95,64 @@
         "answer": 0,
         "why": "Current flows only around a closed loop, so one gap stops it everywhere."
       }
+    },
+    {
+      "id": "resistor_too_big",
+      "description": "Resistor is bigger than 220 ohm, so the LED is dim",
+      "detect": {
+        "current_ma": {
+          "min": 0.1,
+          "max": 9.5
+        },
+        "probe1_v": {
+          "min": 1.5,
+          "max": 2.6
+        }
+      },
+      "action": "hint",
+      "hint": "The LED is getting much less current than it should, so it is dim. Something is holding the current back more than a 220 ohm resistor would. Look closely at the resistor.",
+      "explain": "The resistor seems to be bigger than 220 ohm, for example 1k (brown-black-red) or 10k (brown-black-orange) instead of 220 (red-red-brown). A bigger resistor lets less current through, so the LED is dim. Use the 220 ohm resistor.",
+      "mini_lesson": {
+        "title": "Bigger resistor, less current",
+        "idea": "A resistor works like a doorway that people have to squeeze through. The narrower the doorway, the fewer people get through each second. A bigger resistor is a narrower doorway, so less current gets through and an LED glows dimmer.",
+        "question": "What happens to the current when a circuit has a bigger resistor?",
+        "options": [
+          "The current gets bigger",
+          "The current gets smaller",
+          "The current stays the same"
+        ],
+        "answer": 1,
+        "why": "A bigger resistor pushes back harder, so less current flows."
+      }
+    },
+    {
+      "id": "led_bypassed",
+      "description": "Current skips the LED (both legs in one row, or a wire around it)",
+      "detect": {
+        "current_ma": {
+          "min": 18,
+          "max": 30
+        },
+        "probe1_v": {
+          "max": 0.5
+        }
+      },
+      "action": "hint",
+      "hint": "Lots of current is flowing, but the LED row has almost 0 volts. The current seems to be going around the LED instead of through it. Look at where the LED's two legs are.",
+      "explain": "The current is skipping the LED. Both LED legs may be in the same row, or a wire may join the two sides of the LED. Each LED leg needs its own row, and nothing else should join those two rows.",
+      "mini_lesson": {
+        "title": "Current takes the easy path",
+        "idea": "Current always takes the easiest path, like water running downhill. If there is a shortcut around the LED, almost all of the current goes through the shortcut. Then the LED gets almost nothing and stays dark.",
+        "question": "Current can go through a light bulb or through a plain wire next to it. Which way does most of it go?",
+        "options": [
+          "Through the light bulb",
+          "Through the plain wire",
+          "Half and half"
+        ],
+        "answer": 1,
+        "why": "A plain wire is the easiest path, so almost all the current skips the bulb."
+      }
     }
-  ]
+  ],
+  "resistor_words": "the 220 ohm resistor"
 }

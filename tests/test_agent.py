@@ -18,7 +18,7 @@ from agent.lessons import SAFETY_MAX_MA, load_lessons
 from agent.mock_model import ScriptedTutorModel
 from agent.session import Session
 from agent.tools import make_tools
-from sim.fake_board import SCENARIOS, FakeBoard
+from sim.fake_board import SCENARIOS, UNLISTED, FakeBoard
 
 LESSONS = load_lessons()
 
@@ -91,8 +91,8 @@ class TestEveryLessonAndMistake(unittest.TestCase):
     def test_each_mistake(self):
         for lesson_id in LESSONS:
             for scenario in SCENARIOS[lesson_id]:
-                if scenario == "correct":
-                    continue
+                if scenario == "correct" or scenario in UNLISTED[lesson_id]:
+                    continue  # unlisted circuits get a clue: test_unknown_mistakes.py
                 with self.subTest(lesson=lesson_id, mistake=scenario):
                     board, session, agent = setup(lesson_id, scenario)
                     reply, new = ask(agent, [], "Can you check my circuit?")

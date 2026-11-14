@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 
 from agent.lessons import load_lessons, matches, summarize
-from sim.fake_board import CURRENT_LIMIT_MA, SCENARIOS, FakeBoard
+from sim.fake_board import CURRENT_LIMIT_MA, SCENARIOS, UNLISTED, FakeBoard
 
 ROOT = Path(__file__).resolve().parent.parent
 WINDOW = 20  # readings per check (2 seconds of real board time)
@@ -36,8 +36,26 @@ class TestLessonFiles(unittest.TestCase):
     def test_every_mistake_has_a_scenario_and_back(self):
         for lesson_id, lesson in LESSONS.items():
             mistake_ids = {m["id"] for m in lesson["mistakes"]}
-            sim_ids = set(SCENARIOS[lesson_id]) - {"correct"}
+            sim_ids = set(SCENARIOS[lesson_id]) - {"correct"} - set(UNLISTED[lesson_id])
             self.assertEqual(mistake_ids, sim_ids, f"lesson {lesson_id}")
+
+    def test_unlisted_circuits_match_no_mistake_and_do_not_pass(self):
+        # These exist so the clue for unknown mistakes can be tried.
+        for lesson_id, names in UNLISTED.items():
+            lesson = LESSONS[lesson_id]
+            for name in names:
+                with self.subTest(lesson=lesson_id, circuit=name):
+                    self.assertNotIn(name, {m["id"] for m in lesson["mistakes"]})
+                    s = summarize(window(lesson_id, name))
+                    self.assertFalse(matches(s, lesson["accept"]), s)
+                    for m in lesson["mistakes"]:
+                        self.assertFalse(matches(s, m["detect"]), m["id"])
+
+    def test_unlisted_numbers(self):
+        s = summarize(window(1, "resistor_150"))
+        self.assertAlmostEqual(s["current_ma"], (5 - 2) / 150 * 1000, delta=0.5)  # 20 mA
+        s = summarize(window(2, "bottom_4k7"))
+        self.assertAlmostEqual(s["probe1_v"], 5 * 4.7 / 14.7, delta=0.05)          # 1.60 V
 
 
 class TestReadingFormat(unittest.TestCase):

@@ -18,7 +18,7 @@ from pathlib import Path
 from agent.lessons import load_lessons
 from agent.mock_model import ScriptedTutorModel
 from agent.session import Session
-from sim.fake_board import SCENARIOS, FakeBoard
+from sim.fake_board import SCENARIOS, UNLISTED, FakeBoard
 from web.server import App, make_server
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -314,7 +314,7 @@ class TestWebMiniLesson(unittest.TestCase):
     def test_every_mistake_shows_its_own_card(self):
         for lesson, scenarios in SCENARIOS.items():
             for scenario in scenarios:
-                if scenario == "correct":
+                if scenario == "correct" or scenario in UNLISTED[lesson]:
                     continue
                 with self.subTest(lesson=lesson, mistake=scenario):
                     self.post("/api/reset", {})
