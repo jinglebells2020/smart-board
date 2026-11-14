@@ -16,8 +16,9 @@ the answer.
 | `sim/fake_board.py`      | Done. Simulates lessons 1 and 2 plus every listed mistake |
 | `lessons/*.json`         | Done for lessons 1 and 2                      |
 | `docs/SERIAL_PROTOCOL.md`| Done. The JSON format the board must send     |
+| `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
 | `firmware/`              | Waiting on docs/HARDWARE.md                    |
-| `agent/`, `web/`         | Not started                                   |
+| `web/`                   | Not started                                   |
 
 ## Folders
 
@@ -25,27 +26,46 @@ the answer.
 - `lessons/` : one JSON file per lesson: expected values, the accept
   range, and how to spot each mistake.
 - `sim/fake_board.py` : pretends to be the board.
-- `tests/` : automatic checks for the simulator.
-- `firmware/`, `agent/`, `web/` : coming later.
+- `agent/` : the deepagents tutor (see agent/README.md).
+- `tests/` : automatic checks for the simulator and the agent.
+- `firmware/`, `web/` : coming later.
 
 ## Setup (step by step)
 
-1. Install Python 3.10 or newer. Check by opening a terminal and typing
-   `python3 --version`. On Windows, type `python` instead of `python3`
-   in all the steps below.
-2. Download this repository and open a terminal **inside** the
-   `smart-board` folder. Every command below runs from there.
-3. Nothing else to install yet. The simulator and tests only use
-   Python's built-in libraries.
+**Windows: follow [RUN.md](RUN.md)**. It has every click and command.
+
+Mac or Linux, from inside the `smart-board` folder:
+
+```bash
+python3 -m venv .venv
+```
+
+```bash
+source .venv/bin/activate
+```
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Run the tests
 
 ```bash
-python3 -m unittest -v
+python -m unittest -v
 ```
 
-Each line should end with `ok`, and the last line should say `OK`. If
-you see `FAILED`, read the lines above it to see which test failed.
+The last line should say `OK` (39 tests). They never call Claude, so
+they work without an API key.
+
+## Run the tutor
+
+```bash
+python -m agent --fresh
+```
+
+Without ANTHROPIC_API_KEY it uses an offline practice tutor. With the
+key set it uses Claude (`claude-opus-5-5`; change it with
+SMART_BOARD_MODEL). See RUN.md Part C for what to type.
 
 ## Try the simulator by hand
 
@@ -67,13 +87,17 @@ Press Ctrl+C to stop.
 
 ## Demo script
 
-TODO, written once the agent and web page exist. Draft:
+Works today with the fake board (exact typing in RUN.md Part C). The
+web page will replace the terminal later.
 
-1. Start lesson 1. The student builds the circuit with the LED in
-   backwards → the agent gives a polarity hint, not the answer.
-2. The student removes the resistor → the agent cuts power and
-   explains why.
-3. The agent picks lesson 2 based on the mistakes it logged.
+1. LED in backwards → the tutor gives a polarity hint, not the answer.
+2. Same mistake again → now it explains fully.
+3. No resistor → power is cut at once, and the tutor asks what
+   limits current.
+4. Fixed → power back on. Because of the repeated mistake, the tutor
+   asks for lesson 1 once more before moving to lesson 2.
+5. Lesson 2 with the probe unplugged → hint, and the probe row's LED
+   lights up.
 
 ## Consulted with
 

@@ -9,49 +9,19 @@ those numbers against lessons/*.json, so a typo in either place fails.
 """
 
 import json
-import statistics
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 
+from agent.lessons import load_lessons, matches, summarize
 from sim.fake_board import CURRENT_LIMIT_MA, SCENARIOS, FakeBoard
 
 ROOT = Path(__file__).resolve().parent.parent
 WINDOW = 20  # readings per check (2 seconds of real board time)
 
 
-def load_lessons():
-    lessons = {}
-    for path in sorted((ROOT / "lessons").glob("lesson*.json")):
-        data = json.loads(path.read_text())
-        lessons[data["id"]] = data
-    return lessons
-
-
 LESSONS = load_lessons()
-
-
-def summarize(readings):
-    """Average the readings over a window, like the agent will."""
-    probe = [r["voltages"]["probe1"] for r in readings]
-    return {
-        "current_ma": statistics.mean(r["current_ma"] for r in readings),
-        "supply_v": statistics.mean(r["supply_v"] for r in readings),
-        "probe1_v": statistics.mean(probe),
-        "probe1_v_spread": max(probe) - min(probe),
-    }
-
-
-def in_range(value, rule):
-    """rule looks like {"min": 1, "max": 2} or [1, 2]."""
-    if isinstance(rule, list):
-        rule = {"min": rule[0], "max": rule[1]}
-    return rule.get("min", float("-inf")) <= value <= rule.get("max", float("inf"))
-
-
-def matches(summary, detect):
-    return all(in_range(summary[field], rule) for field, rule in detect.items())
 
 
 def window(lesson, scenario, seed=1):

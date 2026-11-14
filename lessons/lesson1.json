@@ -3,35 +3,62 @@
   "title": "LED with resistor",
   "circuit": "5 V -> 220 ohm -> red LED -> ground",
   "probe1": "LED anode: the row between the resistor and the LED",
+  "probe1_row": 10,
+  "notes": "probe1_row is a placeholder until docs/HARDWARE.md lists the real probe rows.",
   "expected": {
     "current_ma": 13.6,
     "probe1_v": 2.0,
     "math": "(5 - 2) / 220 = 0.0136 A = 13.6 mA"
   },
   "accept": {
-    "current_ma": [10, 17]
+    "current_ma": [
+      10,
+      17
+    ]
   },
   "mistakes": [
     {
       "id": "led_backwards",
       "description": "LED is in backwards",
-      "detect": {"current_ma": {"max": 1}, "probe1_v": {"min": 4}},
+      "detect": {
+        "current_ma": {
+          "max": 1
+        },
+        "probe1_v": {
+          "min": 4
+        }
+      },
       "action": "hint",
-      "hint": "Current is almost zero, but the LED row still has full voltage. LEDs only let current flow one way. Look at its two legs."
+      "hint": "Current is almost zero, but the LED row still has full voltage. LEDs only let current flow one way. Look at its two legs.",
+      "explain": "The LED is in backwards. The longer leg (anode, +) must face the resistor and 5 V; the shorter leg (cathode, -) goes to ground. Flip it around."
     },
     {
       "id": "no_resistor",
       "description": "No resistor, LED connected straight to 5 V",
-      "detect": {"current_ma": {"min": 30}},
+      "detect": {
+        "current_ma": {
+          "min": 30
+        }
+      },
       "action": "cut_power",
-      "hint": "Power was cut because the current was far too high. What part in the circuit limits how much current flows through the LED?"
+      "hint": "Power was cut because the current was far too high. What part in the circuit limits how much current flows through the LED?",
+      "explain": "The LED was connected straight to 5 V with no resistor. Without a resistor nothing limits the current, so it rushes far past what the LED can take and burns it out. Put the 220 ohm resistor between 5 V and the LED's long leg."
     },
     {
       "id": "open_circuit",
       "description": "Circuit is not closed (part in the wrong row)",
-      "detect": {"current_ma": {"max": 1}, "probe1_v": {"max": 0.5}},
+      "detect": {
+        "current_ma": {
+          "max": 1
+        },
+        "probe1_v": {
+          "max": 0.5
+        }
+      },
       "action": "hint",
-      "hint": "No current and no voltage at the LED. Something is not connected. Check that each leg is in the row you think it is."
+      "hint": "No current and no voltage at the LED. Something is not connected. Check that each leg is in the row you think it is.",
+      "show_row": true,
+      "explain": "The circuit is not a closed loop. Each part must share a row with the next part: 5 V to resistor, resistor to the LED's long leg, LED's short leg to ground. The lit row shows where the probe is; make sure the resistor and LED both reach it."
     }
   ]
 }
