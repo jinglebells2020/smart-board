@@ -73,6 +73,8 @@ def outcome(result):
 class TestLayouts(unittest.TestCase):
     def test_every_lesson_has_a_layout_in_build_order(self):
         for lid, lesson in LESSONS.items():
+            if lesson.get("kind") == "explore":
+                continue  # lesson 0: nothing to build
             with self.subTest(lesson=lid):
                 self.assertGreaterEqual(len(lesson["layout"]), 3)
                 for part in lesson["layout"]:
@@ -103,7 +105,9 @@ class TestLayouts(unittest.TestCase):
                 self.assertTrue(used <= set(lesson["rows"]), (lid, used))
             for m in lesson["mistakes"]:
                 self.assertTrue(set(m["rows"]) <= set(lesson["rows"]), m["id"])
-                self.assertTrue(m["rows"], m["id"])
+                # A loose leg is in whichever row flickers, so its rows are found
+                # while measuring; every other mistake names its rows.
+                self.assertTrue(m["rows"] or m["detect"].get("any_flickering"), m["id"])
             for r in lesson["current_from"]:
                 self.assertTrue(set(r["rows"]) <= set(lesson["rows"]))
                 self.assertGreater(r["ohms"], 0)
@@ -214,7 +218,7 @@ class TestDetection(unittest.TestCase):
 class TestRowsTheBoardDoesNotMeasure(unittest.TestCase):
     def test_a_16_row_board_can_check_both_lessons(self):
         board = parse_rows("T1-T16")
-        for lid in LESSONS:
+        for lid in [lid for lid, l in LESSONS.items() if l.get("kind") != "explore"]:  # lesson 0 has no circuit
             for with_sensor in (True, False):
                 s = measure(lid, "correct", with_sensor, board_rows=board)
                 self.assertEqual(s["missing_rows"], [])

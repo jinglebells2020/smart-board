@@ -1,4 +1,4 @@
-# Hardware (INCOMPLETE until all blanks are filled)
+# Genesis: Smart Breadboard: hardware (INCOMPLETE until all blanks are filled)
 
 ## Boards
 - Microcontroller: ___ (model)

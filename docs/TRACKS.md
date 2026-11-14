@@ -1,4 +1,4 @@
-# Tracks we are targeting (HackPrinceton F26)
+# Genesis: Smart Breadboard: tracks we are targeting (HackPrinceton F26)
 
 ## Main tracks
 - Education (our required track): make learning more interactive,

@@ -86,9 +86,9 @@ class App:
             if self.board.has_power_switch:
                 self.board.restore()
             self.board.clear_lights()
-            if self.is_sim:
-                self.board.send(f"SCENARIO {self.start_lesson} correct")
             self._new_session(self.start_lesson)
+            if self.is_sim:  # the pretend student starts with a correct build
+                self.board.send(f"SCENARIO {self.session.lesson_id} correct")
             self._welcome()
         return {"ok": True}
 
@@ -97,7 +97,8 @@ class App:
 
     def _welcome(self):
         l = self.session.lesson
-        self.board.show(f"Lesson {l['id']}: {l['title']}|Press 3 to see where|the first part goes.")
+        what = "Tap the holes!" if l.get("kind") == "explore" else "Press 3 to start."
+        self.board.show(f"Genesis|Lesson {l['id']}: {l['title']}|{what}")
 
     # --- Board buttons -------------------------------------------------
     def press(self, button_id):
@@ -178,11 +179,29 @@ class App:
         return {"PT+": "the top + line (5 V)", "PT-": "the top - line (ground)"}.get(
             name, row_label(name))
 
+    def current_card(self):
+        """The card on the page: the latest mistake's, or in lesson 0 (no
+        circuit) the lesson's own "Which holes are joined?" card."""
+        if self.card:
+            return self.card
+        if self.session.is_explore():
+            return {"lesson": self.session.lesson_id, "mistake": "intro",
+                    "occurrence": "intro", "intro": True}
+        return None
+
     def _card_view(self):
         """The mini-lesson card as the page needs it. The right answer and
         the "why" line are only included once the student has answered."""
-        if not self.card:
+        card = self.current_card()
+        if not card:
             return None
+        saved_card, self.card = self.card, card
+        try:
+            return self._card_view_of()
+        finally:
+            self.card = saved_card
+
+    def _card_view_of(self):
         spec = self.session._mistake_spec(self.card["lesson"], self.card["mistake"])
         ml = spec["mini_lesson"]
         # A mini-lesson the lesson writer wrote (and Python accepted) for this
@@ -199,7 +218,9 @@ class App:
                 "mistake": self.card["mistake"], "title": ml["title"],
                 "idea": ml["idea"], "question": ml["question"],
                 "options": list(ml["options"]), "answered": answered,
-                "written_by_zip": ai is not None}
+                "written_by_zip": ai is not None, "intro": bool(self.card.get("intro")),
+                # Where the drawing should point (e.g. the LED's long leg).
+                "point_at": spec.get("point_at")}
 
     def quiz(self, occurrence, choice, written_by_zip=False):
         """Save the answer to the mini-lesson card that is on the page.
@@ -207,7 +228,7 @@ class App:
         one the lesson writer wrote), so a late click never lands on the
         other card."""
         with self.agent_lock:
-            card = self.card
+            card = self.current_card()
             if card is None or occurrence != card["occurrence"]:
                 return {"error": "that question is no longer on the screen"}
             ai = bool(written_by_zip) and self.session.ai_lesson(occurrence) is not None
@@ -219,7 +240,7 @@ class App:
                         "answer": ml["answer"], "why": ml["why"], "already_answered": True}
             result = self.session.record_quiz(card["lesson"], card["mistake"],
                                               choice, occurrence, ai=ai)
-        if result.get("correct") is False and not ai:
+        if result.get("correct") is False and not ai and card["mistake"] != "intro":
             # A wrong answer: Zip asks the lesson writer for another way to
             # explain it (in the background, so the page keeps updating).
             t = threading.Thread(target=self.ask, daemon=True,
@@ -290,7 +311,7 @@ class App:
             return "careful"
         if status == "ok":
             return "happy"
-        if status in ("mistake", "unknown", "missing_rows") or "get_hint" in tools \
+        if status in ("mistake", "unknown", "missing_rows", "quiz_first") or "get_hint" in tools \
                 or "task" in tools:
             return "curious"
         return "happy"
@@ -361,7 +382,8 @@ class App:
             })
         return {
             "lesson": {k: lesson.get(k) for k in
-                       ("id", "title", "circuit", "rows", "expected", "accept", "layout")},
+                       ("id", "title", "circuit", "rows", "expected", "accept", "layout",
+                        "kind", "explore")},
             "path": self.progress(),
             "mood": self.mood(reading, reading_ok),
             "lesson_count": len(s.lessons),
@@ -527,7 +549,7 @@ def open_board(args):
     """The fake board, or with --serial a real one. Problems are printed
     in plain words and give None."""
     if not args.serial:
-        return FakeBoard(args.lesson, args.scenario, rows=args.rows,
+        return FakeBoard(args.lesson if args.lesson is not None else 1, args.scenario, rows=args.rows,
                          has_current=not args.no_current,
                          has_power_switch=not args.no_power_switch,
                          has_screen=not args.no_screen)
@@ -545,9 +567,10 @@ def make_server(app, port=8000, host="127.0.0.1"):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description="Smart breadboard web page")
+    p = argparse.ArgumentParser(description="Genesis: the smart breadboard web page")
     p.add_argument("--port", type=int, default=8000)
-    p.add_argument("--lesson", type=int, default=1)
+    p.add_argument("--lesson", type=int, default=None,
+                   help="lesson to start at (default: lesson 0 for a new student)")
     p.add_argument("--scenario", default="correct", help="fake board starting circuit")
     p.add_argument("--history", default=None,
                    help="file that keeps the mistake history (default: one per student)")
@@ -575,8 +598,13 @@ def main(argv=None):
     if board is None:
         return 2
     notebook = Notebook(args.notebooks, args.student)
-    app = App(board, lesson=args.lesson, history_path=args.history, notebook=notebook,
+    app = App(board, lesson="start" if args.lesson is None else args.lesson,
+              history_path=args.history, notebook=notebook,
               confirm_power=True)
+    if app.is_sim and app.session.lesson_id != board.lesson:
+        # A new student starts at lesson 0: the pretend board shows that lesson.
+        board.send(f"SCENARIO {app.session.lesson_id} correct")
+        app._welcome()
     server = make_server(app, args.port)
     caps = app.board.capabilities()
     where = f"real board on {board.port}" if args.serial else "fake board"

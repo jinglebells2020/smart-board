@@ -1,4 +1,4 @@
-# web/
+# web/ (Genesis: Smart Breadboard)
 
 The one-page screen for the projector, made for an 11-year-old: Zip
 (our robot spark guide, 4 moods) says the tutor's words, a drawing of

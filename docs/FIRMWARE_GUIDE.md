@@ -1,4 +1,4 @@
-# Firmware guide (for the hardware teammate)
+# Genesis: Smart Breadboard: firmware guide (for the hardware teammate)
 
 This page is for whoever writes the board's firmware. It says what the
 laptop expects, the smallest firmware that the checker accepts, how to

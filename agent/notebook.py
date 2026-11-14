@@ -105,6 +105,8 @@ def entry_start(lesson_id, result, lesson):
     status = result.get("status")
     if status == "mistake":
         return f"- {day}, lesson {lesson_id}: {mistake_label(lesson, result['mistake_id'])}. {QUIZ_OPEN}"
+    if status == "ok" and result.get("explore"):
+        return f"- {day}, lesson {lesson_id}: explored how a breadboard connects, lesson passed."
     if status == "ok":
         return f"- {day}, lesson {lesson_id}: circuit correct, lesson passed."
     if status == "unknown":

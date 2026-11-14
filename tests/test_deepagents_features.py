@@ -177,7 +177,7 @@ class TestNotebook(Case):
     def test_quiz_result_goes_in_the_notebook(self):
         s = self.tutor(1, "led_backwards")
         self.say("Check my circuit")
-        ml = LESSONS[1]["mistakes"][0]["mini_lesson"]
+        ml = next(m for m in LESSONS[1]["mistakes"] if m["id"] == "led_backwards")["mini_lesson"]
         s.record_quiz(1, "led_backwards", ml["answer"], s.last_logged["occurrence"])
         self.assertIn("Quiz: right.", s.notebook.entries()[-1])
         self.board.set_scenario(1, "led_backwards")
@@ -316,7 +316,7 @@ class TestOnThePage(Case):
         self.board.set_scenario(1, "led_backwards")
         self.app.ask("Check my circuit")
         card = self.app.card
-        ml = LESSONS[1]["mistakes"][0]["mini_lesson"]
+        ml = next(m for m in LESSONS[1]["mistakes"] if m["id"] == "led_backwards")["mini_lesson"]
         self.app.quiz(card["occurrence"], ml["answer"])
         self.assertIn("Quiz: right.", self.nb.entries()[-1])
 

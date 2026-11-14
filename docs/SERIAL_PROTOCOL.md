@@ -1,4 +1,4 @@
-# Serial protocol, version 2 (board ↔ laptop)
+# Genesis: Smart Breadboard: serial protocol, version 2 (board ↔ laptop)
 
 This is the contract between the board and the laptop. The real
 firmware and `sim/fake_board.py` must both follow it, so the agent and

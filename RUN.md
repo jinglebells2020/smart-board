@@ -1,4 +1,4 @@
-# How to run it on Windows (step by step)
+# Genesis: Smart Breadboard — how to run it on Windows (step by step)
 
 Do these steps in order. Each grey box is one command: copy it, paste
 it into the black Command Prompt window, and press **Enter**.
@@ -123,9 +123,21 @@ python -m agent --fresh
 
 ```
 No ANTHROPIC_API_KEY set: using the offline practice tutor.
-Lesson 1: LED with resistor (5 V -> 220 ohm -> red LED -> ground)
+Lesson 0: How a breadboard connects (No circuit to build: ...)
+learn> Which holes are joined? Under the holes of a breadboard ...
+learn> You put one leg in row 10, hole a. Which hole is joined to it?
+learn>   1. Row 10, hole e
+learn>   2. Row 11, hole a
+learn>   3. Row 10, hole f
+learn> Type /answer 1, 2 or 3.
 you>
 ```
+
+A new student always starts at **lesson 0**: there is nothing to
+build, only one question about which breadboard holes are joined. Type
+`/answer 1` and press Enter, then type `check my circuit`. The tutor
+says "You know how a breadboard connects!" and moves on to lesson 1.
+(To skip lesson 0, start with `python -m agent --fresh --lesson 1`.)
 
 Now type these lines one by one, pressing Enter after each. Lines
 starting with `/` change the circuit on the fake board. The other
@@ -136,6 +148,8 @@ lines are what a student would say.
 | `/build led_backwards`      | Fake board now has the LED in backwards          |
 | `check my circuit`          | Tutor gives a hint: look at which way the LED faces and which row its legs are in |
 | `check again`               | Same mistake twice: tutor now explains fully     |
+| `/build loose_led_leg`      | The LED's leg in row 10 is loose: the row keeps switching between connected and empty |
+| `check`                     | Row 10 lights yellow and the tutor says "push that leg in firmly" |
 | `/build no_resistor`        | Fake board now has no resistor                   |
 | `check`                     | Tutor cuts the power and asks what limits current |
 | `/build correct`            | Student fixes it                                  |
@@ -178,9 +192,10 @@ test without paying for Claude.
 4. Start the tutor, with the student's first name:
 
    ```
-   python -m agent --fresh --student Maya
+   python -m agent --fresh --student Maya --lesson 1
    ```
 
+   (`--lesson 1` skips lesson 0; leave it out to start there.)
    A line now says `Model: anthropic:claude-opus-5-5` instead of
    "offline practice tutor". Use the same steps as Part C. Replies are
    in Claude's own words now and take a few seconds.
@@ -214,6 +229,24 @@ The tests in Part B never use the key, even when it is set.
 2. Open Chrome or Edge and go to **http://localhost:8000**
 3. Press **F11** for full screen. Everything fits on one 1080p screen.
 
+   A new student starts at **lesson 0, How a breadboard connects**.
+   There is nothing to build:
+
+   - **Tap any hole** in the drawing. Every hole joined to it lights up
+     yellow, and a sentence under the drawing says why, for example
+     "row 6, holes a to e: these 5 holes are joined by one metal clip".
+     Tap a hole in the + or − line at the top or bottom: the whole line
+     lights up. Tap the same hole again to turn it off. (With the
+     keyboard: Tab to a hole, then Enter.)
+   - Under Zip's words, click **Learn: Which holes are joined?**. The
+     card has one question with 3 answers. Click one.
+   - Click **Check my circuit**. Zip says "You know how a breadboard
+     connects!" and the page moves to lesson 1. (If you click it before
+     answering, Zip asks you to answer the question first.)
+
+   To start straight at lesson 1, run
+   `python web\server.py --fresh --lesson 1` instead.
+
    What you see: three parts that fill the screen.
 
    - **Top bar** (blue): the app name, the lesson name, the **lesson
@@ -246,6 +279,8 @@ The tests in Part B never use the key, even when it is set.
    | **3 · Next step** three more times | Resistor (rows 5 and 10), LED ("long leg: row 10 / short leg: row 12"), black wire (row 12). Each time that part is outlined and its rows light sky blue |
    | **3 · Next step** once more | Lights off, all parts drawn. Screen: "All parts placed! / Press 1 to check." |
    | Teacher → **LED backwards**, Close, then **1 · Check my circuit** | Zip looks **thinking**, then **curious**. The lights of rows 10 and 12 turn **red** and gently pulse (red means "look here"). Zip gives a hint. Under Zip's words a tab appears: **Learn why: LEDs are one-way doors** (yellow book). Click it: the mini-lesson opens in Zip's panel, in place of Zip's picture, with a yellow top strip, a question and 3 big answers. The breadboard and Zip's words stay in view (on a phone it opens below Zip's words) |
+   | (still LED backwards) look at the drawing | A yellow ring with the words "long leg (+)" points at the LED's long leg. The LED is always drawn with a **+** by its long leg and a flat side by its short leg, like a real LED |
+   | **Show the class** (top right of the mini-lesson card) | The mini-lesson fills the whole screen as one slide: big title, the idea, a drawing of the lesson's parts, and the question with its 3 answers. Big enough to read from the back of the room. Press **Esc** (or click **Close**) to go back |
    | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green: "Right!" and why. Click **✕** to close the mini-lesson and Zip comes back; the **Learn why** tab opens it again |
    | **2 · I need a hint** | Zip, still **curious**, gives the next level of help: the full explanation. Nothing is measured, power is not touched |
    | Teacher → **No resistor**, Close, then **1 · Check my circuit** | Zip looks **careful** (a friendly yellow sign, nothing scary). The power sign says **Power off**. Mini-lesson: "Resistors keep current small" |
@@ -285,6 +320,7 @@ The tests in Part B never use the key, even when it is set.
 
    | Lesson | Circuit | What the tutor does |
    |---|---|---|
+   | 1 | **Loose LED leg** | Row 10 keeps switching between connected and empty while the board measures. It lights **yellow** (careful) and Zip says "push that leg in firmly". No power cut. Mini-lesson: "Loose legs make blinking circuits" |
    | 1 | **Part in wrong row** | Row 10 shows "empty" and lights red. Mini-lesson: "Circuits must be closed loops" |
    | 1 | **Resistor too big (1k)** | Hint: the LED gets much less current, so it is dim. Mini-lesson: "Bigger resistor, less current" |
    | 1 | **Current skips the LED** | Hint: lots of current but 0 V on row 10. No power cut (22.7 mA is safe). Mini-lesson: "Current takes the easy path" |
@@ -292,6 +328,7 @@ The tests in Part B never use the key, even when it is set.
    | 2 | **Wrong top resistor (1k)** | Hint: the middle is much higher than half. Mini-lesson: "Bigger resistor, bigger share" |
    | 2 | **Bottom resistor missing** | Hint: no current, full 5 V in the middle. Mini-lesson: "No flow, no voltage drop" |
    | 2 | **Top resistor missing** | Hint: no current, 0 V in the middle. Mini-lesson: "Voltage needs a path from power" |
+   | 2 | **Loose resistor leg** | Like the loose LED leg, for the middle row (row 10) of lesson 2 |
    | 2 | **Not on the list: 4.7k bottom resistor** | No mini-lesson. Row 10 lights **yellow** (careful), Zip gives a clue and the detective's two questions |
 
    **Try a different board.** The real board's details are not decided
@@ -313,7 +350,7 @@ The tests in Part B never use the key, even when it is set.
    not check for it.
 
 5. **New student** (in the Teacher drawer) forgets the history and the stars
-   and starts again at lesson 1, with an empty notebook. (The old
+   and starts again at lesson 0, with an empty notebook. (The old
    notebook is kept in the `notebooks` folder with the date in its
    name.) Use it before each demo.
 6. To see the student's notebook, open the Teacher drawer and click **Open

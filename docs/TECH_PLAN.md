@@ -1,7 +1,7 @@
-# Technical plan
+# Genesis: Smart Breadboard: technical plan
 
 This plan describes the hardware, the software architecture, the decisions
-made so far, and the questions still open for the smart breadboard.
+made so far, and the questions still open for Genesis, the smart breadboard.
 
 **Where it comes from.** A separate, older repository
 (`jinglebells2020/smartboard`, commit `16f512f`) holds an earlier design

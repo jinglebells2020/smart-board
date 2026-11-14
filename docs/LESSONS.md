@@ -1,4 +1,4 @@
-# Lessons
+# Genesis: Smart Breadboard: lessons
 
 For middle school students (ages 11 to 14). Every mistake has three
 texts in `lessons/*.json`: a hint (first time), a full explanation
@@ -71,6 +71,47 @@ Every other mistake is found from row voltages and empty rows alone.
 long leg not in row 10. Row voltages cannot tell these apart either: in
 both, row 10 sits at 5 V and row 12 at 0 V.
 
+## Lesson 0: How a breadboard connects
+
+The STEM center also said kids struggle with "keeping the idea of what
+lines of holes are connected in the breadboard". Lesson 0 comes before
+lesson 1, and a new student starts there.
+
+- Nothing to build (`"kind": "explore"`, an empty layout). The drawing
+  shows rows 3 to 10 on both halves and the + and − lines.
+- Tap any hole: every hole joined to it lights up yellow. That is its
+  row half (holes a to e, or f to j) or a whole + or − line.
+- The Learn card (`intro_lesson` in lessons/lesson0.json): "Which
+  holes are joined?", with one question: "You put one leg in row 10,
+  hole a. Which hole is joined to it?" (answer: row 10, hole e).
+- The check passes once the student has answered the question (right
+  or wrong: the card says why). Before that, Zip asks for the answer
+  first. Then the student moves on to lesson 1, and `next_lesson`
+  never sends anyone back to lesson 0.
+
+## A loose leg (lessons 1 and 2)
+
+The STEM center we talked to said kids struggle with "loose
+connections". A leg that is only half pushed in touches its clip some
+of the time. The laptop takes 10 readings for each check, so a loose
+leg shows up as a row that is **empty in some readings and connected
+in others**.
+
+- Detect (`"any_flickering": true` in the lesson file): a row seen
+  empty at least 2 times and connected at least 2 times in the same 10
+  readings (`FLICKER_MIN = 2` in agent/lessons.py). One odd reading is
+  not enough, so a single glitch is never called a loose leg.
+- It is checked before every other mistake: while a leg is loose, the
+  other numbers jump around and mean nothing.
+- Light: that row **yellow** (careful), not red. Not dangerous: no
+  power cut.
+- Hint: "...Find the row with the yellow light and push that leg in
+  firmly, all the way down."
+- Mini-lesson: "Loose legs make blinking circuits".
+- Fake board circuits: `loose_led_leg` (lesson 1) and
+  `loose_resistor_leg` (lesson 2). Row 10 switches between the correct
+  reading and empty, every other reading. They match only themselves.
+
 ## Lesson 1: LED with resistor
 - Circuit: 5 V → 220 ohm → red LED → ground
 - Expected current: (5 - 2) / 220 = 0.0136 A = 13.6 mA
@@ -84,7 +125,10 @@ both, row 10 sits at 5 V and row 12 at 0 V.
     which one it is, and the texts say "may".
     Detect: row 10 at least 4.5 V and not empty, row 12 at most 0.5 V,
     current at most 1 mA → hint. Red lights: rows 10 and 12.
-    Mini-lesson: "LEDs are one-way doors"
+    Mini-lesson: "LEDs are one-way doors". The hint and the drawing
+    point at the LED's long leg (marked + in the drawing; the short leg
+    side is drawn flat, like a real LED): `"point_at"` in the lesson
+    file.
   - No resistor: the LED sits straight across the supply, current runs
     into the supply's limit and the supply voltage sags (rows 5 and 10
     both about 2.2 V) → cut power, explain why.

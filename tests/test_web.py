@@ -64,7 +64,7 @@ class TestWebServer(unittest.TestCase):
     def test_mistake_shows_hint_and_history(self):
         self.assertEqual(self.post("/api/build", {"scenario": "led_backwards"})["type"], "ack")
         out = self.post("/api/ask", {"text": "Check my circuit"})
-        hint = LESSONS[1]["mistakes"][0]["hint"]
+        hint = next(m for m in LESSONS[1]["mistakes"] if m["id"] == "led_backwards")["hint"]
         self.assertIn(hint, out["reply"])
         self.assertIn("log_mistake", out["tools"])
         s = self.state()
