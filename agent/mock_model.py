@@ -98,7 +98,11 @@ class ScriptedTutorModel(BaseChatModel):
             return reply("Power is off. Tell me when you have fixed the circuit "
                          "and I will turn it back on.")
 
-        nums = {k: v for k, v in last_read.items()
-                if k in ("current_ma", "supply_v", "probe1_v")}
-        return reply(f"These readings don't match lesson {last_read['lesson']['id']}: "
-                     f"{nums}. Please check your wiring against the lesson circuit.")
+        parts = []
+        if "current_ma" in last_read:
+            parts.append(f"current {max(0.0, last_read['current_ma']):.2f} mA")
+        if "probe1_v" in last_read:
+            parts.append(f"voltage at the measuring row {max(0.0, last_read['probe1_v']):.2f} V")
+        numbers = ", ".join(parts) or "no numbers"
+        return reply(f"The numbers don't match lesson {last_read['lesson']['id']} yet "
+                     f"({numbers}). Check your wiring against the lesson circuit.")

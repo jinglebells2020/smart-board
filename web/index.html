@@ -22,6 +22,8 @@
     --warn-bg: #fff1d1;
     --accent: #1f4fd1;
     --accent-ink: #ffffff;
+    --learn: #5b2a9e;
+    --learn-bg: #f4eefc;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -36,9 +38,10 @@
 
   header {
     display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.2rem;
-    padding-bottom: 0.5rem; border-bottom: 3px solid var(--ink); margin-bottom: 0.8rem;
+    padding-bottom: 0.4rem; border-bottom: 3px solid var(--ink); margin-bottom: 0.6rem;
   }
   .brand { font-weight: 800; font-size: 1.1rem; color: var(--muted); }
+  .brand .model { font-weight: 600; margin: 0; }
   .lesson { flex: 1 1 24rem; }
   .lesson h1 { margin: 0; font-size: 2rem; line-height: 1.15; }
   .lesson .circuit { font-size: 1.15rem; color: var(--muted); font-weight: 600; }
@@ -54,15 +57,14 @@
     border-radius: 0.4rem; cursor: pointer;
   }
 
-  .grid { display: grid; gap: 0.8rem; grid-template-columns: 1fr; }
+  .grid { display: grid; gap: 0.6rem; grid-template-columns: 1fr; }
   .grid > * { min-width: 0; }
-  @media (min-width: 1100px) { .grid { grid-template-columns: 1.25fr 1fr; } }
-  .readings { margin-bottom: 0.8rem; }
-  .readings-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-bottom: 0.6rem; }
-  .readings-head h2 { margin: 0; }
+  @media (min-width: 1100px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .readings { margin-bottom: 0.6rem; }
+  .side { display: flex; flex-direction: column; gap: 0.8rem; }
   section {
     background: var(--card); border: 2px solid var(--line); border-radius: 0.6rem;
-    padding: 0.7rem 1rem;
+    padding: 0.55rem 1rem;
   }
   h2 {
     margin: 0 0 0.6rem; font-size: 1rem; text-transform: uppercase;
@@ -71,13 +73,13 @@
 
   /* Readings */
   .tiles { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
-  .tile { border: 3px solid var(--line); border-radius: 0.5rem; padding: 0.45rem 0.9rem; }
+  .tile { border: 3px solid var(--line); border-radius: 0.5rem; padding: 0.35rem 0.9rem; }
   .tile.good { border-color: var(--good); background: var(--good-bg); }
   .tile.bad { border-color: var(--bad); background: var(--bad-bg); }
   .tile .name { font-weight: 700; font-size: 1rem; }
   .tile .where { font-size: 0.8rem; color: var(--muted); }
   .tile .value {
-    font-size: 3rem; font-weight: 800; line-height: 1.05;
+    font-size: 2.4rem; font-weight: 800; line-height: 1.05;
     font-variant-numeric: tabular-nums;
   }
   .tile .unit { font-size: 1.6rem; font-weight: 700; margin-left: 0.2rem; }
@@ -93,14 +95,41 @@
 
   /* Tutor */
   .hint {
-    font-size: 1.5rem; font-weight: 600; line-height: 1.3; min-height: 3.6em;
+    font-size: 1.35rem; font-weight: 600; line-height: 1.3; min-height: 3.6em;
     overflow-wrap: anywhere;
     padding: 0.8rem 1rem; border-left: 0.5rem solid var(--accent);
     background: #eef2fd; border-radius: 0.3rem;
   }
   .hint.thinking { color: var(--muted); font-style: italic; }
-  .agent-tools { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; min-height: 1.2em; }
-  .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.7rem 0 0; }
+  .tutor-did { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; min-height: 1.2em; }
+
+  /* Mini-lesson card: the idea behind the mistake, plus one question */
+  .mini {
+    margin-top: 0.4rem; padding: 0.5rem 0.9rem; border: 3px solid var(--learn);
+    border-radius: 0.5rem; background: var(--learn-bg);
+  }
+  .mini .label {
+    font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--learn);
+  }
+  .mini h3 { margin: 0 0 0.2rem; font-size: 1.2rem; line-height: 1.2; }
+  .mini .idea { margin: 0 0 0.4rem; font-size: 1rem; }
+  .mini .question { margin: 0 0 0.4rem; font-size: 1rem; font-weight: 800; }
+  .options { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .opt {
+    font: inherit; font-size: 0.9rem; font-weight: 700; text-align: left;
+    padding: 0.35rem 0.7rem; border-radius: 0.4rem; border: 3px solid var(--learn);
+    background: var(--card); color: var(--ink); cursor: pointer; flex: 1 1 8rem;
+  }
+  .opt:disabled { cursor: default; }
+  .opt.right { border-color: var(--good); background: var(--good-bg); }
+  .opt.wrong { border-color: var(--bad); background: var(--bad-bg); }
+  .opt.dim { opacity: 0.55; }
+  .result { margin: 0.4rem 0 0; font-size: 1rem; font-weight: 600; min-height: 0; }
+  .result .verdict { font-weight: 800; }
+  .result.right .verdict { color: var(--good); }
+  .result.wrong .verdict { color: var(--bad); }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0; }
   .big-btn {
     font: inherit; font-size: 1.15rem; font-weight: 800; padding: 0.6rem 1.1rem;
     border-radius: 0.5rem; border: 3px solid var(--accent); cursor: pointer;
@@ -120,27 +149,28 @@
   .log p { margin: 0 0 0.45rem; }
   .log .who { font-weight: 800; }
 
-  /* Simulator controls */
-  .sim { margin-top: 0.9rem; padding-top: 0.7rem; border-top: 2px dashed var(--line); }
+  /* Practice mode (fake board) controls */
+  .sim { margin-top: 0.7rem; padding-top: 0.6rem; border-top: 2px dashed var(--line); }
   .table-scroll { overflow-x: auto; }
   .more { font-size: 0.85rem; color: var(--muted); margin: 0.4rem 0 0; }
   .sim .note { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin: 0 0 0.45rem; }
   .scenarios { display: flex; flex-wrap: wrap; gap: 0.5rem; }
   .scenario {
-    font: inherit; font-size: 0.95rem; font-weight: 700; padding: 0.45rem 0.8rem;
+    font: inherit; font-size: 0.85rem; font-weight: 700; padding: 0.4rem 0.7rem;
     border-radius: 0.4rem; border: 2px solid var(--ink); background: var(--card);
     color: var(--ink); cursor: pointer;
   }
   .scenario.active { background: var(--ink); color: var(--card); }
 
   /* History */
-  table { width: 100%; border-collapse: collapse; font-size: 1rem; }
-  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 2px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 2px solid var(--line); }
   th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
   td.nowrap { white-space: nowrap; }
-  @media (max-width: 600px) { th:first-child, td:first-child { display: none; } }
   td.given-hint { color: var(--accent); font-weight: 700; }
   td.given-full { color: var(--warn); font-weight: 700; }
+  td.quiz-right { color: var(--good); font-weight: 700; }
+  td.quiz-wrong { color: var(--bad); font-weight: 700; }
   .empty { color: var(--muted); font-size: 1rem; }
   .passes { font-size: 1rem; margin: 0 0 0.6rem; font-weight: 600; }
 
@@ -149,79 +179,83 @@
     padding: 0.7rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 1.1rem;
   }
   .offline code { background: rgba(255,255,255,0.2); padding: 0.1rem 0.4rem; border-radius: 0.2rem; }
-  .model { font-size: 0.75rem; color: var(--muted); margin-top: 0.4rem; }
+  .model { font-size: 0.75rem; color: var(--muted); }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <div class="offline" id="offline">
-    Can't reach the tutor server. In Command Prompt run
+    The tutor program is not running. In Command Prompt run
     <code>python web\server.py</code> and open <code>http://localhost:8000</code>
   </div>
 
   <header>
-    <div class="brand">Smart Breadboard</div>
+    <div class="brand">Smart Breadboard<div class="model" id="model"></div></div>
     <div class="lesson">
       <h1 id="lesson-title">Loading&hellip;</h1>
       <div class="circuit" id="lesson-circuit"></div>
     </div>
+    <div class="row-led" id="row-led" hidden></div>
     <div class="badge" id="power">&nbsp;</div>
     <button class="small-btn" id="reset" title="Forget the mistake history and start at lesson 1">New student</button>
   </header>
 
-  <section class="readings">
-    <div class="readings-head">
-      <h2>Live readings</h2>
-      <div class="row-led" id="row-led" hidden></div>
-    </div>
+  <section class="readings" aria-label="Live readings">
     <div class="tiles">
       <div class="tile" id="tile-current">
         <div class="name">Current</div>
-        <div class="where">Flowing out of the 5 V supply</div>
+        <div class="where">How much electricity is flowing (mA = milliamps)</div>
         <div><span class="value" id="v-current">&ndash;</span><span class="unit">mA</span></div>
         <div class="target" id="t-current"></div>
       </div>
-      <div class="tile" id="tile-probe">
-        <div class="name">Probe 1 voltage</div>
-        <div class="where" id="probe-where"></div>
-        <div><span class="value" id="v-probe">&ndash;</span><span class="unit">V</span></div>
-        <div class="target" id="t-probe"></div>
+      <div class="tile" id="tile-point">
+        <div class="name">Voltage at the measuring row</div>
+        <div class="where" id="point-where"></div>
+        <div><span class="value" id="v-point">&ndash;</span><span class="unit">V</span></div>
+        <div class="target" id="t-point"></div>
       </div>
       <div class="tile" id="tile-supply">
-        <div class="name">Supply voltage</div>
-        <div class="where">Breadboard power rail</div>
+        <div class="name">Power voltage</div>
+        <div class="where">How hard the power supply pushes</div>
         <div><span class="value" id="v-supply">&ndash;</span><span class="unit">V</span></div>
       </div>
     </div>
   </section>
 
   <div class="grid">
-    <section>
-      <h2>Tutor</h2>
+    <section aria-label="Tutor">
       <div class="hint" id="hint">Build the circuit, then press "Check my circuit".</div>
-      <div class="agent-tools" id="agent-tools"></div>
-      <form class="actions" id="say">
-        <button class="big-btn" type="button" id="check">Check my circuit</button>
-        <button class="big-btn secondary" type="button" id="fixed">I fixed it</button>
-        <input id="say-text" autocomplete="off" placeholder="Or ask something&hellip;" maxlength="500">
-        <button class="big-btn secondary" type="submit">Send</button>
-      </form>
-      <div class="sim" id="sim" hidden>
-        <div class="note">Fake board (simulator): what the student built</div>
-        <div class="scenarios" id="scenarios"></div>
+      <div class="tutor-did" id="tutor-did"></div>
+      <div class="mini" id="mini" hidden>
+        <div class="label">Mini-lesson</div>
+        <h3 id="mini-title"></h3>
+        <p class="idea" id="mini-idea"></p>
+        <p class="question" id="mini-question"></p>
+        <div class="options" id="mini-options"></div>
+        <p class="result" id="mini-result" aria-live="polite"></p>
       </div>
       <div class="log" id="log"></div>
-      <div class="model" id="model"></div>
     </section>
 
-    <div>
+    <div class="side">
+      <section class="controls" aria-label="Check the circuit">
+        <form class="actions" id="say">
+          <button class="big-btn" type="button" id="check">Check my circuit</button>
+          <button class="big-btn secondary" type="button" id="fixed">I fixed it</button>
+          <input id="say-text" autocomplete="off" placeholder="Or ask something&hellip;" maxlength="500">
+          <button class="big-btn secondary" type="submit">Send</button>
+        </form>
+        <div class="sim" id="sim" hidden>
+          <div class="note">Practice mode: pick what the pretend student built</div>
+          <div class="scenarios" id="scenarios"></div>
+        </div>
+      </section>
       <section>
         <h2>Mistake history</h2>
         <p class="passes" id="passes"></p>
         <div class="table-scroll" id="history"></div>
       </section>
-
     </div>
   </div>
 
@@ -235,8 +269,18 @@
     led_backwards: "LED backwards",
     no_resistor: "No resistor",
     open_circuit: "Part in wrong row",
-    bottom_1k: "Bottom resistor is 1k",
-    middle_floating: "Probe not connected",
+    bottom_1k: "Wrong bottom resistor (1k)",
+    middle_floating: "Measuring row not connected",
+  };
+  // Plain words for what the tutor did (the tool names are code).
+  const TOOL_WORDS = {
+    read_current: "measured the current",
+    read_voltages: "measured the voltages",
+    cut_power: "cut the power",
+    restore_power: "turned the power on",
+    light_row_led: "lit a row",
+    log_mistake: "saved the mistake",
+    next_lesson: "picked the next lesson",
   };
   const POLL_MS = 250;
 
@@ -245,9 +289,13 @@
   let lastLogKey = "";
   let lastHistoryKey = "";
   let lastScenarioKey = "";
+  let lastMiniKey = "";
+  let miniCard = null;
 
+  // Never show "-0.00": tiny negative numbers are sensor noise around zero.
   function fmt(value, digits) {
-    return Number(value).toFixed(digits);
+    const text = Number(value).toFixed(digits);
+    return Number(text) === 0 ? Number(0).toFixed(digits) : text;
   }
 
   function inRange(value, range) {
@@ -261,15 +309,15 @@
     targetEl.textContent = "";
     if (expected === undefined) return;
     if (!range) {
-      targetEl.textContent = `Expected about ${expected} ${unit}`;
+      targetEl.textContent = `Should be about ${expected} ${unit}`;
       return;
     }
     const ok = powerOn && inRange(value, range);
     tile.classList.add(ok ? "good" : "bad");
     const verdict = document.createElement("span");
     verdict.className = "verdict";
-    verdict.textContent = ok ? "IN RANGE" : "OUT OF RANGE";
-    targetEl.append(verdict, ` · target ${range[0]} to ${range[1]} ${unit}`);
+    verdict.textContent = ok ? "GOOD" : "NOT YET";
+    targetEl.append(verdict, ` · aim for ${range[0]} to ${range[1]} ${unit}`);
   }
 
   function currentDigits(mA) {
@@ -283,8 +331,8 @@
 
     const tutor = log.filter((m) => m.who === "tutor");
     const latest = tutor[tutor.length - 1];
-    $("agent-tools").textContent = latest && latest.tools && latest.tools.length
-      ? "Agent used: " + latest.tools.join(" \u2192 ")
+    $("tutor-did").textContent = latest && latest.tools && latest.tools.length
+      ? "The tutor " + latest.tools.map((t) => TOOL_WORDS[t] || t).join(", ")
       : "";
     if (!busy) {
       $("hint").textContent = tutor.length
@@ -305,10 +353,11 @@
       p.append(who, m.text);
       box.append(p);
     });
+    fitToScreen();
   }
 
   function renderHistory(history, passes, lessonCount) {
-    const key = history.length + JSON.stringify(passes);
+    const key = JSON.stringify(history.map((m) => m.quiz)) + history.length + JSON.stringify(passes);
     if (key === lastHistoryKey) return;
     lastHistoryKey = key;
 
@@ -328,24 +377,26 @@
     }
     const table = document.createElement("table");
     const head = table.createTHead().insertRow();
-    ["Time", "Lesson", "Mistake", "Try", "Tutor gave"].forEach((h) => {
+    ["Lesson", "Mistake", "Try", "Tutor gave", "Quiz"].forEach((h) => {
       const th = document.createElement("th");
       th.textContent = h;
       head.append(th);
     });
     const body = table.createTBody();
-    const SHOW = 4;
+    const SHOW = 2;
     history.slice().reverse().slice(0, SHOW).forEach((m) => {
       const row = body.insertRow();
-      const time = new Date(m.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      [time, m.lesson, m.description, ordinal(m.try)].forEach((v, i) => {
+      [m.lesson, m.description, ordinal(m.try)].forEach((v, i) => {
         const cell = row.insertCell();
         cell.textContent = v;
-        if (i !== 2) cell.className = "nowrap";
+        if (i !== 1) cell.className = "nowrap";
       });
       const given = row.insertCell();
       given.textContent = m.given === "hint" ? "Hint" : "Full explanation";
       given.className = m.given === "hint" ? "given-hint" : "given-full";
+      const quiz = row.insertCell();
+      quiz.textContent = m.quiz === "right" ? "Right" : m.quiz === "wrong" ? "Wrong" : "\u2013";
+      quiz.className = "nowrap" + (m.quiz ? " quiz-" + m.quiz : "");
     });
     box.append(table);
     if (history.length > SHOW) {
@@ -383,7 +434,7 @@
     const r = state.reading;
     $("lesson-title").textContent = `Lesson ${L.id} of ${state.lesson_count}: ${L.title}`;
     $("lesson-circuit").textContent = L.circuit;
-    $("probe-where").textContent = L.probe1;
+    $("point-where").textContent = L.probe1;
 
     const power = $("power");
     power.textContent = r.power_on ? "POWER ON" : "POWER OFF";
@@ -391,11 +442,15 @@
 
     const accept = L.accept || {};
     const expected = L.expected || {};
-    renderTile($("tile-current"), $("v-current"), $("t-current"), r.current_ma,
-      currentDigits(r.current_ma), "mA", expected.current_ma, accept.current_ma, r.power_on);
-    renderTile($("tile-probe"), $("v-probe"), $("t-probe"), r.voltages.probe1,
+    // "shown" holds the numbers cleaned up by the server for students.
+    // Current is never shown below 0.00 (clamped again here, to be safe).
+    const shown = state.shown;
+    const current = Math.max(0, shown.current_ma);
+    renderTile($("tile-current"), $("v-current"), $("t-current"), current,
+      currentDigits(current), "mA", expected.current_ma, accept.current_ma, r.power_on);
+    renderTile($("tile-point"), $("v-point"), $("t-point"), shown.probe1_v,
       2, "V", expected.probe1_v, accept.probe1_v, r.power_on);
-    $("v-supply").textContent = fmt(r.supply_v, 2);
+    $("v-supply").textContent = fmt(shown.supply_v, 2);
 
     const led = $("row-led");
     led.hidden = r.led_row === null || r.led_row === undefined;
@@ -403,8 +458,88 @@
 
     $("model").textContent = "Tutor: " + state.model;
     renderLog(state.log);
+    renderMini(state.mini_lesson);
     renderHistory(state.history, state.passes, state.lesson_count);
     renderScenarios(state);
+  }
+
+  // The mini-lesson card for the latest mistake. Hidden while the tutor
+  // is thinking and after a reply with no mistake.
+  // On a widescreen display (projector), make sure everything fits one
+  // screen: if the page is taller than the window, shrink only the tutor's
+  // message, step by step, never below 1rem (24 px on a 1080p screen).
+  function fitToScreen() {
+    const hint = $("hint");
+    hint.style.fontSize = "";
+    if (window.innerWidth < 1100) return;  // phones and narrow windows scroll
+    let size = 1.35;
+    while (document.documentElement.scrollHeight > window.innerHeight && size > 1.0) {
+      size = Math.round((size - 0.05) * 100) / 100;
+      hint.style.fontSize = size + "rem";
+    }
+  }
+  window.addEventListener("resize", fitToScreen);
+
+  function renderMini(card) {
+    const key = JSON.stringify(card) + busy;
+    if (key === lastMiniKey) return;
+    lastMiniKey = key;
+    miniCard = card;
+    $("mini").hidden = !card || busy;
+    if (!card) { fitToScreen(); return; }
+
+    $("mini-title").textContent = card.title;
+    $("mini-idea").textContent = card.idea;
+    $("mini-question").textContent = card.question;
+    const a = card.answered;
+    const box = $("mini-options");
+    box.replaceChildren();
+    card.options.forEach((text, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "opt";
+      b.textContent = text;
+      if (a) {
+        b.disabled = true;
+        if (i === a.answer) b.classList.add("right");
+        else if (i === a.choice) b.classList.add("wrong");
+        else b.classList.add("dim");
+      } else {
+        b.addEventListener("click", () => answerQuiz(card.occurrence, i));
+      }
+      box.append(b);
+    });
+
+    const result = $("mini-result");
+    result.className = "result" + (a ? (a.correct ? " right" : " wrong") : "");
+    result.replaceChildren();
+    if (a) {
+      const verdict = document.createElement("span");
+      verdict.className = "verdict";
+      verdict.textContent = a.correct ? "Right! " : "Not quite. ";
+      result.append(verdict, a.why);
+    }
+    fitToScreen();
+  }
+
+  async function answerQuiz(occurrence, choice) {
+    document.querySelectorAll("#mini-options .opt").forEach((b) => { b.disabled = true; });
+    try {
+      const out = await post("/api/quiz", { occurrence, choice });
+      if (out.error) {
+        $("mini-result").textContent = out.error;
+        return;
+      }
+      if (miniCard && miniCard.occurrence === occurrence) {
+        // Show the result now instead of waiting for the next poll.
+        renderMini(Object.assign({}, miniCard, {
+          answered: { choice: out.choice, correct: out.correct, answer: out.answer, why: out.why },
+        }));
+      }
+    } catch (e) {
+      $("mini-result").textContent = "Could not save the answer. Try again.";
+      document.querySelectorAll("#mini-options .opt").forEach((b) => { b.disabled = false; });
+    }
   }
 
   async function poll() {
@@ -433,8 +568,9 @@
     ["check", "fixed", "reset"].forEach((id) => { $(id).disabled = on; });
     document.querySelectorAll("#say input, #say button[type=submit]").forEach((el) => { el.disabled = on; });
     lastScenarioKey = ""; // redraw circuit buttons enabled/disabled
+    lastMiniKey = "";     // hide or show the mini-lesson card
     if (on) {
-      $("hint").textContent = "Tutor is measuring and thinking…";
+      $("hint").textContent = "The tutor is measuring and thinking…";
       $("hint").classList.add("thinking");
     }
   }
@@ -466,7 +602,7 @@
   $("reset").addEventListener("click", async () => {
     if (!confirm("Start again with a new student? This forgets the mistake history.")) return;
     await post("/api/reset");
-    lastLogKey = lastHistoryKey = lastScenarioKey = "";
+    lastLogKey = lastHistoryKey = lastScenarioKey = lastMiniKey = "";
   });
 
   poll();

@@ -1,8 +1,12 @@
 # Smart teaching breadboard (HackPrinceton)
 
 ## Goal
-A breadboard that measures its own circuit. An AI agent reads the
-measurements, cuts power on unsafe mistakes, and teaches with hints.
+An electric circuit teaching board for middle school students (ages
+11 to 14). The breadboard measures its own circuit. An AI agent reads
+the measurements, cuts power on unsafe mistakes, and teaches with
+hints. When the student makes a mistake, the board does not just say
+"wrong": it explains, and the laptop shows a short mini-lesson (with
+a one-question quiz) about that exact mistake.
 
 ## Structure
 - firmware/ : code for the board. Prints JSON readings on serial.
@@ -10,8 +14,10 @@ measurements, cuts power on unsafe mistakes, and teaches with hints.
 - agent/ : Python, built with LangChain deepagents
   (create_deep_agent). Tools: read_voltages, read_current,
   cut_power, light_row_led, log_mistake, next_lesson.
-- web/index.html : one page UI. Shows lesson, live readings, hints.
-- lessons/*.json : expected voltages and currents per lesson.
+- web/index.html : one page UI. Shows lesson, live readings, hints,
+  and a mini-lesson card with a quiz after each mistake.
+- lessons/*.json : expected voltages and currents per lesson, and a
+  hint, full explanation and mini-lesson for every mistake.
 - sim/fake_board.py : simulates the board for testing.
 
 ## Rules

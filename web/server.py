@@ -9,6 +9,7 @@ server sits in between. It uses only Python's built-in http.server.
     GET  /api/state   lesson, latest reading, mistake history (polled ~4x a second)
     POST /api/ask     {"text": "..."}      -> the tutor's reply
     POST /api/build   {"scenario": "..."}  -> fake board only: change the circuit
+    POST /api/quiz    {"occurrence": n, "choice": 0..2} -> answer the mini-lesson question
     POST /api/reset   start again with a new student
 """
 
@@ -66,6 +67,10 @@ class App:
         self.agent = build_agent(self.session, self.model)
         self.chat = []  # agent message history
         self.log = []   # what the page shows: [{"who", "text", "time"}]
+        # The mistake whose mini-lesson card is on the page, or None:
+        # {"lesson", "mistake", "occurrence"}. Set after a reply that logged a
+        # mistake; cleared by the next reply that did not.
+        self.card = None
 
     def reset(self):
         with self.agent_lock:
@@ -78,13 +83,58 @@ class App:
             self._new_session(self.start_lesson)
         return {"ok": True}
 
+    def _card_view(self):
+        """The mini-lesson card as the page needs it. The right answer and
+        the "why" line are only included once the student has answered."""
+        if not self.card:
+            return None
+        spec = self.session._mistake_spec(self.card["lesson"], self.card["mistake"])
+        ml = spec["mini_lesson"]
+        saved = self.session.quiz_result(self.card["occurrence"])
+        answered = None
+        if saved:
+            answered = {"choice": saved["choice"], "correct": saved["correct"],
+                        "answer": ml["answer"], "why": ml["why"]}
+        return {"occurrence": self.card["occurrence"], "lesson": self.card["lesson"],
+                "mistake": self.card["mistake"], "title": ml["title"],
+                "idea": ml["idea"], "question": ml["question"],
+                "options": list(ml["options"]), "answered": answered}
+
+    def quiz(self, occurrence, choice):
+        """Save the answer to the mini-lesson card that is on the page."""
+        with self.agent_lock:
+            card = self.card
+            if card is None or occurrence != card["occurrence"]:
+                return {"error": "that question is no longer on the screen"}
+            saved = self.session.quiz_result(occurrence)
+            if saved:  # one answer per mistake; a second click changes nothing
+                view = self._card_view()["answered"]
+                return dict(view, already_answered=True)
+            return self.session.record_quiz(card["lesson"], card["mistake"],
+                                            choice, occurrence)
+
+    @staticmethod
+    def _shown(reading):
+        """Numbers ready to show a student. Current can never be negative
+        (tiny negatives are sensor noise around 0), and no value shows as -0."""
+        def clean(v, floor=None):
+            v = round(float(v), 3)
+            if floor is not None:
+                v = max(floor, v)
+            elif -0.005 < v < 0:
+                v = 0.0
+            return v + 0.0  # turns -0.0 into 0.0
+        return {"current_ma": clean(reading["current_ma"], floor=0.0),
+                "probe1_v": clean(reading["voltages"]["probe1"]),
+                "supply_v": clean(reading["supply_v"])}
+
     def state(self):
         s = self.session
         lesson = s.lesson
         reading = self.board.read()
         counts = {}
         history = []
-        for m in s.history["mistakes"]:
+        for i, m in enumerate(s.history["mistakes"]):
             key = (m["lesson"], m["mistake"])
             counts[key] = counts.get(key, 0) + 1
             spec = next((x for x in s.lessons[m["lesson"]]["mistakes"]
@@ -95,6 +145,8 @@ class App:
                 "try": counts[key],
                 "given": "hint" if counts[key] == 1 else "full explanation",
                 "time": m["time"],
+                "quiz": (None if s.quiz_result(i) is None
+                         else "right" if s.quiz_result(i)["correct"] else "wrong"),
             })
         return {
             "lesson": {k: lesson.get(k) for k in
@@ -102,6 +154,8 @@ class App:
             "lesson_count": len(s.lessons),
             "passes": s.history.get("passes", {}),
             "reading": reading,
+            "shown": self._shown(reading),
+            "mini_lesson": self._card_view(),
             "history": history,
             "log": self.log,
             "model": self.model_name,
@@ -118,10 +172,14 @@ class App:
         with self.agent_lock:
             self.log.append({"who": "student", "text": text, "time": time.time()})
             before = self.session.lesson_id
+            self.session.last_logged = None
             try:
                 reply, new = ask(self.agent, self.chat, text)
             except Exception as e:  # show the problem on the page, keep running
                 reply, new = f"Sorry, the tutor hit an error: {e}", []
+            # A mistake was logged in this reply: show its mini-lesson card.
+            # Otherwise (circuit correct, power off, ...) the old card goes away.
+            self.card = dict(self.session.last_logged) if self.session.last_logged else None
             tools = [c["name"] for m in new for c in (getattr(m, "tool_calls", None) or [])]
             self.log.append({"who": "tutor", "text": reply, "time": time.time(),
                              "tools": tools})
@@ -165,6 +223,10 @@ def make_handler(app):
                 self._send(200, app.ask(body.get("text")))
             elif self.path == "/api/build":
                 self._send(200, app.build(str(body.get("scenario", ""))))
+            elif self.path == "/api/quiz":
+                if not isinstance(body, dict):
+                    return self._send(400, {"error": "bad request"})
+                self._send(200, app.quiz(body.get("occurrence"), body.get("choice")))
             elif self.path == "/api/reset":
                 self._send(200, app.reset())
             else:

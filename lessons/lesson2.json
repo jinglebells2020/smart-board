@@ -1,8 +1,8 @@
 {
   "id": 2,
   "title": "Voltage divider",
-  "circuit": "5 V -> 10k -> middle node -> 10k -> ground",
-  "probe1": "Middle node: the row between the two resistors",
+  "circuit": "5 V -> 10k resistor -> middle -> 10k resistor -> ground",
+  "probe1": "The middle row, where the two resistors meet",
   "probe1_row": 15,
   "notes": "probe1_row is a placeholder until docs/HARDWARE.md lists the real probe rows.",
   "expected": {
@@ -19,7 +19,7 @@
   "mistakes": [
     {
       "id": "bottom_1k",
-      "description": "Bottom resistor is 1k instead of 10k (5 x 1 / 11 = 0.45 V)",
+      "description": "Bottom resistor is 1k instead of 10k",
       "detect": {
         "probe1_v": {
           "min": 0.3,
@@ -27,21 +27,45 @@
         }
       },
       "action": "hint",
-      "hint": "The middle voltage is much lower than half. The split depends on the ratio of the two resistors. Are they really the same?",
-      "explain": "The bottom resistor is 1k (brown-black-red) instead of 10k (brown-black-orange). With 10k on top and 1k on the bottom the middle gets only 1/11 of 5 V, about 0.45 V. Swap in a 10k so both are equal and the middle reads 2.5 V."
+      "hint": "The middle voltage is much lower than half of 5 volts. How the voltage splits depends on the sizes of the two resistors. Are they really the same size?",
+      "explain": "The bottom resistor is 1k (brown-black-red) instead of 10k (brown-black-orange). With 10k on top and 1k on the bottom, the middle gets only 1/11 of 5 volts, about 0.45 V. Use a 10k on the bottom too, so both match and the middle reads 2.5 V.",
+      "mini_lesson": {
+        "title": "Resistors share the voltage",
+        "idea": "Two resistors in a line share the voltage, like friends sharing a pizza. The bigger resistor gets the bigger share, just like the hungrier friend gets more slices. If both resistors are the same size, each one gets exactly half.",
+        "question": "The top resistor is 10k and the bottom one is 1k. Which one gets more of the voltage?",
+        "options": [
+          "The 1k on the bottom",
+          "The 10k on the top",
+          "They get the same amount"
+        ],
+        "answer": 1,
+        "why": "The bigger resistor always gets the bigger share of the voltage."
+      }
     },
     {
       "id": "middle_floating",
-      "description": "Probe row is not connected to the middle node, so the reading floats",
+      "description": "Measuring row not connected to the middle, so the number jumps",
       "detect": {
         "probe1_v_spread": {
           "min": 1.0
         }
       },
       "action": "hint",
-      "hint": "The middle voltage keeps jumping around. That happens when a probe is not touching anything. Check the probe row.",
       "show_row": true,
-      "explain": "The probe is not in the same row as the middle node, so it measures nothing and the number drifts. Move the jumper so it sits in the row where the two resistors meet. The lit row shows where the probe is."
+      "hint": "The middle voltage keeps jumping around. That happens when the measuring row is not touching anything. Check the measuring row.",
+      "explain": "The measuring row is not connected to the middle, where the two resistors meet, so it measures nothing and the number drifts. Move the wire so the measuring row connects to the middle. The lit row shows the measuring row.",
+      "mini_lesson": {
+        "title": "Measure only what you touch",
+        "idea": "A measuring wire tells you the voltage of whatever it touches. If it touches nothing, it picks up random noise, like a radio stuck between stations. That noise makes the number jump around.",
+        "question": "Why would a voltage number keep jumping around?",
+        "options": [
+          "The measuring row is not touching anything",
+          "The power supply is almost empty",
+          "The resistors are too cold"
+        ],
+        "answer": 0,
+        "why": "A wire that touches nothing picks up random noise instead of a real voltage."
+      }
     }
   ]
 }

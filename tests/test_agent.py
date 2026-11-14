@@ -188,7 +188,10 @@ class TestNextLesson(unittest.TestCase):
         session.log_mistake("led_backwards")
         first = self.pass_lesson(session, 1)
         self.assertEqual(first["lesson"], 1)
-        self.assertIn("led_backwards", first["reason"])
+        self.assertEqual(first["repeated"], ["led_backwards"])
+        # The reason is shown to students: plain words, no code names.
+        self.assertNotIn("led_backwards", first["reason"])
+        self.assertIn("practice", first["reason"])
         self.assertEqual(self.pass_lesson(session, 1)["lesson"], 2)
 
     def test_one_mistake_does_not_repeat(self):
