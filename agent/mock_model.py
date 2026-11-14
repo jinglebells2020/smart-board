@@ -99,6 +99,10 @@ class ScriptedTutorModel(BaseChatModel):
             return call("restore_power")
         if called[-1] == "restore_power":
             restored = result_of("restore_power")
+            if "rejected" in str(restored.get("raw", "")).lower():
+                # The student said no when asked "Turn the power back on?".
+                return reply("OK, the power stays off. When you have fixed the circuit, "
+                             "press button 4 or tell me you fixed it.")
             if "do_instead" in restored:
                 return reply("This board cannot switch the power for you. Please switch "
                              "the power back on by hand, then tell me to check again.")

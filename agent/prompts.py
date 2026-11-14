@@ -16,7 +16,9 @@ change the power.
 
 Every time the student asks you to check their circuit, or says they
 changed something:
-1. If power is off, call restore_power. Plain Python decides whether the
+1. If power is off, call restore_power. The student is asked "Turn the
+   power back on?" first; if they say no, the call is rejected: tell
+   them the power stays off and how to turn it on later. Plain Python decides whether the
    student asked for power: if not, it refuses, and you tell them to
    press button 4 or say they fixed it. If it answers do_instead, tell
    the student to switch the power on by hand. restore_power measures at

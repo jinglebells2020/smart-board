@@ -18,7 +18,7 @@ Commands for testing with the fake board:
 import argparse
 from pathlib import Path
 
-from agent.build import ask, build_agent, make_model
+from agent.build import answer_power, ask, build_agent, make_model
 from agent.buttons import handle_button
 from agent.notebook import Notebook, safe_name
 from agent.serial_board import BoardError, SerialBoard, choose_port
@@ -84,7 +84,7 @@ def main(argv=None):
     notebook = Notebook(args.notebooks, args.student)
     session = Session(board, lesson=args.lesson, history_path=args.history, notebook=notebook)
     model, is_real = make_model()
-    agent = build_agent(session, model)
+    agent = build_agent(session, model, ask_before_power=True)
     caps = session.board.capabilities()
 
     print("Smart breadboard tutor (" + ("fake board" if fake else f"real board on {board.port}") + ")")
@@ -110,6 +110,13 @@ def main(argv=None):
         lesson_before = session.lesson_id
         try:
             reply, _ = ask(agent, history, text)
+            while agent.smart_board_pending is not None:  # Zip asks before power on
+                print(f"tutor> {reply}")
+                try:
+                    yes = input("you (yes/no)> ").strip().lower().startswith("y")
+                except (EOFError, KeyboardInterrupt):
+                    yes = False
+                reply, _ = answer_power(agent, history, yes)
         except BoardError as e:
             print(f"board> {e}")
             return str(e)

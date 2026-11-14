@@ -221,6 +221,8 @@
   .zip.learning .bubble::before { display: none; }
   .learn { align-self: flex-start; margin-top: 16px; max-width: 100%; text-align: left; }
   .learn span { overflow: hidden; text-overflow: ellipsis; }
+  .ask-power { display: flex; gap: 16px; margin-top: 16px; }
+  .ask-power .btn { flex: 1 1 0; }
   .mini-head {
     display: flex; align-items: center; gap: 16px; padding: 8px 8px 8px 24px;
     background: var(--yellow); color: var(--ink); border-radius: 16px 16px 0 0;
@@ -525,6 +527,19 @@
               fill="#FFC93C" stroke="#1D2742" stroke-width="1.6" stroke-linejoin="round"/></svg>
         <span>Learn why: <span id="learn-title"></span></span>
       </button>
+      <!-- Zip asks before the power comes back on (button 4 also means Yes) -->
+      <div class="ask-power" id="ask-power" hidden>
+        <button class="btn btn-blue" type="button" id="power-yes">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6"
+               stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          Yes
+        </button>
+        <button class="btn btn-soft" type="button" id="power-no">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6"
+               stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          No
+        </button>
+      </div>
       </div>
 
       <form class="actions" id="say">
@@ -929,6 +944,7 @@
     $("model").textContent = "Tutor: " + state.model;
     renderLog(state.log);
     renderMini(state.mini_lesson);
+    $("ask-power").hidden = !state.asks_power || busy;
     renderHistory(state.history, state.passes, state.lesson_count);
     renderScenarios(state);
   }
@@ -1447,6 +1463,24 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => { if (lastState) renderBoard(lastState); }, 120);
   });
+
+  // Zip asked "Turn the power back on?": the student's Yes or No.
+  async function answerPower(yes) {
+    if (busy) return;
+    $("ask-power").hidden = true;
+    setBusy(true);
+    try {
+      const out = await post("/api/power-answer", { yes });
+      showWords(out.reply || out.error || "(no reply)");
+    } catch (e) {
+      showWords("Zip cannot reach the tutor program right now.");
+    } finally {
+      setBusy(false);
+      lastLogKey = "";
+    }
+  }
+  $("power-yes").addEventListener("click", () => answerPower(true));
+  $("power-no").addEventListener("click", () => answerPower(false));
 
   $("check").addEventListener("click", () => askTutor("Check my circuit"));
   $("fixed").addEventListener("click", () => askTutor("I fixed it, check again"));
