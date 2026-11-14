@@ -152,7 +152,14 @@ class App:
                                          else "Power is on.")
         else:
             text = result.get("error", "")
-        self.log.append({"who": "tutor", "text": text, "time": time.time(), "tools": []})
+        if action == "hint":
+            mood = "curious"
+        elif action == "power" and not result.get("power_on"):
+            mood = "careful"
+        else:
+            mood = "happy"
+        self.log.append({"who": "tutor", "text": text, "time": time.time(), "tools": [],
+                         "mood": mood})
         return result
 
     @staticmethod
@@ -237,6 +244,57 @@ class App:
             return status()
         return {"kind": "fake", "connected": True, "text": "Fake board (simulator)"}
 
+    # --- For the page's guide and lesson path (computed, no new rules) -------
+    # The guide's moods: happy (correct), thinking (checking), curious (a hint
+    # or a question), careful (danger or power off).
+    MOODS = ("happy", "thinking", "curious", "careful")
+
+    @staticmethod
+    def turn_mood(result, tools):
+        """The guide's mood after a tutor reply. result is the check made
+        in this reply (or None), tools the tools the tutor used."""
+        status = (result or {}).get("status")
+        if result and (result.get("action") == "cut_power" or result.get("manual_power_off")
+                       or result.get("board_cut") or status == "power_off"):
+            return "careful"
+        if status == "ok":
+            return "happy"
+        if status in ("mistake", "unknown", "missing_rows") or "get_hint" in tools \
+                or "task" in tools:
+            return "curious"
+        return "happy"
+
+    def mood(self, reading, reading_ok):
+        """The guide's mood right now."""
+        if self.agent_lock.locked():
+            return "thinking"
+        if not reading_ok or not reading.get("power_on"):
+            return "careful"  # no board, or power is off
+        latest = next((m for m in reversed(self.log) if m["who"] == "tutor"), None)
+        return (latest or {}).get("mood", "happy")
+
+    def progress(self):
+        """The lesson path: for each lesson, its stars, from the history.
+        Star 1: passed. Star 2: passed with no mistake made twice in that
+        lesson. Star 3: passed, and every mini-lesson quiz from that lesson
+        answered right (a lesson with no mistakes has no quiz to miss)."""
+        s = self.session
+        passes = s.history.get("passes", {})
+        out = []
+        for lid in sorted(s.lessons):
+            mistakes = [(i, m) for i, m in enumerate(s.history["mistakes"])
+                        if m["lesson"] == lid]
+            ids = [m["mistake"] for _, m in mistakes]
+            passed = passes.get(str(lid), 0) > 0
+            no_repeat = passed and len(ids) == len(set(ids))
+            quizzes = [s.quiz_result(i) for i, _ in mistakes]
+            quiz_right = passed and all(q is not None and q["correct"] for q in quizzes)
+            out.append({"id": lid, "title": s.lessons[lid]["title"],
+                        "current": lid == s.lesson_id, "passed": passed,
+                        "no_repeat": no_repeat, "quiz_right": quiz_right,
+                        "stars": int(passed) + int(no_repeat) + int(quiz_right)})
+        return out
+
     # A reading to show while a real board is not answering: nothing measured.
     NO_READING = {"type": "reading", "t_ms": 0, "power_on": False, "supply_v": 0.0,
                   "current_ma": None, "rows": {}, "floating": []}
@@ -269,7 +327,9 @@ class App:
             })
         return {
             "lesson": {k: lesson.get(k) for k in
-                       ("id", "title", "circuit", "rows", "expected", "accept")},
+                       ("id", "title", "circuit", "rows", "expected", "accept", "layout")},
+            "path": self.progress(),
+            "mood": self.mood(reading, reading_ok),
             "lesson_count": len(s.lessons),
             "passes": s.history.get("passes", {}),
             "reading": reading,
@@ -295,6 +355,7 @@ class App:
             self.log.append({"who": "student", "text": text, "time": time.time()})
             before = self.session.lesson_id
             self.session.last_logged = None
+            check_before = self.session.last_check
             try:
                 reply, new = ask(self.agent, self.chat, text)
             except Exception as e:  # show the problem on the page, keep running
@@ -303,8 +364,13 @@ class App:
             # Otherwise (circuit correct, power off, ...) the old card goes away.
             self.card = dict(self.session.last_logged) if self.session.last_logged else None
             tools = [c["name"] for m in new for c in (getattr(m, "tool_calls", None) or [])]
+            checked = self.session.last_check is not check_before
+            result = self.session.last_check[1] if checked else None
+            mood = self.turn_mood(result, tools)
             self.log.append({"who": "tutor", "text": reply, "time": time.time(),
-                             "tools": tools})
+                             "tools": tools, "mood": mood,
+                             # The page shows a short celebration for this reply.
+                             "celebrate": bool(result and result.get("status") == "ok")})
             if self.is_sim and self.session.lesson_id != before:
                 # New lesson: the pretend student starts with a correct build.
                 self.board.send(f"SCENARIO {self.session.lesson_id} correct")

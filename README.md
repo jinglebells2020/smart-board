@@ -25,7 +25,7 @@ written at about a 6th grade reading level.
 | `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`) |
 | `tools/check_board.py`   | Done. Checks a board's firmware against the protocol and prints PASS or FAIL per rule. How the hardware teammate tests the firmware (docs/FIRMWARE_GUIDE.md) |
 | `firmware/`              | Not written yet. docs/FIRMWARE_GUIDE.md says what it must do |
-| `web/`                   | Done. Projector page: lesson, live readings, the lesson's rows with their lights, hints, mini-lesson card with quiz, mistake history, and a pretend board (screen + 4 buttons) with the fake board (`python web/server.py`) |
+| `web/`                   | Done. Projector page made for an 11-year-old: Zip the guide with 4 moods, a drawn breadboard with the parts and live row lights, a lesson path with stars, mini-lesson card with quiz, a short celebration, a pretend board (screen + 4 buttons) with the fake board, and a Teacher view (`python web/server.py`) |
 
 ## Folders
 
@@ -69,7 +69,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (259 tests). They never call Claude, so
+The last line should say `OK` (282 tests). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -134,41 +134,70 @@ Try a board with only 16 rows, no current sensor and no power switch:
 python3 sim/fake_board.py --rows T1-T16 --no-current --no-power-switch
 ```
 
+## The page
+
+Made for an 11-year-old: bright, friendly, never scary, with our own
+characters and colours.
+
+- **Zip**, our robot spark guide (drawn in the page), says the tutor's
+  words in a speech bubble. 4 faces: happy (correct), thinking
+  (checking), curious (a hint or a question) and careful (danger or
+  power off).
+- **Your breadboard**: a drawing of the lesson's rows with each part
+  where the lesson puts it, the row lights in their real colours (red
+  ones gently pulse: "look here", not "you failed") and each row's
+  voltage in small text.
+- **Lesson path with stars**: 1 star for passing a lesson, a 2nd with
+  no mistake made twice, a 3rd when every mini-lesson question in it
+  was answered right. Worked out from the history; no new rules.
+- A short **celebration** (confetti and a bounce, no sound) when a
+  circuit is correct.
+- **Teacher view** (closed when the page opens): practice mode, board
+  status, New student, the notebook link, what the tutor did, and the
+  mistake history.
+
+One HTML file, no internet, fits one 1920x1080 screen without
+scrolling, and has a phone layout.
+
 ## Demo script
 
 Works today with the fake board. Show it on the projector page
 (`python web/server.py --fresh`, clicks in RUN.md Part E). The
-**pretend board** (top right) has the board's screen and its 4 buttons.
+**pretend board** (under the drawing) has the board's screen and its 4
+buttons. Pick circuits in **Teacher view → Practice mode**.
 
-1. Build step by step: press **3 · Next step**. The rows for the red
-   wire light blue and the screen says "Step 1 of 4 / Red wire". Keep
-   pressing 3: resistor, LED (long leg row 10, short leg row 12), black
-   wire.
-2. LED backwards, then **1 · Check my circuit** → rows 10 and 12 light
-   red, the tutor gives a hint (not the answer), the screen shows the
-   mini-lesson title, and the card "LEDs are one-way doors" appears with
-   a quiz question. Answer it: right or wrong, the page says why.
+1. Build step by step: press **3 · Next step**. The drawing shows the
+   red wire strong and the rest faint, row 5 lights blue and the screen
+   says "Step 1 of 4 / Red wire". Keep pressing 3: resistor, LED (long
+   leg row 10, short leg row 12), black wire.
+2. LED backwards, then **1 · Check my circuit** → Zip thinks, then
+   looks curious. Rows 10 and 12 glow red, Zip gives a hint (not the
+   answer), and the card "LEDs are one-way doors" appears with a quiz
+   question. Answer it: right or wrong, the page says why.
 3. **2 · I need a hint** → the next level of help: the full
    explanation. The hint button never measures, never changes power and
    never adds a mistake to the history.
-4. No resistor, then 1 → power is cut at once and the tutor asks what
-   keeps the current small. Card: "Resistors keep current small".
-   Press **4** before fixing it: power comes on, is measured at once,
-   and goes off again ("still not safe: 100 mA flowed").
-5. Correct circuit, then **I fixed it** → power back on, all rows green,
-   and on to lesson 2. (Make the same mistake twice in one lesson and
-   the tutor asks for that lesson once more.)
-6. A mistake on no list ("Not on the list: 4.7k bottom resistor") → the
-   tutor still explains with a clue from the row voltages, lights that
-   row yellow (careful), and then asks the **detective**, which answers
+4. No resistor, then 1 → power is cut at once, Zip looks careful (a
+   friendly yellow sign) and asks what keeps the current small. Card:
+   "Resistors keep current small". Press **4** before fixing it: power
+   comes on, is measured at once, and goes off again ("still not safe:
+   100 mA flowed").
+5. Correct circuit, then **I fixed it** → power back on, all rows
+   green, the LED in the drawing glows, Zip is happy and bounces,
+   confetti falls, and lesson 1 gets its stars on the path. On to
+   lesson 2. (Make the same mistake twice in one lesson and the tutor
+   asks for that lesson once more.)
+6. A mistake on no list ("Not on the list: 4.7k bottom resistor") → Zip
+   still explains with a clue from the row voltages, lights that row
+   yellow (careful), and then asks the **detective**, which answers
    with at most two questions ("Could the bottom 10k resistor be a
-   different value than the plan says...?"). Under the reply: "asked the detective, wrote in the
-   notebook". Open http://localhost:8000/api/notebook to see the
-   notebook line it just wrote, and the quiz results.
+   different value than the plan says...?"). In Teacher view, "What the
+   tutor did" says "asked the detective, wrote in the notebook", and
+   **Open the student's notebook** shows the line it just wrote.
 7. Restart with `--no-power-switch --no-current --rows T1-T16`: the same
    lessons still work. No resistor now puts "DANGER! Switch the power
    OFF by hand now" on the board screen, and the current shows as
-   "calculated".
+   "worked out from the rows".
 
 ## How we use deepagents
 

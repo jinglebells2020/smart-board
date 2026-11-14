@@ -5,283 +5,480 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Smart Breadboard</title>
 <style>
-  /* Built for a projector: big text, strong contrast, light background
-     (dark themes wash out on most projectors). Every colour also has a
-     text label, so nothing depends on colour alone. */
+  /* Made for an 11-year-old and a projector: bright, friendly, big text,
+     strong contrast on a light background. Our own colours and our own
+     guide, Zip the robot spark. Every colour also has words beside it. */
   :root {
-    --bg: #f4f4f1;
+    --paper: #fff8e7;
     --card: #ffffff;
-    --ink: #111418;
-    --muted: #4a5058;
-    --line: #c9ccd1;
-    --good: #0b7a35;
-    --good-bg: #e3f4e8;
-    --bad: #b3261e;
-    --bad-bg: #fbe4e2;
-    --warn: #8a5a00;
-    --warn-bg: #fff1d1;
-    --accent: #1f4fd1;
-    --accent-ink: #ffffff;
-    --learn: #5b2a9e;
-    --learn-bg: #f4eefc;
+    --ink: #1e2a44;
+    --muted: #4f5b73;
+    --soft-line: #d9d2bf;
+    --teal: #0b7f77;       /* buttons: white text on it is easy to read */
+    --teal-bright: #14b3a6;
+    --teal-soft: #ddf6f2;
+    --sun: #ffc23d;
+    --sun-soft: #fff1c7;
+    --coral: #c8432f;      /* "look here", never "you failed" */
+    --coral-soft: #ffe6df;
+    --leaf: #1d8a4b;
+    --leaf-soft: #ddf5e5;
+    --sky: #2f6fd6;
+    --sky-soft: #e3eeff;
+    /* The board's light colours, as they really look */
+    --light-blue: #2f7de1;
+    --light-green: #25a35a;
+    --light-red: #e5483a;
+    --light-yellow: #ffc23d;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html { font-size: 22px; }
+  html { font-size: 20px; }
+  @media (min-width: 1100px) { html { font-size: 22px; } }
   @media (min-width: 1400px) { html { font-size: 24px; } }
   body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    line-height: 1.35;
+    margin: 0; color: var(--ink);
+    background-color: var(--paper);
+    background-image: radial-gradient(#f3e4bd 1.5px, transparent 1.5px);
+    background-size: 26px 26px;
+    font-family: ui-rounded, "Arial Rounded MT Bold", "Segoe UI", system-ui, -apple-system,
+                 Roboto, Arial, sans-serif;
+    line-height: 1.3;
   }
-  .wrap { max-width: 1900px; margin: 0 auto; padding: 0.6rem 1rem 0.6rem; }
+  .wrap { max-width: 1900px; margin: 0 auto; padding: 0.5rem 0.9rem; }
+  button { font: inherit; }
 
+  /* ---- Top bar: name, lesson, path with stars, power, teacher view ---- */
   header {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.2rem;
-    padding-bottom: 0.4rem; border-bottom: 3px solid var(--ink); margin-bottom: 0.6rem;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
   }
-  .brand { font-weight: 800; font-size: 1.1rem; color: var(--muted); }
-  .brand .model { font-weight: 600; margin: 0; }
-  .lesson { flex: 1 1 24rem; }
-  .lesson h1 { margin: 0; font-size: 2rem; line-height: 1.15; }
-  .lesson .circuit { font-size: 1.15rem; color: var(--muted); font-weight: 600; }
+  .brand { display: flex; align-items: center; gap: 0.4rem; font-weight: 900;
+           font-size: 1rem; color: var(--teal); }
+  .brand svg { width: 2rem; height: 2rem; }
+  .lesson { flex: 1 1 20rem; min-width: 0; }
+  .lesson h1 { margin: 0; font-size: 1.75rem; line-height: 1.1; }
+  .lesson .circuit { font-size: 1rem; color: var(--muted); font-weight: 700; }
+
+  .path { display: flex; align-items: center; gap: 0.2rem; }
+  .stop { display: flex; flex-direction: column; align-items: center; min-width: 4.2rem; }
+  .stop .dot {
+    width: 2.3rem; height: 2.3rem; border-radius: 50%; display: grid; place-items: center;
+    font-weight: 900; font-size: 1.05rem; border: 3px solid var(--ink);
+    background: var(--card); color: var(--ink);
+  }
+  .stop.passed .dot { background: var(--leaf); color: #fff; }
+  .stop.current .dot { box-shadow: 0 0 0 4px var(--sun); }
+  .stop .stars { font-size: 0.95rem; letter-spacing: 0.05em; line-height: 1; margin-top: 0.15rem;
+                 color: #c9c2ad; }
+  .stop .stars .on { color: #e8a400; }
+  .stop .stars .pop { display: inline-block; animation: pop 0.7s ease-out; }
+  .stop .name { font-size: 0.6rem; font-weight: 700; color: var(--muted); max-width: 6rem;
+                text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .path .road { width: 1.4rem; height: 0.3rem; border-radius: 1rem; background: var(--soft-line);
+                margin-bottom: 1.4rem; }
+  .path .road.done { background: var(--leaf); }
+
   .badge {
-    font-weight: 800; font-size: 1.3rem; padding: 0.3rem 0.9rem; border-radius: 0.4rem;
-    border: 3px solid currentColor; white-space: nowrap;
+    font-weight: 900; font-size: 1.05rem; padding: 0.35rem 0.9rem; border-radius: 999px;
+    border: 3px solid var(--ink); white-space: nowrap;
   }
-  .badge.on { color: var(--good); background: var(--good-bg); }
-  .badge.off { color: var(--bad); background: var(--bad-bg); }
+  .badge.on { background: var(--leaf-soft); color: var(--leaf); }
+  .badge.off { background: var(--sun-soft); color: #7a5300; }
+  .badge.none { background: #eceae4; color: var(--muted); }
   .small-btn {
-    font: inherit; font-size: 0.8rem; font-weight: 700; padding: 0.35rem 0.7rem;
-    background: var(--card); color: var(--ink); border: 2px solid var(--line);
-    border-radius: 0.4rem; cursor: pointer;
+    font-size: 0.8rem; font-weight: 800; padding: 0.4rem 0.9rem; border-radius: 999px;
+    background: var(--card); color: var(--ink); border: 3px solid var(--ink); cursor: pointer;
+    box-shadow: 0 3px 0 var(--ink);
   }
+  .small-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
 
-  .grid { display: grid; gap: 0.6rem; grid-template-columns: 1fr; }
+  /* ---- Cards ---- */
+  .grid { display: grid; gap: 0.7rem; grid-template-columns: 1fr; }
   .grid > * { min-width: 0; }
-  @media (min-width: 1100px) { .grid { grid-template-columns: 1fr 1fr; } }
-  .readings { margin-bottom: 0.5rem; }
-  .side { display: flex; flex-direction: column; gap: 0.8rem; }
+  @media (min-width: 1100px) { .grid { grid-template-columns: 1.12fr 1fr; } }
+  .col { display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; }
   section {
-    background: var(--card); border: 2px solid var(--line); border-radius: 0.6rem;
-    padding: 0.55rem 1rem;
+    background: var(--card); border: 3px solid var(--ink); border-radius: 1.2rem;
+    padding: 0.55rem 0.9rem; box-shadow: 0 5px 0 rgba(30, 42, 68, 0.18);
   }
-  h2 {
-    margin: 0 0 0.6rem; font-size: 1rem; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--muted);
-  }
+  h2 { margin: 0 0 0.3rem; font-size: 1rem; font-weight: 900; }
+  h2 .sub { font-size: 0.75rem; color: var(--muted); font-weight: 700; margin-left: 0.4rem; }
 
-  /* Readings */
-  .tiles { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
-  .tile { border: 3px solid var(--line); border-radius: 0.5rem; padding: 0.35rem 0.9rem; }
-  .tile.good { border-color: var(--good); background: var(--good-bg); }
-  .tile.bad { border-color: var(--bad); background: var(--bad-bg); }
-  .tile .name { font-weight: 700; font-size: 1rem; }
-  .tile .where { font-size: 0.8rem; color: var(--muted); }
-  .tile .value {
-    font-size: 2.2rem; font-weight: 800; line-height: 1.05;
-    font-variant-numeric: tabular-nums;
-  }
-  .tile .unit { font-size: 1.6rem; font-weight: 700; margin-left: 0.2rem; }
-  .tile .target { font-size: 0.85rem; font-weight: 600; }
-  .tile .verdict { font-weight: 800; }
-  @media (min-width: 1100px) { .tiles { grid-template-columns: 1fr 0.7fr 1.3fr 1.2fr; } }
-  .tile .source { font-size: 0.75rem; color: var(--muted); }
+  /* ---- The drawn breadboard ---- */
+  #bb { display: block; width: 100%; height: auto; max-height: 40vh; }
+  @media (max-width: 1099px) { #bb { max-height: none; } }
+  .bb-board { fill: #fbfaf5; stroke: var(--ink); stroke-width: 3; }
+  .bb-band { fill: var(--teal-soft); }
+  .bb-hole { fill: #c8c4b8; }
+  .bb-plus { stroke: #e5483a; stroke-width: 3; }
+  .bb-minus { stroke: #2b6cd6; stroke-width: 3; }
+  .bb-sign { font-weight: 900; font-size: 16px; text-anchor: middle; dominant-baseline: central; }
+  .bb-num { font-size: 12px; font-weight: 800; fill: var(--muted); text-anchor: middle; }
+  .bb-num.used { fill: var(--ink); font-size: 14px; }
+  .bb-volt { font-size: 12px; font-weight: 900; text-anchor: middle; fill: var(--ink); }
+  .bb-volt.good { fill: var(--leaf); }
+  .bb-volt.bad { fill: var(--coral); }
+  .bb-volt.empty { fill: var(--muted); font-style: italic; }
+  .bb-light { stroke: var(--ink); stroke-width: 2; fill: #ffffff; }
+  .bb-light.blue { fill: var(--light-blue); }
+  .bb-light.green { fill: var(--light-green); }
+  .bb-light.yellow { fill: var(--light-yellow); }
+  .bb-light.red { fill: var(--light-red); animation: glow 1.6s ease-in-out infinite; }
+  @keyframes glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+  .bb-part { transition: opacity 0.3s; }
+  .bb-part.later { opacity: 0.16; }
+  .bb-part.now { animation: nudge 1.4s ease-in-out infinite; }
+  .bb-part.now .bb-outline { stroke: var(--light-blue); stroke-width: 3; stroke-dasharray: 5 4;
+                             fill: none; }
+  @keyframes nudge { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+  .bb-leg { stroke: #8f949c; stroke-width: 3; stroke-linecap: round; fill: none; }
+  .bb-wire { stroke-width: 7; stroke-linecap: round; fill: none; }
+  .bb-end { fill: #8f949c; }
+  .bb-res { fill: #e9c891; stroke: var(--ink); stroke-width: 2; }
+  .bb-led { fill: #f0584a; stroke: var(--ink); stroke-width: 2; }
+  .bb-led.on { fill: #ff3b2b; filter: drop-shadow(0 0 6px #ff8a3d) drop-shadow(0 0 12px #ffc23d); }
+  .bb-tiny { font-size: 11px; font-weight: 900; text-anchor: middle; fill: var(--ink); }
+  .bb-box { fill: var(--sky-soft); stroke: var(--ink); stroke-width: 2; }
+  .legend { font-size: 0.75rem; font-weight: 700; color: var(--muted); margin-top: 0.1rem;
+            display: flex; flex-wrap: wrap; gap: 0.2rem 0.8rem; }
+  .legend .chip { display: inline-flex; align-items: center; gap: 0.25rem; }
+  .step-note { font-size: 0.85rem; font-weight: 800; color: var(--sky); }
+  .rows-note { font-size: 0.8rem; color: var(--coral); font-weight: 800; margin-top: 0.2rem; }
+  .light { display: inline-block; width: 0.9rem; height: 0.9rem; border-radius: 50%;
+           border: 2px solid var(--ink); vertical-align: -0.12rem; }
+  .light.blue { background: var(--light-blue); } .light.green { background: var(--light-green); }
+  .light.red { background: var(--light-red); } .light.yellow { background: var(--light-yellow); }
+  .light.off { background: #fff; border-color: var(--soft-line); }
 
-  /* Rows the lesson uses: live voltage and the light beside each row */
-  .rows { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0.15rem 0.7rem;
-          align-items: center; font-size: 0.95rem; margin-top: 0.25rem; }
-  .rows .rname { font-weight: 800; white-space: nowrap; }
-  .rows .rvolts { white-space: nowrap; }
-  @media (max-width: 600px) {
-    .rows { grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 0.15rem 0.45rem; }
-    .rows .rshould { white-space: normal; font-size: 0.75rem; }
-  }
-  .rows .rvolts { font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
-  .rows .rvolts.good { color: var(--good); }
-  .rows .rvolts.bad { color: var(--bad); }
-  .rows .rshould { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
-  .rows .rlight { font-size: 0.85rem; white-space: nowrap; }
-  .legend { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
-  .light { display: inline-block; width: 0.95rem; height: 0.95rem; border-radius: 50%;
-           border: 2px solid var(--ink); vertical-align: -0.15rem; margin-right: 0.25rem; }
-  .light.blue { background: #1f6fe0; } .light.green { background: #2e9e4f; }
-  .light.red { background: #d32f2f; } .light.yellow { background: #f2c200; }
-  .light.off { background: transparent; border-color: var(--line); }
-  .rows-note { font-size: 0.8rem; color: var(--bad); font-weight: 700; margin-top: 0.2rem; }
-
-  /* Pretend board: its small screen and 4 buttons */
+  /* ---- Numbers and the pretend board under the drawing ---- */
+  .under { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+           margin-top: 0.4rem; }
+  .tile { border: 3px solid var(--ink); border-radius: 1rem; padding: 0.3rem 0.7rem;
+          background: var(--card); }
+  .tile.good { background: var(--leaf-soft); }
+  .tile.bad { background: var(--coral-soft); }
+  .tile .name { font-weight: 900; font-size: 0.9rem; }
+  .tile .where { font-size: 0.7rem; color: var(--muted); font-weight: 700; }
+  .tile .value { font-size: 1.9rem; font-weight: 900; line-height: 1.05;
+                 font-variant-numeric: tabular-nums; }
+  .tile .unit { font-size: 1.2rem; font-weight: 800; margin-left: 0.15rem; }
+  .tile .target { font-size: 0.75rem; font-weight: 700; }
+  .tile .verdict { font-weight: 900; }
+  .tile.good .verdict { color: var(--leaf); }
+  .tile.bad .verdict { color: var(--coral); }
+  .tile .source { font-size: 0.68rem; color: var(--muted); font-weight: 700; }
+  #tile-board { grid-column: span 2; background: #eaf3ff; }
+  @media (max-width: 600px) { #tile-board { grid-column: auto; } }
   .screen {
     font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
-    background: #17361f; color: #c9f5c4; border-radius: 0.3rem; padding: 0.25rem 0.5rem;
-    font-size: 0.8rem; line-height: 1.2; white-space: pre; overflow: hidden;
-    max-width: 100%;
+    background: #10302a; color: #b9f7d6; border-radius: 0.5rem; padding: 0.25rem 0.5rem;
+    font-size: 0.72rem; line-height: 1.2; white-space: pre; overflow: hidden; max-width: 100%;
+    border: 3px solid var(--ink);
   }
-  /* Screen and buttons side by side, like on the board */
-  .board-face { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem; align-items: stretch; }
+  .board-face { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.2rem; align-items: stretch; }
   .board-face .screen { flex: 0 1 auto; }
-  .board-buttons { display: flex; flex-direction: column; gap: 0.12rem; flex: 1 1 6.5rem; }
+  .board-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; flex: 1 1 9rem; }
   .bbtn {
-    font: inherit; font-size: 0.68rem; font-weight: 800; padding: 0.05rem 0.35rem;
+    font-size: 0.68rem; font-weight: 900; padding: 0.2rem 0.4rem;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    border-radius: 0.35rem; border: 2px solid var(--ink); background: var(--card);
-    color: var(--ink); cursor: pointer; text-align: left;
+    border-radius: 999px; border: 2px solid var(--ink); background: var(--sun);
+    color: var(--ink); cursor: pointer; box-shadow: 0 2px 0 var(--ink);
   }
+  .bbtn:active { transform: translateY(2px); box-shadow: none; }
   .bbtn:disabled { opacity: 0.45; cursor: wait; }
-  .tile.good .verdict { color: var(--good); }
-  .tile.bad .verdict { color: var(--bad); }
 
-  /* Tutor */
+  /* ---- Zip, the guide, and its speech bubble ---- */
+  .guide-box { display: flex; align-items: flex-start; gap: 0.6rem; }
+  .guide { width: 7.5rem; flex: 0 0 auto; overflow: visible; }
+  .guide .mood { display: none; }
+  .guide[data-mood="happy"] .mood-happy,
+  .guide[data-mood="thinking"] .mood-thinking,
+  .guide[data-mood="curious"] .mood-curious,
+  .guide[data-mood="careful"] .mood-careful { display: inline; }
+  .guide .spark { animation: twinkle 2.2s ease-in-out infinite; transform-origin: 60px 12px; }
+  @keyframes twinkle { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+  .guide[data-mood="thinking"] .think-dot { animation: dots 1.2s infinite; }
+  .guide[data-mood="thinking"] .think-dot:nth-child(2) { animation-delay: 0.2s; }
+  .guide[data-mood="thinking"] .think-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dots { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+  .guide.bounce { animation: bounce 0.9s ease-out; }
+  @keyframes bounce { 0% { transform: translateY(0); } 25% { transform: translateY(-18px); }
+                      50% { transform: translateY(0); } 70% { transform: translateY(-8px); }
+                      100% { transform: translateY(0); } }
+  .bubble {
+    position: relative; flex: 1 1 auto; min-width: 0;
+    background: var(--card); border: 3px solid var(--ink); border-radius: 1.3rem;
+    padding: 0.6rem 0.9rem; margin-top: 0.4rem;
+  }
+  .bubble::before, .bubble::after {
+    content: ""; position: absolute; left: -16px; top: 1.6rem;
+    border: 10px solid transparent; border-right-width: 16px; border-left-width: 0;
+  }
+  .bubble::before { border-right-color: var(--ink); }
+  .bubble::after { left: -11px; border-right-color: var(--card); }
+  .bubble .who { font-size: 0.75rem; font-weight: 900; color: var(--teal); margin-bottom: 0.1rem; }
+  .bubble.happy { background: #f4fff8; } .bubble.happy::after { border-right-color: #f4fff8; }
+  .bubble.curious { background: #f2f7ff; } .bubble.curious::after { border-right-color: #f2f7ff; }
+  .bubble.careful { background: #fffaea; } .bubble.careful::after { border-right-color: #fffaea; }
+  /* One column (phones, narrow windows): Zip and the buttons first, then
+     the breadboard. On a phone Zip sits above a full-width bubble. */
+  @media (max-width: 1099px) { .grid > .col:nth-child(2) { order: -1; } }
+  @media (max-width: 600px) {
+    .guide-box { flex-direction: column; align-items: center; gap: 0.2rem; }
+    .guide { width: 5rem; }
+    .bubble { width: 100%; margin-top: 0; }
+    .bubble::before, .bubble::after { left: calc(50% - 10px); top: -16px;
+      border: 10px solid transparent; border-bottom-width: 16px; border-top-width: 0; }
+    .bubble::before { border-bottom-color: var(--ink); border-right-color: transparent; }
+    .bubble::after { top: -11px; border-bottom-color: var(--card); border-right-color: transparent; }
+    .bubble.happy::after { border-bottom-color: #f4fff8; border-right-color: transparent; }
+    .bubble.curious::after { border-bottom-color: #f2f7ff; border-right-color: transparent; }
+    .bubble.careful::after { border-bottom-color: #fffaea; border-right-color: transparent; }
+    .hint { font-size: 1.15rem; min-height: 0; }
+    .lesson h1 { font-size: 1.4rem; }
+  }
   .hint {
-    font-size: 1.35rem; font-weight: 600; line-height: 1.3; min-height: 3.6em;
+    font-size: 1.3rem; font-weight: 700; line-height: 1.3; min-height: 3.2em;
     overflow-wrap: anywhere;
-    padding: 0.8rem 1rem; border-left: 0.5rem solid var(--accent);
-    background: #eef2fd; border-radius: 0.3rem;
   }
   .hint.thinking { color: var(--muted); font-style: italic; }
-  .tutor-did { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; min-height: 1.2em;
-               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* Mini-lesson card: the idea behind the mistake, plus one question */
+  /* ---- Mini-lesson card ---- */
   .mini {
-    margin-top: 0.3rem; padding: 0.4rem 0.9rem; border: 3px solid var(--learn);
-    border-radius: 0.5rem; background: var(--learn-bg);
+    padding: 0.45rem 0.9rem; border: 3px solid var(--ink); border-radius: 1.2rem;
+    background: var(--sun-soft);
   }
   .mini .label {
-    font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--learn);
+    display: inline-block; font-size: 0.7rem; font-weight: 900; color: var(--ink);
+    background: var(--sun); border: 2px solid var(--ink); border-radius: 999px;
+    padding: 0.05rem 0.5rem;
   }
-  .mini h3 { margin: 0 0 0.2rem; font-size: 1.2rem; line-height: 1.2; }
-  .mini h3 .label { margin-right: 0.4rem; vertical-align: 0.12rem; }
-  .mini .idea { margin: 0 0 0.3rem; font-size: 1rem; }
-  .mini .question { margin: 0 0 0.3rem; font-size: 1rem; font-weight: 800; }
-  .options { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .mini h3 { margin: 0 0 0.2rem; font-size: 1.15rem; line-height: 1.2; }
+  .mini h3 .label { margin-right: 0.4rem; vertical-align: 0.15rem; }
+  .mini .idea { margin: 0 0 0.3rem; font-size: 0.95rem; font-weight: 600; }
+  .mini .question { margin: 0 0 0.3rem; font-size: 0.95rem; font-weight: 900; }
+  .options { display: flex; flex-wrap: wrap; gap: 0.45rem; }
   .opt {
-    font: inherit; font-size: 0.9rem; font-weight: 700; text-align: left;
-    padding: 0.35rem 0.7rem; border-radius: 0.4rem; border: 3px solid var(--learn);
+    font-size: 0.88rem; font-weight: 800; text-align: left;
+    padding: 0.4rem 0.8rem; border-radius: 1rem; border: 3px solid var(--ink);
     background: var(--card); color: var(--ink); cursor: pointer; flex: 1 1 8rem;
+    box-shadow: 0 3px 0 var(--ink);
   }
-  .opt:disabled { cursor: default; }
-  .opt.right { border-color: var(--good); background: var(--good-bg); }
-  .opt.wrong { border-color: var(--bad); background: var(--bad-bg); }
-  .opt.dim { opacity: 0.55; }
-  .result { margin: 0.3rem 0 0; font-size: 1rem; font-weight: 600; min-height: 0; }
-  .result .verdict { font-weight: 800; }
-  .result.right .verdict { color: var(--good); }
-  .result.wrong .verdict { color: var(--bad); }
+  .opt:not(:disabled):hover { background: #fffdf5; }
+  .opt:disabled { cursor: default; box-shadow: none; }
+  .opt.right { background: var(--leaf-soft); border-color: var(--leaf); }
+  .opt.wrong { background: var(--sky-soft); border-color: var(--sky); }
+  .opt.dim { opacity: 0.5; }
+  .result { margin: 0.3rem 0 0; font-size: 0.95rem; font-weight: 700; }
+  .result .verdict { font-weight: 900; }
+  .result.right .verdict { color: var(--leaf); }
+  .result.wrong .verdict { color: var(--sky); }
+
+  /* ---- Big buttons ---- */
   .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0; }
   .big-btn {
-    font: inherit; font-size: 1.15rem; font-weight: 800; padding: 0.6rem 1.1rem;
-    border-radius: 0.5rem; border: 3px solid var(--accent); cursor: pointer;
-    background: var(--accent); color: var(--accent-ink);
+    font-size: 1.15rem; font-weight: 900; padding: 0.6rem 1.3rem;
+    border-radius: 999px; border: 3px solid var(--ink); cursor: pointer;
+    background: var(--teal); color: #fff; box-shadow: 0 5px 0 var(--ink);
   }
-  .big-btn.secondary { background: var(--card); color: var(--accent); }
+  .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--ink); }
+  .big-btn.secondary { background: var(--sun); color: var(--ink); }
+  .big-btn.ghost { background: var(--card); color: var(--ink); }
   .big-btn:disabled, .small-btn:disabled, .scenario:disabled { opacity: 0.45; cursor: wait; }
   .actions input {
-    flex: 1 1 7rem; min-width: 0; font: inherit; font-size: 1.05rem; padding: 0.5rem 0.7rem;
-    border: 3px solid var(--line); border-radius: 0.5rem;
+    flex: 1 1 7rem; min-width: 0; font: inherit; font-size: 1rem; padding: 0.5rem 0.9rem;
+    border: 3px solid var(--ink); border-radius: 999px; background: #fffdf7;
   }
-  .actions input:focus { outline: none; border-color: var(--accent); }
-  /* Wide but short screens (a 1080p projector): hide the older messages so
-     everything fits without scrolling. The big hint and history stay. */
-  @media (min-width: 1100px) and (max-height: 1150px) { .log { display: none; } }
-  .log { margin-top: 0.8rem; overflow-wrap: anywhere; overflow-y: auto; font-size: 0.95rem; }
-  .log p { margin: 0 0 0.45rem; }
-  .log .who { font-weight: 800; }
+  .actions input:focus { outline: 4px solid var(--sun); }
+  :focus-visible { outline: 4px solid var(--sun); outline-offset: 2px; }
 
-  /* Practice mode (fake board) controls */
-  /* Which board, and is it answering? */
-  .boardline { margin: 0 0 0.8rem; padding: 0.55rem 0.9rem; border-radius: 10px;
-               font-size: 1.15rem; font-weight: 800; border: 3px solid var(--line); }
-  .boardline.ok  { border-color: var(--good); background: var(--good-bg); color: var(--good); }
-  .boardline.bad { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
-  .boardline.fake { font-size: 0.9rem; color: var(--muted); border-style: dashed; }
-  .sim { margin-top: 0.7rem; padding-top: 0.6rem; border-top: 2px dashed var(--line); }
-  .table-scroll { overflow-x: auto; }
-  .more { font-size: 0.85rem; color: var(--muted); margin: 0.4rem 0 0; }
-  .sim .note { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin: 0 0 0.45rem; }
-  .scenarios { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  /* ---- Celebration (no sound) ---- */
+  .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 50; }
+  .confetti i {
+    position: absolute; top: -20px; width: 12px; height: 18px; border-radius: 3px;
+    animation: fall 1.6s ease-in forwards;
+  }
+  @keyframes fall { to { transform: translateY(105vh) rotate(540deg); opacity: 0.9; } }
+  @keyframes pop { 0% { transform: scale(0.3); } 60% { transform: scale(1.5); } 100% { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) {
+    .confetti, .guide .spark, .bb-light.red, .bb-part.now, .guide.bounce { animation: none !important; }
+    .confetti { display: none; }
+  }
+
+  /* ---- Teacher view: closed by default ---- */
+  .teacher {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(36rem, 100vw); z-index: 40;
+    background: #fbfaf5; border-left: 4px solid var(--ink); overflow-y: auto;
+    padding: 0.7rem 1rem 2rem; box-shadow: -8px 0 0 rgba(30, 42, 68, 0.15);
+  }
+  .teacher .top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  .teacher h2 { font-size: 1.2rem; margin: 0; }
+  .teacher h3 { font-size: 0.9rem; margin: 0.9rem 0 0.3rem; }
+  .teacher p { margin: 0.2rem 0; }
+  .teacher .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  .teacher a { color: var(--sky); font-weight: 800; }
+  .boardline { padding: 0.45rem 0.8rem; border-radius: 0.8rem;
+               font-size: 0.95rem; font-weight: 800; border: 3px solid var(--soft-line); }
+  .boardline.ok  { border-color: var(--leaf); background: var(--leaf-soft); color: var(--leaf); }
+  .boardline.bad { border-color: var(--coral); background: var(--coral-soft); color: var(--coral); }
+  .boardline.fake { font-size: 0.85rem; color: var(--muted); border-style: dashed; }
+  .model { font-size: 0.75rem; color: var(--muted); font-weight: 700; }
+  .tutor-did { font-size: 0.8rem; color: var(--muted); font-weight: 700; }
+  .log { overflow-wrap: anywhere; font-size: 0.85rem; }
+  .log p { margin: 0 0 0.4rem; }
+  .log .who { font-weight: 900; }
+  .sim .note { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin: 0 0 0.4rem; }
+  .scenarios { display: flex; flex-wrap: wrap; gap: 0.4rem; }
   .scenario {
-    font: inherit; font-size: 0.85rem; font-weight: 700; padding: 0.4rem 0.7rem;
-    border-radius: 0.4rem; border: 2px solid var(--ink); background: var(--card);
+    font-size: 0.8rem; font-weight: 800; padding: 0.35rem 0.7rem;
+    border-radius: 999px; border: 2px solid var(--ink); background: var(--card);
     color: var(--ink); cursor: pointer;
   }
-  .scenario.active { background: var(--ink); color: var(--card); }
-
-  /* History */
-  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-  th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 2px solid var(--line); }
-  th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .scenario.active { background: var(--ink); color: #fff; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th, td { text-align: left; padding: 0.25rem 0.4rem; border-bottom: 2px solid var(--soft-line); }
+  th { font-size: 0.72rem; color: var(--muted); }
   td.nowrap { white-space: nowrap; }
-  td.given-hint { color: var(--accent); font-weight: 700; }
-  td.given-full { color: var(--warn); font-weight: 700; }
-  td.quiz-right { color: var(--good); font-weight: 700; }
-  td.quiz-wrong { color: var(--bad); font-weight: 700; }
-  .empty { color: var(--muted); font-size: 1rem; }
-  .passes { font-size: 1rem; margin: 0 0 0.6rem; font-weight: 600; }
+  td.given-hint { color: var(--sky); font-weight: 800; }
+  td.given-full { color: #7a5300; font-weight: 800; }
+  td.quiz-right { color: var(--leaf); font-weight: 800; }
+  td.quiz-wrong { color: var(--coral); font-weight: 800; }
+  .empty, .more { color: var(--muted); font-size: 0.85rem; }
+  .passes { font-size: 0.9rem; font-weight: 700; }
 
   .offline {
-    display: none; background: var(--bad); color: #fff; font-weight: 800;
-    padding: 0.7rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 1.1rem;
+    display: none; background: var(--sun); color: var(--ink); font-weight: 800;
+    padding: 0.6rem 1rem; border-radius: 1rem; border: 3px solid var(--ink);
+    margin-bottom: 0.6rem; font-size: 1.05rem;
   }
-  .offline code { background: rgba(255,255,255,0.2); padding: 0.1rem 0.4rem; border-radius: 0.2rem; }
-  .model { font-size: 0.75rem; color: var(--muted); }
+  .offline code { background: rgba(255,255,255,0.6); padding: 0.1rem 0.4rem; border-radius: 0.3rem; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <div class="offline" id="offline">
-    The tutor program is not running. In Command Prompt run
+    Zip cannot reach the tutor program. In Command Prompt run
     <code>python web\server.py</code> and open <code>http://localhost:8000</code>
   </div>
 
   <header>
-    <div class="brand">Smart Breadboard<div class="model" id="model"></div><div class="model" id="caps"></div></div>
+    <div class="brand" aria-hidden="true">
+      <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#ffc23d" stroke="#1e2a44" stroke-width="3"/>
+        <path d="M22 7 L12 22 H19 L17 33 L28 17 H21 Z" fill="#1e2a44"/></svg>
+      Smart Breadboard
+    </div>
     <div class="lesson">
       <h1 id="lesson-title">Loading&hellip;</h1>
       <div class="circuit" id="lesson-circuit"></div>
     </div>
+    <nav class="path" id="path" aria-label="Your lessons and stars"></nav>
     <div class="badge" id="power">&nbsp;</div>
-    <button class="small-btn" id="reset" title="Forget the mistake history and start at lesson 1">New student</button>
+    <button class="small-btn" type="button" id="teacher-toggle" aria-expanded="false"
+            aria-controls="teacher">Teacher view</button>
   </header>
 
-  <div class="boardline" id="boardline" role="status" hidden></div>
-
-  <section class="readings" aria-label="Live readings">
-    <div class="tiles">
-      <div class="tile" id="tile-current">
-        <div class="name">Current</div>
-        <div class="where">mA = milliamps</div>
-        <div><span class="value" id="v-current">&ndash;</span><span class="unit">mA</span></div>
-        <div class="target" id="t-current"></div>
-        <div class="source" id="current-source"></div>
-      </div>
-      <div class="tile" id="tile-supply">
-        <div class="name">Power voltage</div>
-        <div class="where">The supply's push</div>
-        <div><span class="value" id="v-supply">&ndash;</span><span class="unit">V</span></div>
-      </div>
-      <div class="tile" id="tile-rows">
-        <div class="name">Rows this lesson uses</div>
-        <div class="rows" id="rows"></div>
+  <div class="grid">
+    <div class="col">
+      <section id="tile-rows" aria-label="Your breadboard">
+        <h2>Your breadboard <span class="sub">Rows this lesson uses</span></h2>
+        <svg id="bb" role="img" aria-label="Drawing of the breadboard with the parts of this lesson"></svg>
+        <div class="step-note" id="step-note" hidden></div>
         <div class="legend" id="legend"></div>
         <div class="rows-note" id="rows-note" hidden></div>
-      </div>
-      <div class="tile" id="tile-board" hidden>
-        <div class="name">Pretend board</div>
-        <div class="board-face">
-          <div class="screen" id="screen" aria-label="Board screen"></div>
-          <div class="board-buttons" id="board-buttons"></div>
+        <div class="under">
+          <div class="tile" id="tile-current">
+            <div class="name">Current</div>
+            <div class="where">mA = milliamps</div>
+            <div><span class="value" id="v-current">&ndash;</span><span class="unit">mA</span></div>
+            <div class="target" id="t-current"></div>
+            <div class="source" id="current-source"></div>
+          </div>
+          <div class="tile" id="tile-supply">
+            <div class="name">Power voltage</div>
+            <div class="where">The supply's push</div>
+            <div><span class="value" id="v-supply">&ndash;</span><span class="unit">V</span></div>
+          </div>
+          <div class="tile" id="tile-board" hidden>
+            <div class="name">Pretend board</div>
+            <div class="board-face">
+              <div class="screen" id="screen" aria-label="Board screen"></div>
+              <div class="board-buttons" id="board-buttons"></div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
-  </section>
 
-  <div class="grid">
-    <section aria-label="Tutor">
-      <div class="hint" id="hint">Build the circuit, then press "Check my circuit".</div>
-      <div class="tutor-did" id="tutor-did"></div>
+    <div class="col">
+      <section aria-label="Zip, your guide">
+        <div class="guide-box">
+          <svg class="guide" id="guide" data-mood="happy" viewBox="0 0 120 150" aria-hidden="true">
+            <!-- Zip: a little robot spark. Our own drawing. -->
+            <line x1="60" y1="34" x2="60" y2="16" stroke="#1e2a44" stroke-width="4" stroke-linecap="round"/>
+            <path class="spark" d="M60 2 L64 9 L72 10 L66 15 L68 23 L60 19 L52 23 L54 15 L48 10 L56 9 Z"
+                  fill="#ffc23d" stroke="#1e2a44" stroke-width="2.5" stroke-linejoin="round"/>
+            <g class="mood mood-happy">
+              <path d="M18 78 L6 60" stroke="#1e2a44" stroke-width="5" stroke-linecap="round"/>
+              <path d="M102 78 L114 60" stroke="#1e2a44" stroke-width="5" stroke-linecap="round"/>
+              <circle cx="6" cy="58" r="6" fill="#ffc23d" stroke="#1e2a44" stroke-width="3"/>
+              <circle cx="114" cy="58" r="6" fill="#ffc23d" stroke="#1e2a44" stroke-width="3"/>
+            </g>
+            <g class="mood mood-thinking mood-curious mood-careful">
+              <path d="M18 82 L8 98" stroke="#1e2a44" stroke-width="5" stroke-linecap="round"/>
+              <path d="M102 82 L112 98" stroke="#1e2a44" stroke-width="5" stroke-linecap="round"/>
+              <circle cx="8" cy="100" r="6" fill="#ffc23d" stroke="#1e2a44" stroke-width="3"/>
+              <circle cx="112" cy="100" r="6" fill="#ffc23d" stroke="#1e2a44" stroke-width="3"/>
+            </g>
+            <rect x="18" y="34" width="84" height="76" rx="30" fill="#14b3a6" stroke="#1e2a44" stroke-width="4"/>
+            <rect x="29" y="46" width="62" height="44" rx="16" fill="#eafffb" stroke="#1e2a44" stroke-width="3"/>
+            <circle cx="38" cy="78" r="5" fill="#ff9a8a" opacity="0.6"/>
+            <circle cx="82" cy="78" r="5" fill="#ff9a8a" opacity="0.6"/>
+            <!-- happy: smiling eyes and a big smile -->
+            <g class="mood mood-happy" fill="none" stroke="#1e2a44" stroke-width="4" stroke-linecap="round">
+              <path d="M40 64 q6 -8 12 0"/><path d="M68 64 q6 -8 12 0"/>
+              <path d="M48 74 q12 10 24 0" fill="#1e2a44"/>
+            </g>
+            <!-- thinking: eyes look up, small mouth, thought dots -->
+            <g class="mood mood-thinking">
+              <circle cx="47" cy="62" r="5" fill="#1e2a44"/><circle cx="73" cy="62" r="5" fill="#1e2a44"/>
+              <circle cx="49" cy="60" r="1.6" fill="#fff"/><circle cx="75" cy="60" r="1.6" fill="#fff"/>
+              <circle cx="60" cy="79" r="3.5" fill="none" stroke="#1e2a44" stroke-width="3"/>
+              <g fill="#2f6fd6"><circle class="think-dot" cx="88" cy="22" r="4"/>
+                <circle class="think-dot" cx="100" cy="14" r="5"/><circle class="think-dot" cx="113" cy="5" r="6"/></g>
+            </g>
+            <!-- curious: big round eyes, one eyebrow up, a question mark -->
+            <g class="mood mood-curious">
+              <circle cx="47" cy="65" r="6.5" fill="#1e2a44"/><circle cx="73" cy="65" r="5" fill="#1e2a44"/>
+              <circle cx="49" cy="63" r="2" fill="#fff"/><circle cx="74.5" cy="63.5" r="1.6" fill="#fff"/>
+              <path d="M40 54 q7 -6 14 -2" fill="none" stroke="#1e2a44" stroke-width="3" stroke-linecap="round"/>
+              <path d="M54 80 q6 4 12 0" fill="none" stroke="#1e2a44" stroke-width="3.5" stroke-linecap="round"/>
+              <text x="96" y="30" font-size="28" font-weight="900" fill="#2f6fd6" stroke="#1e2a44"
+                    stroke-width="1.5">?</text>
+            </g>
+            <!-- careful: steady eyes, straight mouth, a friendly yellow sign -->
+            <g class="mood mood-careful">
+              <circle cx="47" cy="65" r="5" fill="#1e2a44"/><circle cx="73" cy="65" r="5" fill="#1e2a44"/>
+              <path d="M41 56 h12 M67 56 h12" stroke="#1e2a44" stroke-width="3" stroke-linecap="round"/>
+              <path d="M51 79 h18" stroke="#1e2a44" stroke-width="3.5" stroke-linecap="round"/>
+              <circle cx="102" cy="22" r="12" fill="#ffc23d" stroke="#1e2a44" stroke-width="3"/>
+              <path d="M102 15 v8" stroke="#1e2a44" stroke-width="3.5" stroke-linecap="round"/>
+              <circle cx="102" cy="28" r="2" fill="#1e2a44"/>
+            </g>
+            <rect x="36" y="110" width="16" height="16" rx="6" fill="#1e2a44"/>
+            <rect x="68" y="110" width="16" height="16" rx="6" fill="#1e2a44"/>
+            <rect x="30" y="124" width="26" height="10" rx="5" fill="#ffc23d" stroke="#1e2a44" stroke-width="2.5"/>
+            <rect x="64" y="124" width="26" height="10" rx="5" fill="#ffc23d" stroke="#1e2a44" stroke-width="2.5"/>
+          </svg>
+          <div class="bubble" id="bubble">
+            <div class="who">Zip says</div>
+            <div class="hint" id="hint" aria-live="polite">Build the circuit, then press "Check my circuit".</div>
+          </div>
+        </div>
+      </section>
+
       <div class="mini" id="mini" hidden>
         <h3><span class="label">Mini-lesson</span> <span id="mini-title"></span></h3>
         <p class="idea" id="mini-idea"></p>
@@ -289,31 +486,54 @@
         <div class="options" id="mini-options"></div>
         <p class="result" id="mini-result" aria-live="polite"></p>
       </div>
-      <div class="log" id="log"></div>
-    </section>
 
-    <div class="side">
       <section class="controls" aria-label="Check the circuit">
         <form class="actions" id="say">
           <button class="big-btn" type="button" id="check">Check my circuit</button>
           <button class="big-btn secondary" type="button" id="fixed">I fixed it</button>
-          <input id="say-text" autocomplete="off" placeholder="Or ask something&hellip;" maxlength="500">
-          <button class="big-btn secondary" type="submit">Send</button>
+          <input id="say-text" autocomplete="off" placeholder="Or ask Zip something&hellip;" maxlength="500">
+          <button class="big-btn ghost" type="submit">Send</button>
         </form>
-        <div class="sim" id="sim" hidden>
-          <div class="note">Practice mode: pick what the pretend student built</div>
-          <div class="scenarios" id="scenarios"></div>
-        </div>
-      </section>
-      <section>
-        <h2>Mistake history</h2>
-        <p class="passes" id="passes"></p>
-        <div class="table-scroll" id="history"></div>
       </section>
     </div>
   </div>
-
 </div>
+
+<aside class="teacher" id="teacher" hidden aria-label="Teacher view">
+  <div class="top">
+    <h2>Teacher view</h2>
+    <button class="small-btn" type="button" id="teacher-close">Close</button>
+  </div>
+
+  <h3>Board</h3>
+  <div class="boardline" id="boardline" role="status" hidden></div>
+  <p class="model" id="model"></p>
+  <p class="model" id="caps"></p>
+
+  <div class="sim" id="sim" hidden>
+    <h3>Practice mode</h3>
+    <div class="note">Pick what the pretend student built</div>
+    <div class="scenarios" id="scenarios"></div>
+  </div>
+
+  <h3>Student</h3>
+  <div class="row">
+    <button class="small-btn" type="button" id="reset" title="Forget the mistake history and start at lesson 1">New student</button>
+    <a href="/api/notebook" target="_blank" rel="noopener">Open the student's notebook</a>
+  </div>
+  <p class="model">Stars: 1 for passing a lesson, 2 with no mistake made twice,
+    3 when every quiz in it was answered right.</p>
+
+  <h3>What the tutor did</h3>
+  <div class="tutor-did" id="tutor-did"></div>
+  <div class="log" id="log"></div>
+
+  <h3>Mistake history</h3>
+  <p class="passes" id="passes"></p>
+  <div class="table-scroll" id="history"></div>
+</aside>
+
+<div class="confetti" id="confetti" aria-hidden="true"></div>
 
 <script>
   "use strict";
@@ -350,6 +570,7 @@
     read_file: "read the notebook",
   };
   const POLL_MS = 250;
+  const WELCOME = 'Hi! I am Zip. Build the circuit, then press "Check my circuit".';
 
   const $ = (id) => document.getElementById(id);
   let busy = false;
@@ -359,6 +580,9 @@
   let lastMiniKey = "";
   let miniCard = null;
   let lastButtonsKey = "";
+  let lastPathKey = "";
+  let lastStars = null;     // stars per lesson, to make new ones pop
+  let lastCelebrated = null; // time of the last reply we celebrated
   let serverBusy = false;  // the tutor is busy because of a board button
 
   // Never show "-0.00": tiny negative numbers are sensor noise around zero.
@@ -371,7 +595,7 @@
     return value >= range[0] && value <= range[1];
   }
 
-  // A reading tile turns green/red only for values the lesson checks.
+  // A reading tile turns green/coral only for values the lesson checks.
   function renderTile(tile, valueEl, targetEl, value, digits, unit, expected, range, powerOn) {
     if (range && !Array.isArray(range)) {  // lessons store ranges as {min, max}
       range = [range.min ?? -Infinity, range.max ?? Infinity];
@@ -388,12 +612,41 @@
     tile.classList.add(ok ? "good" : "bad");
     const verdict = document.createElement("span");
     verdict.className = "verdict";
-    verdict.textContent = ok ? "GOOD" : "NOT YET";
+    verdict.textContent = ok ? "Just right!" : "Not yet";
     targetEl.append(verdict, ` · aim for ${range[0]} to ${range[1]} ${unit}`);
   }
 
   function currentDigits(mA) {
     return Math.abs(mA) < 10 ? 2 : 1;
+  }
+
+  // ---- Zip, the guide -------------------------------------------------
+  function setMood(mood) {
+    const guide = $("guide");
+    if (guide.dataset.mood !== mood) guide.dataset.mood = mood;
+    const bubble = $("bubble");
+    const cls = "bubble " + mood;
+    if (bubble.className !== cls) bubble.className = cls;
+  }
+
+  function celebrate() {
+    const guide = $("guide");
+    guide.classList.remove("bounce");
+    void guide.getBoundingClientRect();  // restart the bounce
+    guide.classList.add("bounce");
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const box = $("confetti");
+    box.replaceChildren();
+    const colors = ["#ffc23d", "#14b3a6", "#2f7de1", "#25a35a", "#ff8a3d", "#f0584a"];
+    for (let i = 0; i < 46; i++) {
+      const piece = document.createElement("i");
+      piece.style.left = Math.random() * 100 + "vw";
+      piece.style.background = colors[i % colors.length];
+      piece.style.animationDelay = Math.random() * 0.35 + "s";
+      piece.style.animationDuration = 1.2 + Math.random() * 0.7 + "s";
+      box.append(piece);
+    }
+    setTimeout(() => box.replaceChildren(), 2600);
   }
 
   function renderLog(log) {
@@ -405,19 +658,24 @@
     const latest = tutor[tutor.length - 1];
     $("tutor-did").textContent = latest && latest.tools && latest.tools.length
       ? "The tutor " + latest.tools.map((t) => TOOL_WORDS[t] || t).join(", ")
-      : "";
+      : "Nothing yet.";
     if (!busy) {
-      $("hint").textContent = tutor.length
-        ? tutor[tutor.length - 1].text
-        : 'Build the circuit, then press "Check my circuit".';
+      $("hint").textContent = tutor.length ? tutor[tutor.length - 1].text : WELCOME;
       $("hint").classList.remove("thinking");
     }
+    // A short celebration for a new "correct!" reply (not for old ones
+    // already on the page when it opened).
+    if (lastCelebrated === null) {
+      lastCelebrated = latest ? latest.time : 0;
+    } else if (latest && latest.celebrate && latest.time > lastCelebrated) {
+      lastCelebrated = latest.time;
+      celebrate();
+    }
 
-    // Older messages, newest first, below the big hint.
+    // Earlier messages, newest first, in the teacher view.
     const box = $("log");
     box.replaceChildren();
-    // Only the 2 messages before the latest reply: whole lines, no scrolling.
-    log.slice(Math.max(0, log.length - 3), Math.max(0, log.length - 1)).reverse().forEach((m) => {
+    log.slice(Math.max(0, log.length - 9), Math.max(0, log.length - 1)).reverse().forEach((m) => {
       const p = document.createElement("p");
       const who = document.createElement("span");
       who.className = "who";
@@ -426,6 +684,44 @@
       box.append(p);
     });
     fitToScreen();
+  }
+
+  // ---- Lesson path with stars ------------------------------------------
+  function renderPath(path) {
+    const key = JSON.stringify(path);
+    if (key === lastPathKey) return;
+    lastPathKey = key;
+    const nav = $("path");
+    nav.replaceChildren();
+    path.forEach((p, i) => {
+      if (i > 0) {
+        const road = document.createElement("div");
+        road.className = "road" + (path[i - 1].passed ? " done" : "");
+        nav.append(road);
+      }
+      const stop = document.createElement("div");
+      stop.className = "stop" + (p.passed ? " passed" : "") + (p.current ? " current" : "");
+      stop.title = `Lesson ${p.id}: ${p.title}. ${p.stars} of 3 stars.`;
+      const dot = document.createElement("div");
+      dot.className = "dot";
+      dot.textContent = p.passed ? "✓" : String(p.id);
+      const stars = document.createElement("div");
+      stars.className = "stars";
+      stars.setAttribute("aria-label", `${p.stars} of 3 stars`);
+      const before = lastStars ? (lastStars[p.id] || 0) : p.stars;
+      for (let s = 1; s <= 3; s++) {
+        const star = document.createElement("span");
+        star.textContent = "★";
+        if (s <= p.stars) star.className = "on" + (s > before ? " pop" : "");
+        stars.append(star);
+      }
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = `Lesson ${p.id}`;
+      stop.append(dot, stars, name);
+      nav.append(stop);
+    });
+    lastStars = Object.fromEntries(path.map((p) => [p.id, p.stars]));
   }
 
   function renderHistory(history, passes, lessonCount) {
@@ -455,7 +751,7 @@
       head.append(th);
     });
     const body = table.createTBody();
-    const SHOW = 2;
+    const SHOW = 12;
     history.slice().reverse().slice(0, SHOW).forEach((m) => {
       const row = body.insertRow();
       [m.lesson, m.description, ordinal(m.try)].forEach((v, i) => {
@@ -467,7 +763,7 @@
       given.textContent = m.given === "hint" ? "Hint" : "Full explanation";
       given.className = m.given === "hint" ? "given-hint" : "given-full";
       const quiz = row.insertCell();
-      quiz.textContent = m.quiz === "right" ? "Right" : m.quiz === "wrong" ? "Wrong" : "\u2013";
+      quiz.textContent = m.quiz === "right" ? "Right" : m.quiz === "wrong" ? "Wrong" : "–";
       quiz.className = "nowrap" + (m.quiz ? " quiz-" + m.quiz : "");
     });
     box.append(table);
@@ -504,14 +800,14 @@
   function render(state) {
     const L = state.lesson;
     const r = state.reading;
-    $("lesson-title").textContent = `Lesson ${L.id} of ${state.lesson_count}: ${L.title}`;
+    $("lesson-title").textContent = `Lesson ${L.id}: ${L.title}`;
     $("lesson-circuit").textContent = L.circuit;
 
     // A real board that is not answering: nothing is known, so say so.
     const noBoard = state.reading_ok === false;
     const power = $("power");
-    power.textContent = noBoard ? "NO BOARD" : r.power_on ? "POWER ON" : "POWER OFF";
-    power.className = "badge " + (r.power_on && !noBoard ? "on" : "off");
+    power.textContent = noBoard ? "No board" : r.power_on ? "⚡ Power on" : "Power off";
+    power.className = "badge " + (noBoard ? "none" : r.power_on ? "on" : "off");
 
     const accept = L.accept || {};
     const expected = L.expected || {};
@@ -531,14 +827,16 @@
     }
     $("current-source").textContent = noBoard ? "Board not answering" : {
       measured: "Measured by the board",
-      calculated: "Calculated (no current sensor)",
+      calculated: "Worked out from the rows",
       unknown: "No current sensor",
     }[shown.current_source] || "";
     $("v-supply").textContent = noBoard ? "?" : fmt(shown.supply_v, 2);
     renderBoard(state);
+    renderPath(state.path || []);
 
     if (state.busy && !busy) { serverBusy = true; setBusy(true); }
     else if (!state.busy && serverBusy) { serverBusy = false; setBusy(false); lastLogKey = ""; }
+    setMood(busy ? "thinking" : (state.mood || "happy"));
     $("model").textContent = "Tutor: " + state.model;
     renderLog(state.log);
     renderMini(state.mini_lesson);
@@ -546,8 +844,6 @@
     renderScenarios(state);
   }
 
-  // The rows this lesson uses (any board) and, with the fake board, the
-  // pretend board: its screen and its 4 buttons.
   function renderBoardLine(state) {
     const st = state.board_status;
     const line = $("boardline");
@@ -555,50 +851,255 @@
     line.hidden = false;
     line.className = "boardline " + (st.kind === "fake" ? "fake" : st.connected ? "ok" : "bad");
     line.textContent = st.kind === "fake" ? "Practice mode: pretend board (no real board plugged in)"
-      : st.connected ? "\u2714 " + st.text : "\u2716 " + st.text;
+      : st.connected ? "✔ " + st.text : "✖ " + st.text;
+  }
+
+  // ---- The drawn breadboard --------------------------------------------
+  // Columns are breadboard rows (row 1 to 63, along the board). Holes a-e
+  // are the top half (T rows), f-j the bottom half (B rows). The + and -
+  // lines run along the edges. Lights sit beside each half.
+  const SVGNS = "http://www.w3.org/2000/svg";
+  let bbKey = "";
+  let bbRefs = null;  // the parts of the drawing that change with each reading
+
+  function svg(tag, attrs, parent, text) {
+    const e = document.createElementNS(SVGNS, tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => e.setAttribute(k, v));
+    if (text !== undefined) e.textContent = text;
+    if (parent) parent.append(e);
+    return e;
+  }
+
+  function splitRow(name) {
+    const m = /^([TB])(\d+)$/.exec(name);
+    return m ? { half: m[1], n: Number(m[2]) } : null;
+  }
+
+  // Colour bands for the resistor values our lessons use.
+  function bands(partName) {
+    if (/220/.test(partName)) return ["#d33", "#d33", "#7a4a1f"];   // red red brown
+    if (/10k/i.test(partName)) return ["#7a4a1f", "#111", "#f28c28"]; // brown black orange
+    if (/1k/i.test(partName)) return ["#7a4a1f", "#111", "#d33"];     // brown black red
+    return ["#888", "#888", "#888"];
+  }
+
+  function buildBreadboard(L, b) {
+    const box = $("bb");
+    box.replaceChildren();
+    const layout = L.layout || [];
+    const names = new Set(L.rows || []);
+    layout.forEach((p) => p.legs.forEach((leg) => names.add(leg.row)));
+    const rows = [...names].map(splitRow).filter(Boolean);
+    const usesBottom = rows.some((r) => r.half === "B") ||
+      layout.some((p) => p.legs.some((leg) => leg.row.startsWith("PB")));
+    const nums = rows.map((r) => r.n);
+    const lo = Math.max(1, (nums.length ? Math.min(...nums) : 1) - 1);
+    const hi = Math.min(63, (nums.length ? Math.max(...nums) : 10) + 1);
+    const CW = 46, X0 = 54;
+    const W = X0 + (hi - lo + 1) * CW + 16;
+    const x = (n) => X0 + (n - lo) * CW + CW / 2;
+    // Top to bottom: + and - lines, room for the parts, holes a-e, the
+    // lights beside the top half, each row's voltage, the row numbers.
+    const Y = { plus: 20, minus: 40, top: [104, 118, 132, 146, 160], light: 186, volt: 211,
+                num: 234 };
+    if (usesBottom) {
+      Object.assign(Y, { bot: [258, 272, 286, 300, 314], lightB: 340, voltB: 365,
+                         plusB: 388, minusB: 408 });
+    }
+    const H = usesBottom ? 424 : 248;
+    box.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+    svg("rect", { x: 4, y: 4, width: W - 8, height: H - 8, rx: 16, class: "bb-board" }, box);
+    const lesson = new Set(L.rows || []);
+    // A soft band behind the rows this lesson uses.
+    for (let n = lo; n <= hi; n++) {
+      if (lesson.has("T" + n)) svg("rect", { x: x(n) - CW / 2 + 3, y: Y.top[0] - 12, width: CW - 6,
+        height: Y.num - Y.top[0] + 20, rx: 10, class: "bb-band" }, box);
+      if (usesBottom && lesson.has("B" + n)) svg("rect", { x: x(n) - CW / 2 + 3, y: Y.bot[0] - 12,
+        width: CW - 6, height: Y.voltB - Y.bot[0] + 20, rx: 10, class: "bb-band" }, box);
+    }
+    const line = (y, cls, sign) => {
+      svg("line", { x1: X0 - 6, x2: W - 14, y1: y - 9, y2: y - 9, class: cls }, box);
+      svg("text", { x: 26, y, class: "bb-sign", fill: cls === "bb-plus" ? "#c8331f" : "#2b6cd6" },
+        box, sign);
+      for (let n = lo; n <= hi; n++) svg("rect", { x: x(n) - 3, y: y - 3, width: 6, height: 6,
+        rx: 1.5, class: "bb-hole" }, box);
+    };
+    line(Y.plus, "bb-plus", "+");
+    line(Y.minus, "bb-minus", "−");
+    if (usesBottom) { line(Y.plusB, "bb-plus", "+"); line(Y.minusB, "bb-minus", "−"); }
+
+    const refs = { lights: {}, volts: {}, leds: [] };
+    for (let n = lo; n <= hi; n++) {
+      Y.top.forEach((y) => svg("rect", { x: x(n) - 3, y: y - 3, width: 6, height: 6, rx: 1.5,
+        class: "bb-hole" }, box));
+      const used = lesson.has("T" + n) || lesson.has("B" + n);
+      svg("text", { x: x(n), y: Y.num + 4, class: "bb-num" + (used ? " used" : "") }, box, String(n));
+      refs.lights["T" + n] = svg("circle", { cx: x(n), cy: Y.light, r: 9, class: "bb-light" }, box);
+      if (lesson.has("T" + n)) refs.volts["T" + n] = svg("text", { x: x(n), y: Y.volt,
+        class: "bb-volt" }, box, "");
+      if (usesBottom) {
+        Y.bot.forEach((y) => svg("rect", { x: x(n) - 3, y: y - 3, width: 6, height: 6, rx: 1.5,
+          class: "bb-hole" }, box));
+        refs.lights["B" + n] = svg("circle", { cx: x(n), cy: Y.lightB, r: 9, class: "bb-light" }, box);
+        if (lesson.has("B" + n)) refs.volts["B" + n] = svg("text", { x: x(n), y: Y.voltB + 4,
+          class: "bb-volt" }, box, "");
+      }
+    }
+
+    // Parts, where the lesson layout puts them. Each leg takes the next
+    // free hole in its row, so parts never sit on top of each other.
+    const free = {};
+    const point = (leg, other) => {
+      const r = splitRow(leg.row);
+      if (r) {
+        const holes = r.half === "T" ? Y.top : Y.bot;
+        const key = leg.row;
+        free[key] = (free[key] || 0);
+        const y = holes[Math.min(free[key], holes.length - 1)];
+        free[key] += 1;
+        return { x: x(r.n), y };
+      }
+      const o = splitRow(other.row);
+      const ox = o ? x(o.n) : X0 + 10;
+      const y = { "PT+": Y.plus, "PT-": Y.minus, "PB+": Y.plusB, "PB-": Y.minusB }[leg.row] ?? Y.plus;
+      return { x: ox - 14, y };
+    };
+    const step = b.step;  // 1-based step the student is on, or null
+    layout.forEach((part, i) => {
+      if (part.legs.length < 2) return;
+      const g = svg("g", { class: "bb-part" }, box);
+      if (step) g.classList.add(i < step - 1 ? "done" : i === step - 1 ? "now" : "later");
+      svg("title", {}, g, part.part + ": " +
+        part.legs.map((leg) => `${leg.leg} in ${leg.row}`).join(", "));
+      const p1 = point(part.legs[0], part.legs[1]);
+      const p2 = point(part.legs[1], part.legs[0]);
+      const name = part.part.toLowerCase();
+      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+      if (name.includes("wire")) {
+        const color = name.includes("red") ? "#e5483a" : name.includes("black") ? "#2b2d42" : "#14b3a6";
+        const lift = Math.max(18, Math.abs(p2.x - p1.x) * 0.25);
+        const d = `M${p1.x} ${p1.y} C${p1.x} ${p1.y - lift}, ${p2.x} ${p2.y - lift}, ${p2.x} ${p2.y}`;
+        svg("path", { d, class: "bb-outline" }, g);
+        svg("path", { d, class: "bb-wire", stroke: color }, g);
+        [p1, p2].forEach((p) => svg("circle", { cx: p.x, cy: p.y, r: 4, fill: color }, g));
+      } else if (name.includes("resistor")) {
+        const top = Math.min(p1.y, p2.y) - 26;
+        const len = Math.max(30, Math.min(64, Math.abs(p2.x - p1.x) * 0.6));
+        svg("path", { d: `M${p1.x} ${p1.y} L${p1.x} ${top} L${p2.x} ${top} L${p2.x} ${p2.y}`,
+          class: "bb-leg" }, g);
+        svg("rect", { x: mx - len / 2 - 4, y: top - 13, width: len + 8, height: 26, rx: 12,
+          class: "bb-outline" }, g);
+        svg("rect", { x: mx - len / 2, y: top - 9, width: len, height: 18, rx: 9, class: "bb-res" }, g);
+        bands(part.part).forEach((c, k) => svg("rect", { x: mx - len / 2 + 9 + k * 9, y: top - 9,
+          width: 5, height: 18, fill: c }, g));
+        [p1, p2].forEach((p) => svg("circle", { cx: p.x, cy: p.y, r: 3.5, class: "bb-end" }, g));
+      } else if (name.includes("led")) {
+        const top = Math.min(p1.y, p2.y) - 34;
+        svg("path", { d: `M${p1.x} ${p1.y} L${p1.x} ${top + 14} L${mx - 7} ${top + 6}`,
+          class: "bb-leg" }, g);
+        svg("path", { d: `M${p2.x} ${p2.y} L${p2.x} ${top + 18} L${mx + 7} ${top + 6}`,
+          class: "bb-leg" }, g);
+        svg("circle", { cx: mx, cy: top - 4, r: 19, class: "bb-outline" }, g);
+        const dome = svg("path", { d: `M${mx - 13} ${top + 8} L${mx - 13} ${top - 4} ` +
+          `A13 13 0 0 1 ${mx + 13} ${top - 4} L${mx + 13} ${top + 8} Z`, class: "bb-led" }, g);
+        svg("text", { x: p1.x - 9, y: top + 14, class: "bb-tiny" }, g, "+");
+        [p1, p2].forEach((p) => svg("circle", { cx: p.x, cy: p.y, r: 3.5, class: "bb-end" }, g));
+        refs.leds.push({ el: dome, plus: part.legs[0].row, minus: part.legs[1].row });
+      } else {
+        svg("path", { d: `M${p1.x} ${p1.y} L${p1.x} ${my - 24} M${p2.x} ${p2.y} L${p2.x} ${my - 24}`,
+          class: "bb-leg" }, g);
+        svg("rect", { x: Math.min(p1.x, p2.x) - 6, y: my - 40, width: Math.abs(p2.x - p1.x) + 12,
+          height: 18, rx: 7, class: "bb-box" }, g);
+      }
+    });
+    return refs;
+  }
+
+  function updateBreadboard(state, noBoard) {
+    const L = state.lesson, b = state.board;
+    const key = [L.id, JSON.stringify(L.layout), JSON.stringify(L.rows), b.step].join("|");
+    if (key !== bbKey || !bbRefs) {
+      bbKey = key;
+      bbRefs = buildBreadboard(L, b);
+    }
+    Object.entries(bbRefs.lights).forEach(([row, dot]) => {
+      const cls = "bb-light " + (b.lights[row] || "off");
+      if (dot.getAttribute("class") !== cls) dot.setAttribute("class", cls);
+    });
+    const ranges = (L.accept && L.accept.rows) || {};
+    const should = (L.expected && L.expected.rows) || {};
+    const volts = {};
+    b.rows.forEach((row) => {
+      const t = bbRefs.volts[row.name];
+      if (row.measured && !row.floating) volts[row.name] = row.volts;
+      if (!t) return;
+      let text, cls = "bb-volt";
+      if (noBoard) text = "?";
+      else if (!row.measured) { text = "–"; cls += " empty"; }
+      else if (row.floating) { text = "empty"; cls += " empty"; }
+      else {
+        text = fmt(row.volts, 2) + " V";
+        const rng = ranges[row.name];
+        if (rng && state.reading.power_on) {
+          const ok = row.volts >= (rng.min ?? -Infinity) && row.volts <= (rng.max ?? Infinity);
+          cls += ok ? " good" : " bad";
+        }
+      }
+      if (t.textContent !== text) t.textContent = text;
+      if (t.getAttribute("class") !== cls) t.setAttribute("class", cls);
+      const tip = `${row.label}: ${!row.measured ? "not measured" : text}` +
+        (row.name in should ? `, should be ${should[row.name]} V` : "");
+      let title = t.querySelector("title");
+      if (!title) title = svg("title", {}, t);
+      title.textContent = tip;
+    });
+    // The LED glows when it really has about 2 volts across it.
+    bbRefs.leds.forEach((led) => {
+      const plus = led.plus.startsWith("P") ? (led.plus === "PT+" ? state.shown.supply_v : 0) : volts[led.plus];
+      const minus = led.minus.startsWith("P") ? (led.minus === "PT+" ? state.shown.supply_v : 0) : volts[led.minus];
+      const across = plus - minus;
+      const on = !noBoard && state.reading.power_on && across > 1.6 && across < 3.3 &&
+        (state.shown.current_ma === null || state.shown.current_ma > 1);
+      const cls = "bb-led" + (on ? " on" : "");
+      if (led.el.getAttribute("class") !== cls) led.el.setAttribute("class", cls);
+    });
   }
 
   function renderBoard(state) {
     renderBoardLine(state);
     const noBoard = state.reading_ok === false;
     const b = state.board;
-    const L = state.lesson;
     const c = b.capabilities;
     $("caps").textContent = `Board: ${c.rows} rows measured, current sensor ` +
       `${c.has_current ? "yes" : "no"}, power switch ${c.has_power_switch ? "yes" : "no"}`;
 
-    const box = $("rows");
-    box.replaceChildren();
-    const should = (L.expected && L.expected.rows) || {};
-    const ranges = (L.accept && L.accept.rows) || {};
-    b.rows.forEach((row) => {
-      const cell = (cls, text) => {
-        const d = document.createElement("div");
-        d.className = cls;
-        d.textContent = text;
-        box.append(d);
-        return d;
-      };
-      cell("rname", row.label.charAt(0).toUpperCase() + row.label.slice(1));
-      const v = cell("rvolts", noBoard ? "?" : !row.measured ? "not measured"
-        : row.floating ? "empty" : fmt(row.volts, 2) + " V");
-      const rng = ranges[row.name];
-      if (row.measured && !row.floating && rng && state.reading.power_on) {
-        const ok = row.volts >= (rng.min ?? -Infinity) && row.volts <= (rng.max ?? Infinity);
-        v.classList.add(ok ? "good" : "bad");
-      }
-      cell("rshould", row.name in should ? `should be ${should[row.name]} V` : "");
-      const l = cell("rlight", "");
-      const dot = document.createElement("span");
-      dot.className = "light " + row.light;
-      l.append(dot, row.light);
-    });
+    updateBreadboard(state, noBoard);
+    const note = $("step-note");
+    const layout = state.lesson.layout || [];
+    note.hidden = !b.step;
+    if (b.step && layout[b.step - 1]) {
+      note.textContent = `Step ${b.step} of ${b.steps}: ${layout[b.step - 1].part}`;
+    }
     // Explain the colors that are lit right now (each color has one meaning).
-    const lit = [...new Set(b.rows.map((row) => row.light).filter((c) => c !== "off"))];
-    $("legend").textContent = lit.map((c) => `${c} = ${b.colors[c]}`).join(", ");
-    const note = $("rows-note");
-    note.hidden = !b.missing_rows.length || noBoard;
-    note.textContent = b.missing_rows.length
+    const lit = [...new Set(Object.values(b.lights).filter((c) => c !== "off"))];
+    const legend = $("legend");
+    const legendKey = lit.join(",");
+    if (legend.dataset.key !== legendKey) {
+      legend.dataset.key = legendKey;
+      legend.replaceChildren();
+      lit.forEach((color) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        const dot = document.createElement("span");
+        dot.className = "light " + color;
+        chip.append(dot, `${color} = ${b.colors[color]}`);
+        legend.append(chip);
+      });
+    }
+    const missing = $("rows-note");
+    missing.hidden = !b.missing_rows.length || noBoard;
+    missing.textContent = b.missing_rows.length
       ? `This board does not measure ${b.missing_rows.join(", ")}, so this lesson cannot be checked.`
       : "";
 
@@ -617,7 +1118,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "bbtn";
-      btn.textContent = `${id} \u00b7 ${label}`;
+      btn.textContent = `${id} · ${label}`;
       btn.disabled = busy;
       btn.addEventListener("click", () => pressButton(Number(id)));
       btns.append(btn);
@@ -630,21 +1131,19 @@
       const out = await post("/api/press", { id });
       if (out.error) $("hint").textContent = out.error;
     } catch (e) {
-      $("hint").textContent = "Could not reach the tutor server.";
+      $("hint").textContent = "Zip cannot reach the tutor program right now.";
     }
     lastLogKey = "";
   }
 
-  // The mini-lesson card for the latest mistake. Hidden while the tutor
-  // is thinking and after a reply with no mistake.
   // On a widescreen display (projector), make sure everything fits one
-  // screen: if the page is taller than the window, shrink only the tutor's
-  // message, step by step, never below 1rem (24 px on a 1080p screen).
+  // screen: if the page is taller than the window, shrink only Zip's
+  // words, step by step, never below 1rem (24 px on a 1080p screen).
   function fitToScreen() {
     const hint = $("hint");
     hint.style.fontSize = "";
     if (window.innerWidth < 1100) return;  // phones and narrow windows scroll
-    let size = 1.35;
+    let size = 1.3;
     while (document.documentElement.scrollHeight > window.innerHeight && size > 1.0) {
       size = Math.round((size - 0.05) * 100) / 100;
       hint.style.fontSize = size + "rem";
@@ -652,6 +1151,8 @@
   }
   window.addEventListener("resize", fitToScreen);
 
+  // The mini-lesson card for the latest mistake. Hidden while the tutor
+  // is thinking and after a reply with no mistake.
   function renderMini(card) {
     const key = JSON.stringify(card) + busy;
     if (key === lastMiniKey) return;
@@ -688,7 +1189,7 @@
     if (a) {
       const verdict = document.createElement("span");
       verdict.className = "verdict";
-      verdict.textContent = a.correct ? "Right! " : "Not quite. ";
+      verdict.textContent = a.correct ? "Right! " : "Good try! ";
       result.append(verdict, a.why);
     }
     fitToScreen();
@@ -743,8 +1244,9 @@
     lastMiniKey = "";     // hide or show the mini-lesson card
     lastButtonsKey = "";  // board buttons enabled/disabled
     if (on) {
-      $("hint").textContent = "The tutor is measuring and thinking…";
+      $("hint").textContent = "Let me look at your circuit…";
       $("hint").classList.add("thinking");
+      setMood("thinking");
     }
   }
 
@@ -755,13 +1257,25 @@
       const out = await post("/api/ask", { text });
       $("hint").textContent = out.reply || out.error || "(no reply)";
     } catch (e) {
-      $("hint").textContent = "Could not reach the tutor server.";
+      $("hint").textContent = "Zip cannot reach the tutor program right now.";
     } finally {
       $("hint").classList.remove("thinking");
       setBusy(false);
       lastLogKey = "";
     }
   }
+
+  // ---- Teacher view: always closed when the page opens ---------------------
+  function setTeacher(open) {
+    $("teacher").hidden = !open;
+    $("teacher-toggle").setAttribute("aria-expanded", String(open));
+    if (open) $("teacher-close").focus();
+  }
+  $("teacher-toggle").addEventListener("click", () => setTeacher($("teacher").hidden));
+  $("teacher-close").addEventListener("click", () => { setTeacher(false); $("teacher-toggle").focus(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("teacher").hidden) { setTeacher(false); $("teacher-toggle").focus(); }
+  });
 
   $("check").addEventListener("click", () => askTutor("Check my circuit"));
   $("fixed").addEventListener("click", () => askTutor("I fixed it, check again"));
@@ -775,7 +1289,8 @@
   $("reset").addEventListener("click", async () => {
     if (!confirm("Start again with a new student? This forgets the mistake history.")) return;
     await post("/api/reset");
-    lastLogKey = lastHistoryKey = lastScenarioKey = lastMiniKey = lastButtonsKey = "";
+    lastLogKey = lastHistoryKey = lastScenarioKey = lastMiniKey = lastButtonsKey = lastPathKey = "";
+    lastStars = null;
   });
 
   poll();
