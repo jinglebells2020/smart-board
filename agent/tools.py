@@ -22,10 +22,11 @@ def make_tools(session):
     board = session.board
 
     def _measure():
-        summary, result, safety_cut = session.measure()
-        rows = summary["rows"]
+        return _report(*session.measure())
+
+    def _report(summary, result, safety_cut):
         return {
-            "rows": rows,
+            "rows": summary["rows"],
             "floating": summary["floating"],
             "supply_v": summary["supply_v"],
             "power_on": summary["power_on"],
@@ -75,13 +76,28 @@ def make_tools(session):
         return json.dumps(answer)
 
     def restore_power() -> str:
-        """Switch breadboard power back ON, after the student says they
-        fixed the circuit. Measure right after: a dangerous circuit is
-        switched off again."""
-        answer = board.restore()
-        if answer.get("type") == "error":
-            return json.dumps(dict(answer, do_instead=MANUAL_ON))
-        return json.dumps(answer)
+        """Switch breadboard power back ON. Only works when the student
+        asked for it in this message (said they fixed it, or asked for the
+        power). The circuit is measured at once: if it is still unsafe,
+        power goes off again ("recut": true) and "why" says why. Also
+        returns lesson_check, like read_rows."""
+        result = session.request_power_on()
+        if result.get("error") == "no power switch":
+            return json.dumps({"type": "error", "msg": "no power switch",
+                               "do_instead": MANUAL_ON})
+        if result.get("error"):
+            return json.dumps({"type": "error", "error": result["error"], "msg": result["say"]})
+        out = _report(result["summary"], result["lesson_check"], result["safety_cut"])
+        out.update(power_on=result["power_on"], recut=result["recut"])
+        if result["recut"]:
+            out["why"] = result["why"]
+        return json.dumps(out)
+
+    def get_hint() -> str:
+        """When the student asks for a hint: the next level of help for
+        their most recent mistake (hint, then full explanation), or where
+        the current build step goes. Does not measure or change power."""
+        return json.dumps(session.hint())
 
     def light_row(rows: list[str], color: str) -> str:
         """Light the lights beside one or more rows, like ["T10", "T12"].
@@ -122,5 +138,5 @@ def make_tools(session):
         Call only after lesson_check status is "ok"."""
         return json.dumps(session.next_lesson())
 
-    return [read_rows, read_current, cut_power, restore_power, light_row,
+    return [read_rows, read_current, cut_power, restore_power, get_hint, light_row,
             clear_lights, show_on_board, log_mistake, next_lesson]

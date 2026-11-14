@@ -109,9 +109,27 @@ class TestButtons(ServerCase):
         self.assertEqual(s["history"][-1]["mistake"], "led_backwards")
 
     def test_hint_button(self):
+        # No mistake yet: where the first part goes. Nothing is logged.
         self.post("/api/build", {"scenario": "open_circuit"})
         self.press(2)
-        self.assertEqual(self.state()["history"][-1]["mistake"], "open_circuit")
+        s = self.state()
+        self.assertIn("Red wire", s["log"][-1]["text"])
+        self.assertEqual(s["history"], [])
+        # After a mistake: the full explanation, still logged only once.
+        self.press(1)
+        self.press(2)
+        s = self.state()
+        explain = next(m for m in LESSONS[1]["mistakes"] if m["id"] == "open_circuit")["explain"]
+        self.assertEqual(s["log"][-1]["text"], explain)
+        self.assertEqual(len(s["history"]), 1)
+
+    def test_power_button_into_an_unsafe_circuit(self):
+        self.post("/api/build", {"scenario": "no_resistor"})
+        self.press(1)
+        self.press(4)
+        s = self.state()
+        self.assertFalse(s["reading"]["power_on"])
+        self.assertIn("still not safe", s["log"][-1]["text"])
 
     def test_power_button_with_a_switch(self):
         self.press(4)

@@ -8,6 +8,7 @@ here, so a confused model cannot break them.
 """
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -22,6 +23,15 @@ REPEAT_IF_SEEN = 2  # same mistake this many times -> practice the lesson again
 # (a board with no power switch). fit_screen keeps it to the screen size.
 MANUAL_OFF_SCREEN = "DANGER!|Switch the power OFF|by hand now.|Then fix the circuit."
 NO_SWITCH_SCREEN = "No power switch.|Use the switch on|the power supply."
+STILL_UNSAFE_SCREEN = "Still unsafe!|Power is off again.|Fix the circuit|first."
+
+# A student message that asks for power to come back on: they say they
+# fixed something, or ask for the power. Only then may the AI turn power
+# on (button 4 always may). Every new message replaces the answer.
+ASKS_FOR_POWER = re.compile(
+    r"\b(fix(ed|es)?|repair(ed)?|added|replaced|swapped|changed|moved|flipped"
+    r"|turned (it|the \w+) around|(turn|switch|put) (the )?power (back )?on"
+    r"|power (back )?on)\b", re.IGNORECASE)
 
 
 def _short(name):
@@ -42,6 +52,13 @@ class Session:
         self.lesson_id = lesson
         self.passed_current = False
         self.step = -1  # building: -1 = not started; else index into layout
+        # May the AI turn power on? Only while handling a student message
+        # that asks for it (see hear()). Button 4 does not need this.
+        self.restore_allowed = False
+        # The most recent mistake not yet fixed, and the help given for it:
+        # {"lesson", "mistake", "level": "hint" | "explain"}. The hint button
+        # uses it; a correct check or a new lesson clears it.
+        self.open_mistake = None
         # The most recent log_mistake call: {"lesson", "mistake", "occurrence"}.
         # The web page uses it to show the matching mini-lesson card.
         self.last_logged = None
@@ -61,9 +78,16 @@ class Session:
             # A new lesson starts with dark lights: old green or red lights
             # would point at rows that mean something else now.
             self.board.clear_lights()
+            self.open_mistake = None
         self.lesson_id = lesson_id
         self.passed_current = False
         self.step = -1
+
+    # --- What the student said -----------------------------------------
+    def hear(self, text):
+        """Called with every student message, before the AI sees it.
+        Decides, in plain Python, whether this message asks for power."""
+        self.restore_allowed = bool(ASKS_FOR_POWER.search(text or ""))
 
     # --- Measuring -----------------------------------------------------
     def measure(self):
@@ -95,6 +119,7 @@ class Session:
         result = check(summary, self.lesson)
         if result["status"] == "ok":
             self.passed_current = True
+            self.open_mistake = None  # nothing left to give hints about
         if result.get("action") == "cut_power" and summary["power_on"] and not safety_cut:
             if board.has_power_switch:
                 board.cut()
@@ -130,19 +155,106 @@ class Session:
                 "part": part["part"], "legs": legs, "rows": rows,
                 "screen": screen.get("lines", [])}
 
-    # --- Power button --------------------------------------------------
+    # --- Power ----------------------------------------------------------
+    def turn_power_on(self):
+        """The only way power is turned on (button 4, the AI's tool, a
+        "fixed it" message). Measures at once and cuts again if the circuit
+        is still unsafe, and says why. Returns a dict with power_on,
+        recut, say, and the measurement (summary, lesson_check)."""
+        if not self.board.has_power_switch:
+            return {"power_on": None, "error": "no power switch",
+                    "say": "This board cannot switch the power. Use the switch "
+                           "on the power supply."}
+        answer = self.board.restore()
+        if answer.get("type") == "error":
+            return {"power_on": None, "error": answer.get("msg", "error"),
+                    "say": f"The board did not switch the power on: {answer.get('msg')}."}
+        self.restore_allowed = False  # one "fixed it" turns power on once
+        summary, result, safety_cut = self.measure()
+        if safety_cut or not summary["power_on"]:
+            self.board.show(STILL_UNSAFE_SCREEN)
+            return {"power_on": False, "recut": True, "say": self._why_unsafe(summary, result),
+                    "why": self._why_unsafe(summary, result),
+                    "summary": summary, "lesson_check": result, "safety_cut": True}
+        self.board.show("Power is ON.")
+        return {"power_on": True, "recut": False, "say": "Power is on.",
+                "summary": summary, "lesson_check": result, "safety_cut": False}
+
+    def _why_unsafe(self, summary, result):
+        why = "The power went off again right away, because the circuit is still not safe"
+        current = summary.get("current_ma")
+        if summary.get("current_source") == "measured" and current is not None \
+                and current > SAFETY_MAX_MA:
+            why += f": {current:.0f} mA flowed, and more than {SAFETY_MAX_MA:.0f} mA is too much"
+        elif result.get("mistake_id"):
+            spec = self._mistake_spec(self.lesson_id, result["mistake_id"]) or {}
+            if spec.get("description"):
+                why += f". It still looks like this: {spec['description'][0].lower()}{spec['description'][1:]}"
+        return why + ". Fix the circuit first, then turn the power on again."
+
+    def request_power_on(self):
+        """For the AI's restore_power tool: only when the student asked."""
+        if not self.restore_allowed:
+            return {"power_on": None, "error": "not allowed",
+                    "say": "Only the student can turn the power on: they press "
+                           "button 4, or say they fixed the circuit."}
+        return self.turn_power_on()
+
     def toggle_power(self):
-        """Button 4: power off if on, on if off. A board with no power
-        switch says so on its screen instead."""
+        """Button 4: power off if on, on if off (the student is asking).
+        A board with no power switch says so on its screen instead."""
         if not self.board.has_power_switch:
             self.board.show(NO_SWITCH_SCREEN)
             return {"error": "no power switch",
                     "say": "This board cannot switch the power. Use the switch "
                            "on the power supply."}
-        on = self.board.read()["power_on"]
-        answer = self.board.cut() if on else self.board.restore()
-        self.board.show("Power is OFF." if on else "Power is ON.")
-        return {"power_on": not on, "answer": answer}
+        if self.board.read()["power_on"]:
+            answer = self.board.cut()
+            self.board.show("Power is OFF.")
+            return {"power_on": False, "answer": answer, "say": "Power is off."}
+        result = self.turn_power_on()
+        return {k: v for k, v in result.items() if k not in ("summary",)}
+
+    # --- Hint button ----------------------------------------------------
+    def hint(self):
+        """Button 2: the next level of help, in plain Python.
+
+        Never measures, never changes power, never adds a mistake. For the
+        most recent unfixed mistake: the hint, then the full explanation.
+        With no mistake: where the current build step goes.
+        """
+        om = self.open_mistake
+        if om:
+            spec = self._mistake_spec(om["lesson"], om["mistake"])
+            om["level"] = "explain"  # after the hint comes the full explanation
+            self.board.show("More help is on|the laptop.")
+            return {"level": "explain", "mistake": om["mistake"], "say": spec["explain"]}
+        layout = self.lesson["layout"]
+        i = max(self.step, 0)
+        if i >= len(layout):
+            return {"level": "step", "say": "All parts are in place. Press 1 to check "
+                                            "your circuit."}
+        part = layout[i]
+        start = "" if self.step >= 0 else "Press 3 to start building. "
+        return {"level": "step", "step": i + 1, "part": part["part"],
+                "say": f"{start}Step {i + 1} of {len(layout)}: {part['part']}. "
+                       f"Put {self.where_legs(part['legs'])}."}
+
+    @classmethod
+    def where_legs(cls, legs):
+        """Where a part's two legs go, in plain words."""
+        a, b = legs
+        if "(" in a["leg"]:  # a part with + and - legs
+            return (f"the {a['leg']} in {cls._where(a['row'])} and the "
+                    f"{b['leg']} in {cls._where(b['row'])}")
+        kind = a["leg"].split()[-1]  # "leg" or "end"
+        return (f"one {kind} in {cls._where(a['row'])} and the other "
+                f"{kind} in {cls._where(b['row'])}")
+
+    @staticmethod
+    def _where(name):
+        return {"PT+": "the top + line (5 V)", "PT-": "the top - line (ground)"}.get(
+            name, row_label(name))
 
     # --- Mistake history -----------------------------------------------
     def times_seen(self, lesson_id, mistake_id):
@@ -175,6 +287,7 @@ class Session:
         n = self.times_seen(self.lesson_id, mistake_id)
         # Rule from CLAUDE.md: hint first, never the full answer on the first try.
         level, say = ("hint", mistake["hint"]) if n == 1 else ("explain", mistake["explain"])
+        self.open_mistake = {"lesson": self.lesson_id, "mistake": mistake_id, "level": level}
         return {"times_seen": n, "level": level, "say": say,
                 "mini_lesson": dict(mistake["mini_lesson"])}
 

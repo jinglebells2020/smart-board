@@ -224,11 +224,16 @@ The tests in Part B never use the key, even when it is set.
    | **3 · Next step** once more | Lights off. Screen: "All parts placed! / Press 1 to check." |
    | **LED backwards**, then **1 · Check my circuit** | Rows 10 and 12 turn **red** (problem here). The tutor gives a hint. Screen: "LEDs are one-way doors / Red rows: look here." A purple **Mini-lesson** card appears with a question and 3 answers |
    | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green: "Right!" and why. History, Quiz column: "Right" |
-   | **2 · I need a hint** | Same mistake twice: the full explanation, and a fresh card. History: "2nd, Full explanation" |
+   | **2 · I need a hint** | The next level of help: the full explanation. Nothing is measured, power is not touched, and the history still has one entry |
    | **No resistor**, then **1 · Check my circuit** | **POWER OFF** turns red, rows 5 and 10 red. Card: "Resistors keep current small" |
-   | **Correct circuit**, then **I fixed it** | Power back on, all three rows **green**. Screen: "Correct! Well done." The tutor asks for lesson 1 once more |
-   | **1 · Check my circuit** | Correct again: the page moves to lesson 2 and the lights go off |
+   | **4 · Power off / on** (before fixing) | Power comes on, is measured at once and goes off again. Tutor: "The power went off again right away, because the circuit is still not safe: 100 mA flowed…". Screen: "Still unsafe! Power is off again." |
+   | **Correct circuit**, then **I fixed it** | Power back on, all three rows **green**. Screen: "Correct! Well done." The page moves to lesson 2 and the lights go off |
    | **4 · Power off / on** (twice) | Power off, then on again. The screen says which |
+
+   Power only comes back on when the student asks: button 4, or saying
+   they fixed it ("I fixed it", "I added the resistor"). "Check my circuit"
+   while power is off just says how to turn it on. Every time power comes
+   on, the circuit is measured at once and switched off again if unsafe.
 
    Under each hint, a small grey line says what the tutor did, for
    example "The tutor measured the rows, saved the mistake, cleared the

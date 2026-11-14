@@ -26,8 +26,8 @@ The software must work with any of those answers.
   buttons do, and the screen size (4 x 20 for now), in one place.
 - agent/ : Python, built with LangChain deepagents
   (create_deep_agent). Tools: read_rows, read_current, cut_power,
-  restore_power, light_row, clear_lights, show_on_board, log_mistake,
-  next_lesson.
+  restore_power, get_hint, light_row, clear_lights, show_on_board,
+  log_mistake, next_lesson.
 - web/index.html : one page UI. Shows lesson, live readings, the rows
   the lesson uses with their lights, hints, a mini-lesson card with a
   quiz after each mistake, and (with the fake board) a pretend board
@@ -54,6 +54,11 @@ yellow = careful, off = light off.
 - Never send more text to the board screen than it holds.
 - With no power switch, a dangerous mistake means telling the student
   to switch the power off by hand, on the laptop and the board screen.
+- Every time power is turned on, measure at once and cut again if
+  unsafe, and say why. Power only comes on when the student asks
+  (button 4, or saying they fixed it). Enforced in plain Python.
+- The hint button never measures, never changes power and never adds
+  a mistake: it only gives the next level of help.
 - Never commit API keys. Read ANTHROPIC_API_KEY from environment.
 - Keep README updated: target user, setup steps, demo script.
 - I am a beginner. Explain every step I must do by hand.

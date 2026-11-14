@@ -122,11 +122,16 @@ Works today with the fake board. Show it on the projector page
    red, the tutor gives a hint (not the answer), the screen shows the
    mini-lesson title, and the card "LEDs are one-way doors" appears with
    a quiz question. Answer it: right or wrong, the page says why.
-3. **2 · I need a hint** → same mistake again: now the full explanation.
+3. **2 · I need a hint** → the next level of help: the full
+   explanation. The hint button never measures, never changes power and
+   never adds a mistake to the history.
 4. No resistor, then 1 → power is cut at once and the tutor asks what
    keeps the current small. Card: "Resistors keep current small".
-5. Fixed → power back on, all rows green. Because of the repeated
-   mistake, the tutor asks for lesson 1 once more; then lesson 2.
+   Press **4** before fixing it: power comes on, is measured at once,
+   and goes off again ("still not safe: 100 mA flowed").
+5. Correct circuit, then **I fixed it** → power back on, all rows green,
+   and on to lesson 2. (Make the same mistake twice in one lesson and
+   the tutor asks for that lesson once more.)
 6. A mistake on no list ("Not on the list: 4.7k bottom resistor") → the
    tutor still explains with a clue from the row voltages, and lights
    that row yellow (careful).

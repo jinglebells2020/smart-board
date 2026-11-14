@@ -115,23 +115,19 @@ class App:
     def on_button(self, button_id):
         result = handle_button(button_id, self.session,
                                lambda text: self.ask(text).get("reply", ""))
-        if "reply" in result:
-            return result  # self.ask already put it in the log
-        if result.get("action") == "next_step":
+        action = result.get("action")
+        if action == "check":
+            return result  # self.ask already put the tutor's reply in the log
+        if action == "hint":
+            text = result["say"]
+        elif action == "next_step":
             if result.get("done"):
                 text = "All parts are in place. Press 1 (Check my circuit) when you are ready."
             else:
-                a, b = result["legs"]
-                if "(" in a["leg"]:  # a part with + and - legs
-                    where = (f"the {a['leg']} in {self._where(a['row'])} and the "
-                             f"{b['leg']} in {self._where(b['row'])}")
-                else:
-                    kind = a["leg"].split()[-1]  # "leg" or "end"
-                    where = (f"one {kind} in {self._where(a['row'])} and the other "
-                             f"{kind} in {self._where(b['row'])}")
                 text = (f"Step {result['step']} of {result['of']}: {result['part']}. "
-                        f"Put {where}. The blue lights show the rows.")
-        elif result.get("action") == "power":
+                        f"Put {Session.where_legs(result['legs'])}. "
+                        "The blue lights show the rows.")
+        elif action == "power":
             text = result.get("say") or ("Power is off." if not result.get("power_on")
                                          else "Power is on.")
         else:

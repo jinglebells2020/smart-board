@@ -26,16 +26,23 @@ def make_model():
 def build_agent(session, model=None):
     if model is None:
         model, _ = make_model()
-    return create_deep_agent(
+    agent = create_deep_agent(
         model=model,
         tools=make_tools(session),
         system_prompt=SYSTEM_PROMPT,
     )
+    # ask() tells the session what the student said, so plain Python (not
+    # the AI) decides whether this message may turn power on.
+    agent.smart_board_session = session
+    return agent
 
 
 def ask(agent, history, text):
     """Send one student message. history is the list of past messages,
     updated in place. Returns the agent's reply text and the new messages."""
+    session = getattr(agent, "smart_board_session", None)
+    if session is not None:
+        session.hear(text)
     before = len(history)
     result = agent.invoke({"messages": history + [{"role": "user", "content": text}]})
     history[:] = result["messages"]

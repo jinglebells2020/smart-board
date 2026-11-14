@@ -95,11 +95,11 @@ class TestButtons(unittest.TestCase):
         tutor = lambda text: asked.append(text) or "ok"
         self.assertEqual(handle_button(1, session, tutor)["action"], "check")
         self.assertEqual(handle_button(2, session, tutor)["action"], "hint")
-        self.assertEqual(asked, ["Check my circuit", "I need a hint"])
+        self.assertEqual(asked, ["Check my circuit"])  # 2 does not ask the tutor
         self.assertEqual(handle_button(3, session, tutor)["action"], "next_step")
         self.assertEqual(handle_button(4, session, tutor)["action"], "power")
         self.assertIn("error", handle_button(9, session, tutor))
-        self.assertEqual(asked, ["Check my circuit", "I need a hint"])  # 3, 4: no AI
+        self.assertEqual(asked, ["Check my circuit"])  # 2, 3, 4: no AI
 
     def test_button_events_come_from_the_board(self):
         board = FakeBoard()
@@ -281,8 +281,10 @@ class TestWholeDemoOffline(unittest.TestCase):
         board.send("SCENARIO 1 correct")
         reply = tutor("I fixed it")
         self.assertIn("correct", reply)
-        self.assertEqual(session.lesson_id, 1)  # same mistake twice: practice again
-        self.assertIn("correct", handle_button(1, session, tutor)["reply"])
+        # Each mistake was logged once (the hint button logs nothing), so
+        # there is no repeated mistake to practice: on to lesson 2.
+        self.assertEqual([m["mistake"] for m in session.history["mistakes"]],
+                         ["led_backwards", "no_resistor"])
         self.assertEqual(session.lesson_id, 2)
 
 

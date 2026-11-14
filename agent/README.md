@@ -6,7 +6,7 @@ How to run it: see RUN.md in the main folder.
 | File            | What it does                                              |
 |-----------------|-----------------------------------------------------------|
 | `build.py`      | Builds the agent. Uses Claude if ANTHROPIC_API_KEY is set, otherwise the offline mock |
-| `tools.py`      | The tools: read_rows, read_current, cut_power, restore_power, light_row, clear_lights, show_on_board, log_mistake, next_lesson |
+| `tools.py`      | The tools: read_rows, read_current, cut_power, restore_power, get_hint, light_row, clear_lights, show_on_board, log_mistake, next_lesson |
 | `session.py`    | Rules that must never go wrong: safety, hints first, step-by-step building, the power button, picking the next lesson, saving history |
 | `boardlink.py`  | The laptop's handle on any board (fake or real): what it has, lights and screen as last set, checks before sending |
 | `buttons.py`    | What the 4 board buttons do (the meanings are in `protocol.py`) |
@@ -42,6 +42,27 @@ once, before the AI answers:
   OFF by hand now" on the board screen. The tutor's first words then
   tell the student the same.
 
+Turning power **on** has its own rules, also in plain Python
+(`session.turn_power_on()`, the only way power is switched on):
+
+- every time power comes on (button 4, the `restore_power` tool, a
+  "fixed it" message) the circuit is measured at once, and power is cut
+  again if it is still unsafe, with the reason ("still not safe: 100 mA
+  flowed") on the laptop and the board screen;
+- power only comes on when the student asks: button 4, or a message that
+  says they fixed something or asks for power. `session.hear()` decides
+  this from the student's own words before the AI sees them, and
+  `restore_power` refuses otherwise. "Check my circuit" never turns
+  power on.
+
+## The hint button
+
+Button 2 (and the `get_hint` tool) never measures, never changes power
+and never adds a mistake to the history. It gives the next level of
+help for the most recent mistake not yet fixed (after the hint comes the
+full explanation), or, with no mistake, where the current build step
+goes.
+
 ## Lights, screen and buttons
 
 - Light colors always mean the same (`protocol.COLORS`): blue = put a
@@ -51,7 +72,8 @@ once, before the AI answers:
 - Screen text is always fitted to `SCREEN_LINES` x `SCREEN_CHARS` in
   `protocol.py` (4 x 20 for now) before it is sent.
 - Buttons (`protocol.BUTTONS`, carried out in `buttons.py`):
-  1 = check my circuit, 2 = I need a hint (both ask the tutor),
+  1 = check my circuit (asks the tutor), 2 = I need a hint (next level
+  of help, no AI),
   3 = next step (lights the next part's rows blue and names the part
   on the screen; no AI), 4 = power off or on.
 
