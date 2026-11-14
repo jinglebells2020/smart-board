@@ -69,7 +69,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (301 tests). They never call Claude, so
+The last line should say `OK` (336 tests). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -218,18 +218,70 @@ buttons. Pick circuits in **Teacher → Practice mode**.
 ## How we use deepagents
 
 The tutor is one `create_deep_agent` (agent/build.py) with our board
-tools. Two deepagents features do real teaching work:
+tools. These deepagents features do real teaching work. Real Claude is
+not needed to see them: offline, scripted models run the same
+deepagents loop, so every test exercises the real machinery.
 
 | Feature | deepagents part | File | Why it helps a student |
 |---|---|---|---|
-| **The detective** | A subagent (`subagents=[...]`), called through the built-in `task` tool, only when a mistake is not on the lesson's list | `agent/detective.py` | The lesson file cannot list every mistake. The detective puts the row voltages next to the lesson layout (which part touches which row) and answers with at most two likely causes, as **questions** ("Is the LED's long leg pushed all the way into row 10?"). The student still does the looking, and is never told a guess as if it were true. Its answer is a structured response (`response_format`): Python rejects more than two items, anything that is not a question, or words like "definitely", and the model has to try again. |
-| **Student notebook** | Memory (`memory=[...]`) on a `FilesystemBackend`, plus `permissions` | `agent/notebook.py` | One file per student (`notebooks/<name>.md`), loaded at the start of every message, so the tutor remembers this student between days ("Your notebook says this happened before"). After each check the agent adds one line with its own `edit_file` tool: the mistake, the quiz result, and what to try next time. Permissions let it write this one file and nothing else on the computer. |
+| **The detective** | A subagent (`subagents=[...]`), called through the built-in `task` tool, only when a mistake is not on the lesson's list. Structured answer (`response_format`) | `agent/detective.py` | The lesson file cannot list every mistake. The detective puts the row voltages next to the lesson layout and answers with at most two likely causes, as **questions** ("Is the LED's long leg pushed all the way into row 10?"). Python rejects more than two, anything that is not a question, or sure-sounding words, so the student is never told a guess as if it were true. |
+| **Student notebook** | Memory (`memory=[...]`) on a `FilesystemBackend`, plus `permissions` | `agent/notebook.py` | One file per student, loaded at the start of every reply, so Zip remembers you between days ("Your notebook says this happened before"). After each check Zip adds one line with its own `edit_file` tool. Permissions let it write this one file and nothing else. |
+| **Ask before power comes back on** | Human in the loop: `interrupt_on={"restore_power": ...}` with a checkpointer (`InMemorySaver`) | `agent/build.py` (`ask`, `answer_power`), `web/server.py` | Before Zip switches the power on, the run pauses and Zip asks "Turn the power back on?" with **Yes** / **No** (board button 4 = Yes). The student stays in charge of the power. Yes still measures at once and cuts again if the circuit is unsafe (plain Python); No means the tool never runs. |
+| **Lesson writer with a grader** | A subagent (`task` tool) whose agent runs `RubricMiddleware`: a grader agent checks the new lesson against a rubric and sends it back for revision | `agent/lesson_writer.py` | When the same mistake comes back, or the quiz was answered wrong, the old explanation did not stick. The lesson writer writes a new mini-lesson with a **different everyday comparison** (a bike tire valve instead of a one-way door). The grader checks: at most 3 short sentences, 6th grade words, never says what to change on the board, exactly 3 options with 1 right. Then plain Python checks it again; only then is it shown, tagged **Written by Zip for you**. Otherwise the built-in card stays. The notebook notes which comparison was used, so it is never repeated. |
+| **"How Zip worked"** | A middleware (`wrap_tool_call`) on the tutor and on each subagent, the memory backend, and the grader's `on_evaluation` | `agent/trace.py` | In Teacher view, every reply is listed step by step in plain words, built from what really ran, never guessed. Subagent steps carry a badge (detective, lesson writer, grader). Teachers and judges see the agent think. |
 
-The detective sees only what it needs (one read-only tool), and runs in
-its own context, so the tutor's conversation stays short. Offline (no
-API key) both run with scripted models (`agent/mock_model.py`,
-`ScriptedDetectiveModel`), so every test runs the real deepagents loop:
-`tests/test_deepagents_features.py`.
+The subagents see only what they need (one read-only tool each) and run
+in their own context, so the tutor's conversation stays short. Tests:
+`tests/test_deepagents_features.py`, `tests/test_how_zip_worked.py`,
+`tests/test_ask_before_power.py`, `tests/test_lesson_writer.py`.
+
+## LangChain demo (60 seconds)
+
+Start the page with a named student, so the notebook is Maya's:
+
+```
+python web\server.py --fresh --student Maya
+```
+
+Open http://localhost:8000, press F11. To pick a circuit: **Teacher**
+(top right) → **Practice mode** → the circuit → **Close**. To show what
+Zip did: **Teacher** → **How Zip worked**.
+
+1. **0:00 The detective.** Pick **Not on the list: 150 ohm resistor**,
+   click **Check my circuit**. Zip gives a clue and the detective's
+   question. How Zip worked:
+   1. Read Maya's notebook
+   2. Measured the rows
+   3. Wrote "Something is off." on the board screen
+   4. Asked the detective
+   5. Compared the rows with the plan `detective`
+   6. Wrote in Maya's notebook
+2. **0:15 Memory and the lesson writer.** Pick **LED backwards**, click
+   **Check my circuit** twice. The second time Zip says "Your notebook
+   says this happened before" and "I also wrote you a new mini-lesson".
+   How Zip worked (second check): … 6. Wrote "LEDs are one-way doors"
+   on the board screen, 7. Asked the lesson writer, 8. Read the old
+   mini-lesson and the comparisons already used `lesson writer`,
+   9. Graded the new lesson: it passes every rule `grader`, 10. Wrote in
+   Maya's notebook. Click **Learn why**: the card "LEDs work like a bike
+   tire valve" has the tag **Written by Zip for you**.
+3. **0:35 Ask before power.** Pick **No resistor**, click **Check my
+   circuit**: the power is cut (How Zip worked: … Cut the power, Saved
+   the mistake (no resistor), Lit rows 5 and 10 red …). Pick **Correct
+   circuit**, click **I fixed it**: Zip asks **"Turn the power back
+   on?"**. Click **Yes** (or board button 4). How Zip worked:
+   1. Read Maya's notebook
+   2. Measured the rows
+   3. Asked you: turn the power back on? You said yes
+   4. Turned the power back on and measured it at once
+   5. Turned the lights off
+   6. Lit rows 5, 10 and 12 green
+   7. Picked the next lesson
+   8. Wrote "Correct! Well done." on the board screen
+   9. Wrote in Maya's notebook
+4. **0:55 The notebook.** Teacher → **Open the student's notebook**: one
+   line per check, and "Zip wrote a new mini-lesson … using the
+   comparison "a bike tire valve"".
 
 ## Consulted with
 

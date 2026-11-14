@@ -250,7 +250,7 @@ The tests in Part B never use the key, even when it is set.
    | **2 · I need a hint** | Zip, still **curious**, gives the next level of help: the full explanation. Nothing is measured, power is not touched |
    | Teacher → **No resistor**, Close, then **1 · Check my circuit** | Zip looks **careful** (a friendly yellow sign, nothing scary). The power sign says **Power off**. Mini-lesson: "Resistors keep current small" |
    | **4 · Power off / on** (before fixing) | Power comes on, is measured at once and goes off again. Zip: "The power went off again right away, because the circuit is still not safe: 100 mA flowed…" |
-   | Teacher → **Correct circuit**, Close, then **I fixed it** | Zip turns **happy** and bounces, the lesson's rows glow green for a moment, a short burst of confetti falls (no sound), the LED in the drawing lights up yellow, and lesson 1 on the path gets a green tick with its stars. Zip: "…This is the next lesson you have not passed yet." The page moves to lesson 2 |
+   | Teacher → **Correct circuit**, Close, then **I fixed it**, then **Yes** | Zip first asks **"Turn the power back on?"** with **Yes** and **No** (board button 4 also means Yes; No keeps the power off). After Yes, Zip turns **happy** and bounces, the lesson's rows glow green for a moment, a short burst of confetti falls (no sound), the LED in the drawing glows red, and lesson 1 on the path gets a green tick with its stars. Zip: "…This is the next lesson you have not passed yet." The page moves to lesson 2 |
    | **4 · Power off / on** (twice) | Power off (Zip careful), then on again (Zip happy) |
 
    **The stars** (under each lesson on the path) come from what the
@@ -264,10 +264,16 @@ The tests in Part B never use the key, even when it is set.
    while power is off just says how to turn it on. Every time power comes
    on, the circuit is measured at once and switched off again if unsafe.
 
-   Each quiz takes one answer. A second click does not change it.
+   Each quiz takes one answer. A second click does not change it. A
+   wrong answer, or the same mistake a second time, makes Zip ask its
+   lesson writer for a new mini-lesson with a different comparison; if
+   it passes the checks, the card says **Written by Zip for you**.
 
    **Teacher** (top right, closed when the page opens) slides in a
-   drawer over Zip with everything for the grown-ups: whether a board is connected, which
+   drawer over Zip with everything for the grown-ups, including **How
+   Zip worked**: every step of Zip's latest reply in plain words, taken
+   from what really ran (helper steps carry a badge: detective, lesson
+   writer, grader). Also: whether a board is connected, which
    tutor is running, **Practice mode**, **New student**, a link to the
    student's notebook, "What the tutor did" (for example "The tutor
    measured the rows, saved the mistake, cleared the lights, lit rows,

@@ -30,8 +30,12 @@ The software must work with any of those answers.
   (create_deep_agent). Tools: read_rows, read_current, cut_power,
   restore_power, get_hint, light_row, clear_lights, show_on_board,
   log_mistake, next_lesson. Subagent "detective" (task tool, only for
-  unknown mistakes, at most two causes as questions). Memory: one
+  unknown mistakes, at most two causes as questions). Subagent
+  "lesson_writer" (same mistake again or quiz wrong: a new mini-lesson,
+  graded by RubricMiddleware, then checked in Python). Memory: one
   notebook per student in notebooks/, the only place it may write.
+  restore_power asks the student first (interrupt_on, human in the
+  loop). agent/trace.py records each step for "How Zip worked".
 - web/index.html : one page UI, made for an 11-year-old (bright,
   friendly, never scary; our own guide "Zip" and colours, no other
   brand's look). Zip says the tutor's words (moods: happy, thinking,
