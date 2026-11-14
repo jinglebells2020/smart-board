@@ -266,6 +266,22 @@ ALT_LESSONS = {
         "options": ["0 volts", "5 volts", "2.5 volts"], "answer": 0,
         "why": "With no path from the power supply, the row sits at ground: 0 volts.",
         "comparison": "a lamp with a cut cord"},
+    "loose_led_leg": {
+        "title": "A wiggly leg is like a wiggly charger",
+        "idea": "A loose leg is like a phone charger that only charges when the cable is held just "
+                "right. It touches, lets go, and touches again. So the circuit blinks on and off.",
+        "question": "Your circuit works, then stops, then works again. What is the likely reason?",
+        "options": ["A leg is loose", "The power is too strong", "The LED is new"], "answer": 0,
+        "why": "A leg that wobbles keeps losing touch with the clip inside the hole.",
+        "comparison": "a wiggly phone charger"},
+    "loose_resistor_leg": {
+        "title": "A wiggly leg is like a wiggly charger",
+        "idea": "A loose leg is like a phone charger that only charges when the cable is held just "
+                "right. It touches, lets go, and touches again. So the circuit blinks on and off.",
+        "question": "A number on the board keeps jumping between two values. What is the likely reason?",
+        "options": ["A leg is loose", "The resistor is cold", "The board is new"], "answer": 0,
+        "why": "A leg that wobbles keeps losing touch with the clip inside the hole.",
+        "comparison": "a wiggly phone charger"},
 }
 
 # What the scripted writer writes in "bad" mode: it breaks two rules.

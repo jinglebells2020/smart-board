@@ -1,4 +1,4 @@
-# Hardware summary
+# Genesis: Smart Breadboard: hardware summary
 
 Every item is marked with exactly one status:
 

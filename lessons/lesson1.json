@@ -106,6 +106,30 @@
   "resistor_words": "the 220 ohm resistor",
   "mistakes": [
     {
+      "id": "loose_led_leg",
+      "description": "A leg is loose: a row keeps switching between connected and empty",
+      "rows": [],
+      "detect": {
+        "any_flickering": true
+      },
+      "action": "hint",
+      "light": "yellow",
+      "hint": "One row keeps switching between connected and empty while I measure. That means a leg is loose. Find the row with the yellow light and push that leg in firmly, all the way down.",
+      "explain": "A leg that is not pushed all the way in only touches the metal clip some of the time, so that row keeps connecting and letting go. Push each leg in the yellow row firmly until it stops moving, then check again.",
+      "mini_lesson": {
+        "title": "Loose legs make blinking circuits",
+        "idea": "A part only works while its metal leg touches the metal clip inside the hole. A loose leg touches, then lets go, then touches again. So the circuit keeps switching on and off, like a lamp with a wobbly cord.",
+        "question": "A row keeps switching between connected and empty. What is the most likely reason?",
+        "options": [
+          "A leg is loose in its hole",
+          "The resistor is too big",
+          "The power is too strong"
+        ],
+        "answer": 0,
+        "why": "When a leg wobbles in its hole, it keeps touching and letting go of the clip, so the row comes and goes."
+      }
+    },
+    {
       "id": "led_backwards",
       "description": "LED may be backwards, or its long leg may not be in the resistor's row",
       "rows": [
@@ -132,7 +156,7 @@
         }
       },
       "action": "hint",
-      "hint": "Almost no current is flowing, but the row before the LED still has the full 5 volts. So the current is stopped at the LED. Look closely at the LED: which way it faces, and which row each of its legs is in.",
+      "hint": "Almost no current is flowing, but the row before the LED still has the full 5 volts. So the current is stopped at the LED. Look at the LED's long leg, the one marked + in the drawing: notice which row it is in, and which way it faces.",
       "explain": "Two things can cause this, and the board cannot tell which one: the LED may be in backwards, or its long leg may not be in the same row as the resistor. The long leg (+) should share a row with the resistor, and the short leg (-) should lead to ground.",
       "mini_lesson": {
         "title": "LEDs are one-way doors",
@@ -145,6 +169,10 @@
         ],
         "answer": 1,
         "why": "An LED lets current through only one way, and only when both of its legs are connected."
+      },
+      "point_at": {
+        "part": "Red LED",
+        "leg": "long leg (+)"
       }
     },
     {

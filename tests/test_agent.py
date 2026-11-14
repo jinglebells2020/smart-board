@@ -81,11 +81,17 @@ class TestEveryLessonAndMistake(unittest.TestCase):
         for lesson_id in LESSONS:
             with self.subTest(lesson=lesson_id):
                 board, session, agent = setup(lesson_id, "correct")
+                if session.is_explore():
+                    # Lesson 0 has no circuit: it passes once its question is answered.
+                    reply, new = ask(agent, [], "Can you check my circuit?")
+                    self.assertNotIn("next_lesson", [n for n, _ in tool_calls(new)])
+                    self.assertIn("question", reply)
+                    session.record_quiz(lesson_id, "intro", 0, "intro")
                 reply, new = ask(agent, [], "Can you check my circuit?")
                 names = [n for n, _ in tool_calls(new)]
                 self.assertIn("next_lesson", names)
                 self.assertNotIn("log_mistake", names)
-                self.assertIn("correct", reply)
+                self.assertIn("connects" if lesson_id == 0 else "correct", reply)
                 self.assertEqual(session.history["mistakes"], [])
                 self.assertTrue(board.power_on)
 
@@ -114,8 +120,10 @@ class TestEveryLessonAndMistake(unittest.TestCase):
                         self.assertTrue(board.power_on)
 
                     # The rows of the mistake light red ("problem here").
-                    self.assertIn(("light_row", {"rows": m["rows"], "color": "red"}), calls)
-                    self.assertEqual(board.lights, {r: "red" for r in m["rows"]})
+                    rows = m["rows"] or session.last_check[1]["rows"]  # loose: the flickering row
+                    self.assertIn(("light_row", {"rows": rows, "color": m.get("light", "red")}),
+                                  calls)
+                    self.assertEqual(board.lights, {r: m.get("light", "red") for r in rows})
                     self.assertTrue(board.screen)
 
 

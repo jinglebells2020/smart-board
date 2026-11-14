@@ -1,4 +1,4 @@
-"""Fake smart breadboard, speaking serial protocol version 2.
+"""Fake Genesis smart breadboard, speaking serial protocol version 2.
 
 Pretends to be the real board so the agent and web page can be built
 and tested without hardware. Protocol: docs/SERIAL_PROTOCOL.md.
@@ -63,6 +63,10 @@ def _circuit(lesson, scenario):
     row is empty, so it floats. PT+ is the supply and PT- is ground.
     """
     v = SUPPLY_V
+    if lesson == 0:
+        # "How a breadboard connects": nothing to build. An empty board.
+        if scenario == "correct":
+            return v, 0.0, {}
     if lesson == 1:
         # Red wire PT+ -> T5; 220 ohm T5-T10; LED long leg T10, short
         # leg T12; black wire T12 -> PT-.
@@ -125,15 +129,20 @@ def _circuit(lesson, scenario):
 # explain them with a clue); every other name is a mistake id from
 # lessons/*.json.
 UNLISTED = {
+    0: [],
     1: ["resistor_150"],
     2: ["bottom_4k7"],
 }
 SCENARIOS = {
+    0: ["correct"],
     1: ["correct", "led_backwards", "no_resistor", "open_circuit",
-        "resistor_too_big", "led_bypassed"] + UNLISTED[1],
+        "resistor_too_big", "led_bypassed", "loose_led_leg"] + UNLISTED[1],
     2: ["correct", "bottom_1k", "middle_floating", "top_1k",
-        "bottom_missing", "top_missing"] + UNLISTED[2],
+        "bottom_missing", "top_missing", "loose_resistor_leg"] + UNLISTED[2],
 }
+# Loose legs: the circuit is right, but one leg wobbles in its hole, so on
+# every other reading that row lets go: it floats and no current flows.
+LOOSE = {"loose_led_leg": "T10", "loose_resistor_leg": "T10"}
 
 
 class FakeBoard:
@@ -188,7 +197,14 @@ class FakeBoard:
         readings varies, like a real board: use t_ms."""
         step = SAMPLE_MS + (self._rng.randint(-30, 30) if self._noise else 0)
         self._t_ms += step
-        supply, current, circuit = _circuit(self.lesson, self.scenario)
+        if self.scenario in LOOSE:
+            supply, current, circuit = _circuit(self.lesson, "correct")
+            self._wobble = not getattr(self, "_wobble", False)
+            if self._wobble:  # the leg lets go: that row is empty, no current
+                circuit = dict(circuit, **{LOOSE[self.scenario]: FLOATING})
+                current = 0.0
+        else:
+            supply, current, circuit = _circuit(self.lesson, self.scenario)
         nodes = dict(circuit, **{"PT+": supply, "PT-": 0.0})
 
         def jitter(value, size=NOISE_V):
@@ -288,7 +304,7 @@ class FakeBoard:
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description="Fake smart breadboard (protocol version 2).")
+    p = argparse.ArgumentParser(description="Fake Genesis smart breadboard (protocol version 2).")
     p.add_argument("--lesson", type=int, default=1)
     p.add_argument("--scenario", default="correct")
     p.add_argument("--seed", type=int, default=None)

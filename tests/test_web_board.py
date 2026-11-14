@@ -72,7 +72,8 @@ class TestPretendBoardState(ServerCase):
         self.assertEqual(b["screen_size"], [P.SCREEN_LINES, P.SCREEN_CHARS])
         self.assertEqual(b["buttons"], {str(i): P.BUTTON_LABELS[i] for i in range(1, 5)})
         self.assertEqual(b["colors"], P.COLORS)
-        self.assertIn("Lesson 1", b["screen"][0])  # welcome text
+        self.assertEqual(b["screen"][0], "Genesis")  # welcome text names the app
+        self.assertIn("Lesson 1", b["screen"][1])
         self.assertEqual(b["missing_rows"], [])
 
     def test_current_is_measured(self):

@@ -47,6 +47,7 @@ def in_range(value, rule):
 
 
 FLOAT_SHARE = 0.5            # floating in more than half the readings
+FLICKER_MIN = 2              # seen both connected and empty at least this often: loose
 CURRENT_AGREE_REL = 0.25     # two calculated currents must agree this well...
 CURRENT_AGREE_ABS_MA = 0.02  # ...or be this close
 
@@ -81,24 +82,29 @@ def calculate_current(rows, floating, current_from):
 def summarize(readings, lesson):
     """Average a list of version 2 readings for one lesson.
 
-    Returns {"rows", "spread", "floating", "supply_v", "power_on",
-    "current_ma", "current_source", "current_note", "missing_rows"}.
+    Returns {"rows", "spread", "floating", "flickering", "supply_v",
+    "power_on", "current_ma", "current_source", "current_note",
+    "missing_rows"}. "flickering" lists rows seen both connected and
+    empty in this window (at least twice each): a loose leg.
     current_source is "measured" (a current sensor), "calculated" (from
     the rows, see calculate_current) or "unknown".
     """
     wanted = lesson.get("rows", [])
     measured = set.intersection(*(set(r["rows"]) for r in readings)) if readings else set()
-    rows, spread, floating = {}, {}, []
+    rows, spread, floating, flickering = {}, {}, [], []
     for name in wanted:
         if name not in measured:
             continue
         values = [r["rows"][name] for r in readings]
         rows[name] = round(statistics.mean(values), 3)
         spread[name] = round(max(values) - min(values), 3)
-        if sum(name in r.get("floating", []) for r in readings) > FLOAT_SHARE * len(readings):
+        empty = sum(name in r.get("floating", []) for r in readings)
+        if empty > FLOAT_SHARE * len(readings):
             floating.append(name)
+        if min(empty, len(readings) - empty) >= FLICKER_MIN:
+            flickering.append(name)  # both states seen: a loose leg
     summary = {
-        "rows": rows, "spread": spread, "floating": floating,
+        "rows": rows, "spread": spread, "floating": floating, "flickering": flickering,
         "supply_v": round(statistics.mean(r["supply_v"] for r in readings), 3),
         "power_on": all(r["power_on"] for r in readings),
         "missing_rows": [n for n in wanted if n not in measured],
@@ -134,6 +140,8 @@ def matches(summary, rule):
             return False
     if "supply_v" in rule and not in_range(summary["supply_v"], rule["supply_v"]):
         return False
+    if rule.get("any_flickering") and not summary.get("flickering"):
+        return False  # a loose leg: some row switched between connected and empty
     return True
 
 
@@ -163,8 +171,14 @@ def check(summary, lesson):
             not_checked.append(m["id"])
             continue
         if matches(summary, m["detect"]):
-            return {"status": "mistake", "mistake_id": m["id"], "action": m["action"],
-                    "rows": list(m.get("rows", []))}
+            # A loose leg is in whichever row flickered.
+            rows = (list(summary["flickering"]) if m["detect"].get("any_flickering")
+                    else list(m.get("rows", [])))
+            found = {"status": "mistake", "mistake_id": m["id"], "action": m["action"],
+                     "rows": rows}
+            if m.get("light"):
+                found["light"] = m["light"]  # the color to light those rows
+            return found
     extra = {"not_checked": not_checked} if not_checked else {}
     if matches(summary, lesson["accept"]):
         return {"status": "ok", **extra}

@@ -1,0 +1,45 @@
+{
+  "id": 0,
+  "kind": "explore",
+  "title": "How a breadboard connects",
+  "circuit": "No circuit to build: tap the holes to see which ones are joined",
+  "layout": [],
+  "rows": [],
+  "explore": [
+    "T3",
+    "T4",
+    "T5",
+    "T6",
+    "T7",
+    "T8",
+    "T9",
+    "T10",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7",
+    "B8",
+    "B9",
+    "B10"
+  ],
+  "current_from": [],
+  "expected": {
+    "rows": {}
+  },
+  "accept": {},
+  "resistor_words": "the resistor",
+  "mistakes": [],
+  "intro_lesson": {
+    "title": "Which holes are joined?",
+    "idea": "Under the holes of a breadboard are hidden metal clips. The 5 holes in one short row on one side are joined by one clip. The long + and - lines are each joined all the way along.",
+    "question": "You put one leg in row 10, hole a. Which hole is joined to it?",
+    "options": [
+      "Row 10, hole e",
+      "Row 11, hole a",
+      "Row 10, hole f"
+    ],
+    "answer": 0,
+    "why": "Holes a to e of the same row share one clip. Hole f is across the middle gap, on the other side."
+  }
+}

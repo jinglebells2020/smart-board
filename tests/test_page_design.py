@@ -63,7 +63,7 @@ class TestStars(Case):
     def test_one_path_stop_per_lesson(self):
         path = self.app.state()["path"]
         self.assertEqual([p["id"] for p in path], sorted(LESSONS))
-        self.assertTrue(path[0]["current"])
+        self.assertEqual([p["id"] for p in path if p["current"]], [1])  # this app starts at 1
         self.assertEqual([p["stars"] for p in path], [0] * len(LESSONS))
 
     def test_clean_pass_gets_three_stars(self):

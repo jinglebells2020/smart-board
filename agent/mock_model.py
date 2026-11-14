@@ -134,7 +134,8 @@ class ScriptedTutorModel(BaseChatModel):
             if "clear_lights" not in called:
                 return call("clear_lights")
             if "light_row" not in called:
-                return call("light_row", rows=check["rows"], color="red")
+                # Red: problem here. A loose leg is yellow: careful, push it in.
+                return call("light_row", rows=check["rows"], color=check.get("light", "red"))
             logged = result_of("log_mistake")
             manual = "do_instead" in result_of("cut_power")
             if "show_on_board" not in called:
@@ -176,7 +177,7 @@ class ScriptedTutorModel(BaseChatModel):
         if status == "ok":
             if "clear_lights" not in called:
                 return call("clear_lights")
-            if "light_row" not in called:
+            if "light_row" not in called and last_read["lesson"]["rows"]:
                 return call("light_row", rows=last_read["lesson"]["rows"], color="green")
             if "next_lesson" not in called:
                 return call("next_lesson")
@@ -193,9 +194,11 @@ class ScriptedTutorModel(BaseChatModel):
             if check.get("not_checked"):
                 note = (" This board cannot measure current, so I could not check "
                         "whether the resistor is too big.")
+            praise = ("You know how a breadboard connects!" if check.get("explore")
+                      else "Your circuit is correct!")
             if nxt["lesson"] is None:
-                return reply(f"Your circuit is correct! {nxt['reason']}{note}")
-            return reply(f"Your circuit is correct! Next: lesson {nxt['lesson']}, "
+                return reply(f"{praise} {nxt['reason']}{note}")
+            return reply(f"{praise} Next: lesson {nxt['lesson']}, "
                          f"{nxt['title']} ({nxt['circuit']}). {nxt['reason']}{note}")
 
         if status == "power_off":
@@ -203,6 +206,9 @@ class ScriptedTutorModel(BaseChatModel):
                 return reply(check["board_cut"]["say"])
             return reply("Power is off. Tell me when you have fixed the circuit "
                          "and I will turn it back on.")
+
+        if status == "quiz_first":  # lesson 0: answer its question first
+            return reply(check["message"])
 
         if status == "missing_rows":
             if "show_on_board" not in called:

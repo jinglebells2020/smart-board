@@ -1,4 +1,4 @@
-# smart-board
+# Genesis: Smart Breadboard
 
 An electric circuit teaching board for middle school students. The
 breadboard measures its own circuit. An AI agent reads the
@@ -17,8 +17,8 @@ written at about a 6th grade reading level.
 
 | Part                     | Status                                        |
 |--------------------------|-----------------------------------------------|
-| `sim/fake_board.py`      | Done. Speaks serial protocol version 2. Simulates lessons 1 and 2, every listed mistake and two unlisted ones. Starts with any rows, with or without a current sensor, power switch or screen |
-| `lessons/*.json`         | Done for lessons 1 and 2: 10 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). Any other mistake gets a clue from the numbers |
+| `sim/fake_board.py`      | Done. Speaks serial protocol version 2. Simulates lessons 0, 1 and 2, every listed mistake (including a loose leg that flickers) and two unlisted ones. Starts with any rows, with or without a current sensor, power switch or screen |
+| `lessons/*.json`         | Done for lesson 0 (how a breadboard connects: tap holes, one question) and lessons 1 and 2: 12 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). Any other mistake gets a clue from the numbers |
 | `docs/SERIAL_PROTOCOL.md`| Done, version 2: a voltage per row, empty rows, current (or null), row lights with colors, screen text, 4 buttons |
 | `protocol.py`            | Done. Row names, light colors, button meanings and screen size, in one place |
 | `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
@@ -69,7 +69,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (336 tests). They never call Claude, so
+The last line should say `OK` (354 tests). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -156,9 +156,19 @@ Three zones fill the screen:
   and 4 buttons) sits underneath. Parts are drawn in their real
   colours (red wire, black wire, tan resistor with its colour bands,
   red LED).
+- In lesson 0 there is nothing to build: **tap any hole** in the
+  drawing and every hole joined to it lights up yellow (its row half,
+  a to e or f to j, or a whole + or − line), with a sentence saying
+  why. The LED is always drawn with a **+** by its long leg and a flat
+  side by its short leg; when the LED is backwards, a yellow ring points
+  at the long leg.
 - After a mistake, a **Learn why** tab appears under Zip's words; it
   opens the mini-lesson in Zip's panel, in place of Zip's picture, so it
   never covers the breadboard, the numbers or Zip's words.
+- Every mini-lesson card has a **Show the class** button: the
+  mini-lesson becomes one full-screen slide (big title, the idea, a
+  drawing of the lesson's parts, the question) that can be read from
+  the back of a room. **Esc** closes it.
 - **Zip**, our robot spark guide, says the tutor's words in a speech
   bubble. 4 faces: happy (correct), thinking (checking), curious (a
   hint or a question) and careful (danger or power off). Below Zip:
@@ -182,6 +192,12 @@ Works today with the fake board. Show it on the projector page
 **pretend board** (under the drawing) has the board's screen and its 4
 buttons. Pick circuits in **Teacher → Practice mode**.
 
+0. A new student starts at **lesson 0, How a breadboard connects**.
+   Tap row 6 in the drawing: 5 holes light up ("row 6, holes a to e:
+   these 5 holes are joined by one metal clip"). Tap the top + line:
+   the whole line lights. Press **Learn**, then **Show the class** to
+   put the question on the projector; Esc closes it. Answer the
+   question, press **Check my circuit**, and Zip moves on to lesson 1.
 1. Build step by step: press **3 · Next step**. The drawing shows the
    red wire strong and the rest faint, row 5 lights blue and the screen
    says "Step 1 of 4 / Red wire". Keep pressing 3: resistor, LED (long
@@ -190,6 +206,10 @@ buttons. Pick circuits in **Teacher → Practice mode**.
    looks curious. Rows 10 and 12 glow red, Zip gives a hint (not the
    answer), and the card "LEDs are one-way doors" appears with a quiz
    question. Answer it: right or wrong, the page says why.
+   A ring in the drawing points at the LED's long leg (marked +).
+   Practice mode **Loose LED leg**, then 1 → row 10 keeps switching
+   between connected and empty, so it lights yellow and Zip says "push
+   that leg in firmly". Card: "Loose legs make blinking circuits".
 3. **2 · I need a hint** → the next level of help: the full
    explanation. The hint button never measures, never changes power and
    never adds a mistake to the history.
@@ -237,10 +257,11 @@ in their own context, so the tutor's conversation stays short. Tests:
 
 ## LangChain demo (60 seconds)
 
-Start the page with a named student, so the notebook is Maya's:
+Start the page with a named student, so the notebook is Maya's, at
+lesson 1 (a new student would start at lesson 0, which has no circuit):
 
 ```
-python web\server.py --fresh --student Maya
+python web\server.py --fresh --student Maya --lesson 1
 ```
 
 Open http://localhost:8000, press F11. To pick a circuit: **Teacher**
@@ -285,5 +306,31 @@ Zip did: **Teacher** → **How Zip worked**.
 
 ## Consulted with
 
-TODO (Peri track): business or student organization name, the
-person's name and role, and one piece of evidence.
+We showed Genesis to a kids' STEM center and asked what their students
+find hard.
+
+> **Fill this in by hand** (replace each part in [square brackets],
+> brackets included):
+>
+> - Center: **[CENTER NAME]**, [CITY]
+> - Person we talked to: **[PERSON'S NAME]**, [ROLE] (for example
+>   "lead instructor")
+> - When: [DATE], [HOW: visit, video call or email]
+
+What they told us, in their words:
+
+- Kids struggle with "polarity of components (e.g. LED)".
+- Kids struggle with "keeping the idea of what lines of holes are
+  connected in the breadboard".
+- Kids struggle with "loose connections".
+- "If many kids are stuck we show slides for breadboards or draw on
+  the whiteboard the concept."
+
+What we built because of it:
+
+| They said | We built |
+|---|---|
+| polarity of components (e.g. LED) | The LED is drawn with a **+** by its long leg and a flat side by its short leg. When the LED is backwards, the hint and a ring in the drawing point at the long leg. |
+| which lines of holes are connected | **Lesson 0, How a breadboard connects**, before lesson 1. Tap any hole: every hole joined to it lights up. One question to answer, nothing to build. |
+| loose connections | A new mistake in lessons 1 and 2: a row that switches between connected and empty while the board measures. That row lights yellow and Zip says "push that leg in firmly". |
+| slides or the whiteboard | **Show the class** on every mini-lesson card: one full-screen slide, readable from the back of the room. Esc closes it. |

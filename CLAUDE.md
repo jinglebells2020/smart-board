@@ -1,4 +1,8 @@
-# Smart teaching breadboard (HackPrinceton)
+# Genesis: Smart Breadboard (HackPrinceton)
+
+The app is called "Genesis". Everything a user sees calls it Genesis;
+files and docs use the full name "Genesis: Smart Breadboard". The repository, folders,
+Python modules and commands keep their names (smart-board).
 
 ## Goal
 An electric circuit teaching board for middle school students (ages
@@ -45,10 +49,16 @@ The software must work with any of those answers.
   board) a pretend board with its screen and 4 buttons. Practice mode,
   board status, tool trace and mistake history are in a Teacher drawer,
   closed by default. Design rules (palette, contrast, type, spacing) are
-  checked by tests/test_page_design.py.
+  checked by tests/test_page_design.py. The LED is drawn with a "+"
+  by its long leg and a flat short-leg side. Every mini-lesson card has
+  "Show the class": one full-screen slide, closed with Esc.
 - lessons/*.json : where every part goes (layout), expected row
   voltages, and a hint, full explanation and mini-lesson for every
-  mistake.
+  mistake. Lesson 0 "How a breadboard connects" (kind "explore") has
+  nothing to build: tap a hole to light every hole joined to it, and
+  it passes once its question is answered. A new student starts there.
+  Lessons 1 and 2 catch a loose leg (a row both empty and connected in
+  one check: yellow light, "push that leg in firmly").
 - sim/fake_board.py : simulates the board for testing, with or
   without a current sensor, power switch or screen, and any rows.
   sim/fake_port.py : a pretend serial port with the fake board on it.

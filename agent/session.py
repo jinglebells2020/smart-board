@@ -53,7 +53,9 @@ class Session:
         # Mini-lessons the lesson writer wrote (and Python accepted), by the
         # occurrence of the mistake they are for: {"3": {...lesson...}}.
         self.history.setdefault("ai_lessons", {})
-        self.lesson_id = lesson
+        # lesson="start": a new student starts at lesson 0 ("How a breadboard
+        # connects"); a returning one at the first lesson not passed yet.
+        self.lesson_id = self.start_lesson() if lesson == "start" else lesson
         self.passed_current = False
         self.step = -1  # building: -1 = not started; else index into layout
         # May the AI turn power on? Only while handling a student message
@@ -154,6 +156,13 @@ class Session:
                 on = list(board.before_cut)
         summary = summarize(on or readings, self.lesson)
         result = check(summary, self.lesson)
+        if result["status"] == "ok" and self.is_explore():
+            result["explore"] = True  # lesson 0: nothing was built, the quiz was answered
+        if result["status"] == "ok" and self.is_explore() and not self.intro_answered():
+            # Lesson 0 has no circuit: it passes once its question is answered.
+            result = {"status": "quiz_first",
+                      "message": "Before we go on: answer the question about which holes "
+                                 "are joined. Press Learn on the laptop to see it."}
         if board_cut is not None:
             board_cut["explained"] = True
             result["board_cut"] = {"reason": board_cut.get("reason"),
@@ -334,7 +343,32 @@ class Session:
         lesson = self.lessons.get(lesson_id)
         if lesson is None:
             return None
+        if mistake_id == "intro" and "intro_lesson" in lesson:
+            # Lesson 0's own mini-lesson (not about a mistake).
+            return {"id": "intro", "description": lesson["title"],
+                    "mini_lesson": lesson["intro_lesson"]}
         return next((m for m in lesson["mistakes"] if m["id"] == mistake_id), None)
+
+    # --- Lesson 0: explore, then answer the quiz ------------------------------
+    def is_explore(self, lesson_id=None):
+        lesson = self.lessons.get(self.lesson_id if lesson_id is None else lesson_id, {})
+        return lesson.get("kind") == "explore"
+
+    def intro_answered(self, lesson_id=None):
+        lid = self.lesson_id if lesson_id is None else lesson_id
+        return any(q.get("lesson") == lid and q.get("mistake") == "intro"
+                   for q in self.history["quiz"])
+
+    def start_lesson(self):
+        """Where this student starts: lesson 0 when they are new, otherwise
+        the first lesson (not an explore one) they have not passed."""
+        h = self.history
+        if not (h.get("passes") or h["mistakes"] or h["quiz"]):
+            return min(self.lessons)
+        for lid in sorted(self.lessons):
+            if not self.is_explore(lid) and h.get("passes", {}).get(str(lid), 0) == 0:
+                return lid
+        return min(l for l in self.lessons if not self.is_explore(l))
 
     def log_mistake(self, mistake_id):
         """Record a mistake. Returns what the agent is allowed to say, and the
@@ -441,7 +475,7 @@ class Session:
             entry["ai"] = True
         self.history["quiz"].append(entry)
         self._save()
-        if not ai and not correct:
+        if not ai and not correct and mistake_id != "intro":
             # Wrong answer: a new mini-lesson with another comparison may help.
             self.lesson_request = {"lesson": lesson_id, "mistake": mistake_id,
                                    "occurrence": occurrence,
@@ -485,6 +519,8 @@ class Session:
             return result
 
         for lid in sorted(self.lessons):
+            if self.is_explore(lid):
+                continue  # lesson 0 is where new students start, never a step back
             if passes.get(str(lid), 0) == 0:
                 return self._pick(lid, "This is the next lesson you have not passed yet.")
 

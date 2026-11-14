@@ -1,4 +1,4 @@
-# agent/
+# agent/ (Genesis: Smart Breadboard)
 
 The teaching agent, built with deepagents (`create_deep_agent`).
 How to run it: see RUN.md in the main folder.

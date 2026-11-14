@@ -12,6 +12,7 @@ Commands for testing with the fake board:
                         3 next step, 4 power off/on)
     /board              show the board's lights and screen
     /notebook           show the student's notebook
+    /answer <1-3>       answer lesson 0's question (which holes are joined)
     /quit               stop
 """
 
@@ -40,8 +41,9 @@ def show_board(session):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description="Smart breadboard tutor")
-    p.add_argument("--lesson", type=int, default=1)
+    p = argparse.ArgumentParser(description="Genesis tutor")
+    p.add_argument("--lesson", type=int, default=None,
+                   help="lesson to start at (default: lesson 0 for a new student)")
     p.add_argument("--scenario", default="correct",
                    help="circuit the fake board starts with")
     p.add_argument("--history", default=None,
@@ -76,18 +78,21 @@ def main(argv=None):
             print(f"Could not use the real board. {e}")
             return 2
     else:
-        board = FakeBoard(args.lesson, args.scenario, rows=args.rows,
+        board = FakeBoard(args.lesson if args.lesson is not None else 1, args.scenario, rows=args.rows,
                           has_current=not args.no_current,
                           has_power_switch=not args.no_power_switch,
                           has_screen=not args.no_screen)
     fake = isinstance(board, FakeBoard)
     notebook = Notebook(args.notebooks, args.student)
-    session = Session(board, lesson=args.lesson, history_path=args.history, notebook=notebook)
+    session = Session(board, lesson="start" if args.lesson is None else args.lesson,
+                      history_path=args.history, notebook=notebook)
+    if fake and session.lesson_id != board.lesson:
+        board.send(f"SCENARIO {session.lesson_id} correct")  # lesson 0 for a new student
     model, is_real = make_model()
     agent = build_agent(session, model, ask_before_power=True)
     caps = session.board.capabilities()
 
-    print("Smart breadboard tutor (" + ("fake board" if fake else f"real board on {board.port}") + ")")
+    print("Genesis tutor (" + ("fake board" if fake else f"real board on {board.port}") + ")")
     print(f"Board: {caps['rows']} rows measured, current sensor "
           f"{'yes' if caps['has_current'] else 'no'}, power switch "
           f"{'yes' if caps['has_power_switch'] else 'no'}, screen "
@@ -105,6 +110,19 @@ def main(argv=None):
         print("Type what a student would say. /board shows lights and screen, /quit stops.\n")
 
     history = []
+
+    def show_question():
+        """Lesson 0 has no circuit: its question is answered here (on the
+        web page it is the Learn card)."""
+        if session.is_explore() and not session.intro_answered():
+            ml = session.lesson["intro_lesson"]
+            print(f"learn> {ml['title']} {ml['idea']}")
+            print(f"learn> {ml['question']}")
+            for i, option in enumerate(ml["options"], 1):
+                print(f"learn>   {i}. {option}")
+            print("learn> Type /answer 1, 2 or 3.\n")
+
+    show_question()
 
     def tutor(text):
         lesson_before = session.lesson_id
@@ -126,6 +144,7 @@ def main(argv=None):
             board.send(f"SCENARIO {session.lesson_id} correct")
             print(f"(fake board now shows lesson {session.lesson_id}, circuit "
                   f"'correct'. Use /build to try a mistake.)")
+        show_question()
         return reply
 
     while True:
@@ -149,6 +168,22 @@ def main(argv=None):
             continue
         if text == "/board":
             show_board(session)
+            continue
+        if text.startswith("/answer"):
+            parts = text.split()
+            if not session.is_explore():
+                print("learn> /answer is for lesson 0's question. Quiz questions after "
+                      "a mistake are on the web page.")
+                continue
+            if len(parts) != 2 or not parts[1].isdigit():
+                print("usage: /answer <1-3>")
+                continue
+            out = session.record_quiz(session.lesson_id, "intro", int(parts[1]) - 1, "intro")
+            if "error" in out:
+                print("learn> Type /answer 1, 2 or 3.")
+                continue
+            print(f"learn> {'Right!' if out['correct'] else 'Not quite.'} {out['why']}")
+            print("learn> Now type: check my circuit\n")
             continue
         if (text.startswith("/build") or text.startswith("/press")) and not fake:
             print("board> /build and /press are for the fake board. Use the real "

@@ -214,7 +214,7 @@ class TestSixteenRows(unittest.TestCase):
     OPTS = {"rows": "T1-T16"}
 
     def test_both_lessons_work(self):
-        for lid in LESSONS:
+        for lid in [l for l in LESSONS if LESSONS[l].get("kind") != "explore"]:
             with self.subTest(lesson=lid):
                 _, session, _, reply, _ = run(lid, "correct", **self.OPTS)
                 self.assertIn("correct", reply)
