@@ -5,15 +5,15 @@
    the notebook (memory) changes the start of the conversation every
    turn. _without_thinking() leaves them out of the history.
 2. The detective crashed when Claude added advice after its question.
-   Now only the text up to the first "?" is kept, and a rejected answer
-   is retried (ToolStrategy) instead of raising.
+   Now only the text up to the first "?" is kept, and an item that is not
+   a careful question is dropped, never raised. The answer is a plain
+   schema, not ToolStrategy: ToolStrategy forces tool_choice, which real
+   Claude (claude-opus-5-5) rejects with a 400 error.
 """
 
 import unittest
 
-from langchain.agents.structured_output import ToolStrategy
 from langchain_core.messages import AIMessage, HumanMessage
-from pydantic import ValidationError
 
 from agent.build import _without_thinking
 from agent.detective import DetectiveAnswer, detective_spec
@@ -27,12 +27,11 @@ class TestDetectiveQuestions(unittest.TestCase):
         self.assertEqual(answer.questions, [
             "Could the resistor between row 5 and row 10 be a different value than 220 ohms?"])
 
-    def test_no_question_mark_still_rejected(self):
-        with self.assertRaises(ValidationError):
-            DetectiveAnswer(questions=["Check the resistor."])
+    def test_no_question_mark_is_dropped(self):
+        self.assertEqual(DetectiveAnswer(questions=["Check the resistor."]).questions, [])
 
-    def test_rejected_answers_are_retried(self):
-        self.assertIsInstance(detective_spec(session=None)["response_format"], ToolStrategy)
+    def test_answer_is_a_plain_schema_not_tool_strategy(self):
+        self.assertIs(detective_spec(session=None)["response_format"], DetectiveAnswer)
 
 
 class TestWithoutThinking(unittest.TestCase):

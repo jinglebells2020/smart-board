@@ -204,7 +204,7 @@ test without paying for Claude.
    "offline practice tutor". Use the same steps as Part C. Replies are
    in Claude's own words now and take a few seconds. After each one a
    line says how long it took (`[14:05:12] Claude reply took 6.4 s`).
-   If Claude fails, takes more than 25 seconds or the internet is down,
+   If Claude fails, takes more than 60 seconds or the internet is down,
    the offline tutor answers that message and the tutor's reply is
    followed by `(Zip is in offline mode for this answer.)`. The next
    message tries Claude again.
@@ -374,7 +374,7 @@ The tests in Part B never use the key, even when it is set.
 
 With `set ANTHROPIC_API_KEY=...` done first (Part D), the page uses
 Claude. The Teacher drawer says which tutor is running. If Claude fails,
-takes more than 25 seconds, or the internet is down, that one answer
+takes more than 60 seconds, or the internet is down, that one answer
 comes from the offline tutor and the page says **"Zip is in offline mode
 for this answer"** under Zip's words; the next message tries Claude
 again (Part G, step 5).
@@ -506,7 +506,7 @@ Use this for judges or a class.
    [14:05:12] Claude reply took 6.4 s
    ```
 
-5. **If the internet drops, or Claude takes more than 25 seconds**, the
+5. **If the internet drops, or Claude takes more than 60 seconds**, the
    demo keeps going: that one answer comes from the offline tutor, and
    under Zip's words a small grey note says **"Zip is in offline mode
    for this answer"**. The black window says why, for example:

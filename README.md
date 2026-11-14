@@ -94,7 +94,7 @@ history and a new notebook, and prints the demo URL
 Restart demo**. Step by step for Windows: RUN.md Part G.
 
 **Safe if the internet fails.** If a call to Claude fails, takes more
-than 25 seconds, or there is no internet, the offline tutor answers that
+than 60 seconds, or there is no internet, the offline tutor answers that
 one message and the page says **"Zip is in offline mode for this
 answer"** under Zip's words. The next message tries Claude again.
 Safety and hints never depend on Claude: power cuts, power only when
