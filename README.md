@@ -37,7 +37,10 @@ written at about a 6th grade reading level.
 - `sim/fake_board.py` : pretends to be the board. `sim/fake_port.py`
   pretends to be a serial port with the fake board on it (for tests).
 - `tools/check_board.py` : checks a real board's firmware.
-- `agent/` : the deepagents tutor (see agent/README.md).
+- `agent/` : the deepagents tutor (see agent/README.md), with the
+  detective subagent and the student notebook.
+- `notebooks/` : one notebook per student. Made when the tutor runs;
+  never committed (it is about real students).
 - `tests/` : automatic checks for the simulator, the agent and the web page.
 - `web/` : the projector page and its small local server.
 - `firmware/` : coming later.
@@ -66,7 +69,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (238 tests). They never call Claude, so
+The last line should say `OK` (259 tests). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -156,12 +159,32 @@ Works today with the fake board. Show it on the projector page
    and on to lesson 2. (Make the same mistake twice in one lesson and
    the tutor asks for that lesson once more.)
 6. A mistake on no list ("Not on the list: 4.7k bottom resistor") → the
-   tutor still explains with a clue from the row voltages, and lights
-   that row yellow (careful).
+   tutor still explains with a clue from the row voltages, lights that
+   row yellow (careful), and then asks the **detective**, which answers
+   with at most two questions ("Could the bottom 10k resistor be a
+   different value than the plan says...?"). Under the reply: "asked the detective, wrote in the
+   notebook". Open http://localhost:8000/api/notebook to see the
+   notebook line it just wrote, and the quiz results.
 7. Restart with `--no-power-switch --no-current --rows T1-T16`: the same
    lessons still work. No resistor now puts "DANGER! Switch the power
    OFF by hand now" on the board screen, and the current shows as
    "calculated".
+
+## How we use deepagents
+
+The tutor is one `create_deep_agent` (agent/build.py) with our board
+tools. Two deepagents features do real teaching work:
+
+| Feature | deepagents part | File | Why it helps a student |
+|---|---|---|---|
+| **The detective** | A subagent (`subagents=[...]`), called through the built-in `task` tool, only when a mistake is not on the lesson's list | `agent/detective.py` | The lesson file cannot list every mistake. The detective puts the row voltages next to the lesson layout (which part touches which row) and answers with at most two likely causes, as **questions** ("Is the LED's long leg pushed all the way into row 10?"). The student still does the looking, and is never told a guess as if it were true. Its answer is a structured response (`response_format`): Python rejects more than two items, anything that is not a question, or words like "definitely", and the model has to try again. |
+| **Student notebook** | Memory (`memory=[...]`) on a `FilesystemBackend`, plus `permissions` | `agent/notebook.py` | One file per student (`notebooks/<name>.md`), loaded at the start of every message, so the tutor remembers this student between days ("Your notebook says this happened before"). After each check the agent adds one line with its own `edit_file` tool: the mistake, the quiz result, and what to try next time. Permissions let it write this one file and nothing else on the computer. |
+
+The detective sees only what it needs (one read-only tool), and runs in
+its own context, so the tutor's conversation stays short. Offline (no
+API key) both run with scripted models (`agent/mock_model.py`,
+`ScriptedDetectiveModel`), so every test runs the real deepagents loop:
+`tests/test_deepagents_features.py`.
 
 ## Consulted with
 

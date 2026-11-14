@@ -52,6 +52,8 @@ def make_tools(session):
             "board": board.capabilities(),
             "lesson": session.lesson_info(),
             "lesson_check": result,
+            # Where to write this check in the student's notebook (or None).
+            "notebook": session.notebook_task(),
         }
 
     def read_rows() -> str:

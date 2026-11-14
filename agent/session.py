@@ -14,6 +14,7 @@ from pathlib import Path
 
 from agent.boardlink import BoardLink
 from agent.lessons import SAFETY_MAX_MA, check, load_lessons, summarize
+from agent.notebook import entry_start, mistake_label
 from protocol import is_row, power_cut_words, row_label
 
 WINDOW = 10  # readings per measurement (about 1 second on the fake board)
@@ -41,7 +42,7 @@ def _short(name):
 
 
 class Session:
-    def __init__(self, board, lesson=1, history_path=None, lessons=None):
+    def __init__(self, board, lesson=1, history_path=None, lessons=None, notebook=None):
         self.board = board if isinstance(board, BoardLink) else BoardLink(board)
         self.lessons = lessons or load_lessons()
         self.history_path = Path(history_path) if history_path else None
@@ -62,6 +63,15 @@ class Session:
         # The most recent log_mistake call: {"lesson", "mistake", "occurrence"}.
         # The web page uses it to show the matching mini-lesson card.
         self.last_logged = None
+        # The student's notebook (agent/notebook.py), or None for no notebook.
+        self.notebook = notebook
+        if notebook is not None:
+            notebook.ensure()
+        # The latest check: (summary, result). The detective looks at it.
+        self.last_check = None
+        # The facts of the latest check, waiting to be written in the
+        # notebook (by the agent, or by notebook_after_turn if it forgot).
+        self.pending_entry = None
 
     # --- Lessons -------------------------------------------------------
     @property
@@ -152,7 +162,33 @@ class Session:
                 board.show(MANUAL_OFF_SCREEN)
         if safety_cut:
             summary["power_on"] = False  # it is off now
+        self.last_check = (summary, result)
+        entry = entry_start(self.lesson_id, result, self.lesson)
+        if entry is not None:
+            self.pending_entry = entry
         return summary, result, safety_cut
+
+    # --- Notebook --------------------------------------------------------
+    NEXT_TIME = {"mistake": "Next time: look at the rows that light red first.",
+                 "ok": "Next time: build the next lesson the same careful way.",
+                 "unknown": "Next time: compare each part with the lesson plan, one at a time."}
+
+    def notebook_task(self):
+        """For the agent: where to write the entry for the latest check."""
+        if self.notebook is None or self.pending_entry is None:
+            return None
+        from agent.notebook import MARKER
+        return {"file": self.notebook.agent_path, "entry": self.pending_entry,
+                "add_above": MARKER}
+
+    def notebook_after_turn(self):
+        """After every turn: if a check happened and the agent did not write
+        its notebook entry, write it here, so the notebook never misses one."""
+        entry, self.pending_entry = self.pending_entry, None
+        if self.notebook is None or entry is None or self.notebook.has_entry(entry):
+            return
+        status = (self.last_check or ({}, {}))[1].get("status")
+        self.notebook.add(f"{entry} {self.NEXT_TIME.get(status, '')}".rstrip())
 
     # --- Building step by step ------------------------------------------
     def next_step(self):
@@ -339,6 +375,8 @@ class Session:
             "lesson": lesson_id, "mistake": mistake_id, "occurrence": occurrence,
             "choice": choice, "correct": correct, "time": time.time()})
         self._save()
+        if self.notebook is not None:
+            self.notebook.fill_quiz(mistake_label(self.lessons[lesson_id], mistake_id), correct)
         return {"correct": correct, "choice": choice, "answer": ml["answer"],
                 "why": ml["why"]}
 
