@@ -13,6 +13,7 @@ events(). BoardLink adds what the laptop needs on top:
 """
 
 import threading
+from collections import deque
 
 import protocol as P
 
@@ -28,6 +29,15 @@ class BoardLink:
         self.hello = hello
         self.lights = {}   # row -> color, as last set
         self.screen = []   # lines, as last shown
+        # Power cuts the board made by itself (power_cut lines), oldest first.
+        self.power_cuts = []
+        # The latest one since power was last turned on, or None.
+        self.last_cut = None
+        # The last readings taken while power was on, and a copy of them made
+        # when the board cut power: they show what the student had built.
+        self._recent_on = deque(maxlen=10)
+        self.before_cut = []
+        self._buttons = []
 
     # --- What this board has ----------------------------------------
     @property
@@ -58,15 +68,34 @@ class BoardLink:
     # --- Talking to the board ---------------------------------------
     def read(self):
         with self.lock:
-            return self.board.read()
+            reading = self.board.read()
+            if reading.get("power_on"):
+                self._recent_on.append(reading)
+            self.poll()  # a power_cut line can come right after this reading
+            return reading
 
     def send(self, command):
         with self.lock:
             return self.board.send(command)
 
-    def events(self):
+    def poll(self):
+        """Collect lines the board sent on its own: button presses wait for
+        events(); power_cut lines are remembered here."""
         with self.lock:
-            return self.board.events()
+            for ev in self.board.events():
+                if ev.get("type") == "button":
+                    self._buttons.append(ev)
+                elif ev.get("type") == "power_cut":
+                    self.power_cuts.append(ev)
+                    self.last_cut = ev
+                    self.before_cut = list(self._recent_on)
+
+    def events(self):
+        """Button presses since the last call."""
+        with self.lock:
+            self.poll()
+            out, self._buttons = self._buttons, []
+            return out
 
     # --- Lights -----------------------------------------------------
     def set_light(self, row, color):
@@ -108,4 +137,8 @@ class BoardLink:
         return self.send("CUT")
 
     def restore(self):
-        return self.send("RESTORE")
+        answer = self.send("RESTORE")
+        if answer.get("type") == "ack":
+            self.last_cut = None       # a new start: forget the old cut
+            self._recent_on.clear()
+        return answer

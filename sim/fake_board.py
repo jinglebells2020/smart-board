@@ -142,7 +142,7 @@ class FakeBoard:
 
     def __init__(self, lesson=1, scenario="correct", seed=None, noise=True,
                  rows=None, has_current=True, has_power_switch=True,
-                 has_screen=True, buttons=4):
+                 has_screen=True, buttons=4, firmware_cut_ma=P.FIRMWARE_CUT_MA):
         self._rng = random.Random(seed)
         self._noise = noise
         self._t_ms = 0
@@ -162,6 +162,9 @@ class FakeBoard:
         if not 0 <= buttons <= 4:
             raise ValueError("buttons must be 0 to 4")
         self.buttons = buttons
+        # Like the real firmware must: with a current sensor and a power
+        # switch, cut power by itself above this current (None = never).
+        self.firmware_cut_ma = firmware_cut_ma if (has_current and has_power_switch) else None
         self.power_on = True
         self.lights = {}   # row -> color
         self.screen = []   # lines on the screen
@@ -206,15 +209,24 @@ class FakeBoard:
         else:
             supply = jitter(supply)
             current = jitter(current, NOISE_MA_ABS + NOISE_MA_REL * current)
-        return {
+        reading = {
             "type": "reading", "t_ms": self._t_ms, "power_on": self.power_on,
             "supply_v": round(supply, 3),
             "current_ma": round(current, 3) if self.has_current else None,
             "rows": rows, "floating": floating,
         }
+        if (self.power_on and self.firmware_cut_ma is not None
+                and current > self.firmware_cut_ma):
+            # The firmware's own safety: switch off at once and say why.
+            # This reading (what it saw) is still sent; the next ones are off.
+            self.power_on = False
+            self._events.append({"type": "power_cut", "reason": "overcurrent",
+                                 "current_ma": round(current, 1), "t_ms": self._t_ms})
+        return reading
 
     def events(self):
-        """Button presses waiting to be read (and forget them)."""
+        """Button presses and power_cut lines waiting to be read
+        (and forget them)."""
         out, self._events = self._events, []
         return out
 

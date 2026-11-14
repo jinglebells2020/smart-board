@@ -115,6 +115,9 @@ class ScriptedTutorModel(BaseChatModel):
                 return reply(f"Switch the power off by hand right now, to keep your parts "
                              f"safe. {say}")
             if check["action"] == "cut_power":
+                if check.get("board_cut"):  # the board did it by itself
+                    first = check["board_cut"]["say"].split(". ")[0] + "."
+                    return reply(f"{first} {say}")
                 return reply(f"I cut the power to keep your parts safe. {say}")
             return reply(f"{say} The red lights show where to look.")
 
@@ -139,6 +142,8 @@ class ScriptedTutorModel(BaseChatModel):
                          f"{nxt['title']} ({nxt['circuit']}). {nxt['reason']}{note}")
 
         if status == "power_off":
+            if check.get("board_cut"):
+                return reply(check["board_cut"]["say"])
             return reply("Power is off. Tell me when you have fixed the circuit "
                          "and I will turn it back on.")
 

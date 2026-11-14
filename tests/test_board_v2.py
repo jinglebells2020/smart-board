@@ -203,7 +203,11 @@ class TestNoPowerSwitch(unittest.TestCase):
     def test_with_a_switch_power_is_cut(self):
         board, _, _, reply, _ = run(1, "no_resistor")
         self.assertFalse(board.power_on)
-        self.assertTrue(reply.startswith("I cut the power"))
+        # With a current sensor too, the board cuts power by itself first.
+        self.assertTrue(reply.startswith("The board switched the power off by itself"))
+        board, _, _, reply, _ = run(1, "no_resistor", has_current=False)
+        self.assertFalse(board.power_on)
+        self.assertTrue(reply.startswith("I cut the power"))  # the laptop did it
 
 
 class TestSixteenRows(unittest.TestCase):
@@ -277,7 +281,8 @@ class TestWholeDemoOffline(unittest.TestCase):
         self.assertIn(mistake(1, "led_backwards")["hint"], first)
         self.assertIn(mistake(1, "led_backwards")["explain"], second)
         board.send("SCENARIO 1 no_resistor")
-        self.assertIn("cut the power", handle_button(1, session, tutor)["reply"])
+        self.assertIn("power off", handle_button(1, session, tutor)["reply"])
+        self.assertFalse(board.power_on)
         board.send("SCENARIO 1 correct")
         reply = tutor("I fixed it")
         self.assertIn("correct", reply)

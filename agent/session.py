@@ -14,7 +14,7 @@ from pathlib import Path
 
 from agent.boardlink import BoardLink
 from agent.lessons import SAFETY_MAX_MA, check, load_lessons, summarize
-from protocol import is_row, row_label
+from protocol import is_row, power_cut_words, row_label
 
 WINDOW = 10  # readings per measurement (about 1 second on the fake board)
 REPEAT_IF_SEEN = 2  # same mistake this many times -> practice the lesson again
@@ -102,6 +102,8 @@ class Session:
         Returns (summary, result, safety_cut).
         """
         board = self.board
+        board.poll()
+        cuts_before = len(board.power_cuts)
         readings = []
         safety_cut = False
         for _ in range(WINDOW):
@@ -113,10 +115,31 @@ class Session:
                 board.cut()
                 safety_cut = True
                 break
-        # All readings so far were taken while power was on, so the check
-        # still sees what the student built.
-        summary = summarize(readings, self.lesson)
+        board.poll()
+        # Judge the circuit from readings taken while power was on. If the
+        # board switched power off by itself (a power_cut line), say so, and
+        # if no reading here was on, use the ones from just before the cut:
+        # they show what the student built.
+        on = [r for r in readings if r["power_on"]]
+        board_cut = None
+        cut = board.last_cut
+        if len(board.power_cuts) > cuts_before:
+            board_cut = cut  # the board cut power during this measurement
+        elif cut is not None and not cut.get("explained") and not on:
+            # The board cut power earlier (between checks) and nobody has
+            # explained it yet. Use the readings from just before the cut,
+            # once: after that the student may have changed the circuit.
+            board_cut = cut
+            if board.before_cut:
+                on = list(board.before_cut)
+        summary = summarize(on or readings, self.lesson)
         result = check(summary, self.lesson)
+        if board_cut is not None:
+            board_cut["explained"] = True
+            result["board_cut"] = {"reason": board_cut.get("reason"),
+                                   "current_ma": board_cut.get("current_ma"),
+                                   "say": power_cut_words(board_cut)}
+            safety_cut = True  # power is off: the board did it
         if result["status"] == "ok":
             self.passed_current = True
             self.open_mistake = None  # nothing left to give hints about

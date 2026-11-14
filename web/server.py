@@ -30,7 +30,8 @@ from agent.build import ask, build_agent, make_model  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
 from agent.lessons import summarize  # noqa: E402
 from agent.session import Session  # noqa: E402
-from protocol import BUTTON_LABELS, COLORS, SCREEN_CHARS, SCREEN_LINES, row_label  # noqa: E402
+from protocol import (BUTTON_LABELS, COLORS, SCREEN_CHARS, SCREEN_LINES,  # noqa: E402
+                      power_cut_words, row_label)
 from sim.fake_board import SCENARIOS, FakeBoard  # noqa: E402
 
 PAGE = Path(__file__).resolve().parent / "index.html"
@@ -100,6 +101,14 @@ class App:
         """Handle button presses the board has sent. Questions for the
         tutor run in the background so the page keeps updating."""
         events = [e for e in self.board.events() if e.get("type") == "button"]
+        # The board switched power off by itself while nobody was checking:
+        # say so on the page once. (During a check the tutor says it.)
+        if not self.agent_lock.locked():
+            for cut in self.board.power_cuts:
+                if not cut.get("explained") and not cut.get("logged"):
+                    cut["logged"] = True
+                    self.log.append({"who": "tutor", "text": power_cut_words(cut),
+                                     "time": time.time(), "tools": []})
         self.button_threads = [t for t in self.button_threads if t.is_alive()]
         for ev in events:
             t = threading.Thread(target=self.on_button, args=(ev["id"],), daemon=True)
