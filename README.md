@@ -306,31 +306,30 @@ Zip did: **Teacher** → **How Zip worked**.
 
 ## Consulted with
 
-We showed Genesis to a kids' STEM center and asked what their students
-find hard.
+- Center: **STEAM Works Studio** (kids' STEM education studio), Princeton, NJ
+- Person: the Center Director (her name is left out until she agrees to
+  be named)
+- Role: Center Director
+- When: November 14, 2026, by email
 
-> **Fill this in by hand** (replace each part in [square brackets],
-> brackets included):
->
-> - Center: **[CENTER NAME]**, [CITY]
-> - Person we talked to: **[PERSON'S NAME]**, [ROLE] (for example
->   "lead instructor")
-> - When: [DATE], [HOW: visit, video call or email]
+What she told us, in her words:
 
-What they told us, in their words:
+> "Polarity of component (ex LED) keeping the idea of what lines of
+> holes are connected in breadboard, lose connections. If many kids
+> are stuck we show the slides for breadboards or draw on whiteboard
+> the concept to clarify. Need to see an example to evaluate."
 
-- Kids struggle with "polarity of components (e.g. LED)".
-- Kids struggle with "keeping the idea of what lines of holes are
-  connected in the breadboard".
-- Kids struggle with "loose connections".
-- "If many kids are stuck we show slides for breadboards or draw on
-  the whiteboard the concept."
+How we answered each point:
 
-What we built because of it:
-
-| They said | We built |
-|---|---|
-| polarity of components (e.g. LED) | The LED is drawn with a **+** by its long leg and a flat side by its short leg. When the LED is backwards, the hint and a ring in the drawing point at the long leg. |
-| which lines of holes are connected | **Lesson 0, How a breadboard connects**, before lesson 1. Tap any hole: every hole joined to it lights up. One question to answer, nothing to build. |
-| loose connections | A new mistake in lessons 1 and 2: a row that switches between connected and empty while the board measures. That row lights yellow and Zip says "push that leg in firmly". |
-| slides or the whiteboard | **Show the class** on every mini-lesson card: one full-screen slide, readable from the back of the room. Esc closes it. |
+- **Polarity (LED):** the drawing marks the LED's long leg with a **+**
+  and draws a flat side by its short leg; when the LED is backwards, the
+  hint and a ring in the drawing point at the long leg.
+- **Which lines of holes are connected:** **Lesson 0, How a breadboard
+  connects**, before lesson 1: tap any hole and every hole joined to it
+  lights up, then answer one question.
+- **Loose connections:** lessons 1 and 2 check for a row that switches
+  between connected and empty while the board measures; that row lights
+  yellow and Zip says "push that leg in firmly".
+- **Slides or the whiteboard:** **Show the class** on every mini-lesson
+  card opens it as one full-screen slide, readable from the back of the
+  room (Esc closes it).
