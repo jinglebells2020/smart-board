@@ -35,12 +35,13 @@ The software must work with any of those answers.
 - web/index.html : one page UI, made for an 11-year-old (bright,
   friendly, never scary; our own guide "Zip" and colours, no other
   brand's look). Zip says the tutor's words (moods: happy, thinking,
-  curious, careful), a drawn breadboard shows the lesson's parts and
+  curious, careful), "The plan: where each part goes" draws the lesson's parts and
   live row lights and voltages, a lesson path shows stars, a
   mini-lesson card with a quiz after each mistake, and (with the fake
   board) a pretend board with its screen and 4 buttons. Practice mode,
-  board status, tool trace and mistake history are in a Teacher view,
-  closed by default.
+  board status, tool trace and mistake history are in a Teacher drawer,
+  closed by default. Design rules (palette, contrast, type, spacing) are
+  checked by tests/test_page_design.py.
 - lessons/*.json : where every part goes (layout), expected row
   voltages, and a hint, full explanation and mini-lesson for every
   mistake.

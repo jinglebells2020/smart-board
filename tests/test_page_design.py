@@ -218,5 +218,193 @@ class TestPageFile(unittest.TestCase):
         self.assertNotRegex(self.html.lower(), r"scratch|sprite")
 
 
+# --- The design rules (they must hold in the page file itself) ------------------
+
+PALETTE = {  # name in the page -> the colour the design rules give it
+    "blue": "#2F5FE8", "yellow": "#FFC93C", "green": "#1FAA6B", "coral": "#E5484D",
+    "sky": "#4DB5FF", "ink": "#1D2742", "ink-2": "#5B6785", "white": "#FFFFFF",
+    "page": "#EEF3FA", "line": "#DCE4F0",
+}
+SHADOW = "0 2px 8px rgba(29,39,66,0.08)"
+
+
+def luminance(hex_colour):
+    """Relative luminance, as WCAG defines it."""
+    rgb = [int(hex_colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def contrast(a, b):
+    la, lb = sorted((luminance(a), luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+class TestDesignRules(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        cls.css = re.search(r"<style>(.*?)</style>", cls.html, re.S).group(1)
+        cls.css_code = re.sub(r"/\*.*?\*/", " ", cls.css, flags=re.S)
+        cls.tokens = dict(re.findall(r"--([\w-]+):\s*(#[0-9A-Fa-f]{6})", cls.css))
+        # Every rule: (selector, declarations)
+        cls.rules = re.findall(r"([^{}]+)\{([^{}]*)\}", cls.css_code)
+
+    def values(self, prop):
+        """Every value given to a CSS property, like "font-size"."""
+        return re.findall(rf"(?<![\w-]){prop}\s*:\s*([^;}}]+)", self.css_code)
+
+    def test_palette_is_exactly_the_five_colours_and_neutrals(self):
+        for name, colour in PALETTE.items():
+            self.assertEqual(self.tokens.get(name, "").upper(), colour, name)
+        self.assertIn(f"--shadow: {SHADOW}", self.css)
+
+    def test_no_colour_outside_the_palette(self):
+        allowed = {c.upper() for c in PALETTE.values()}
+        used = {c.upper() for c in re.findall(r"#[0-9A-Fa-f]{6}\b", self.html)}
+        self.assertEqual(used - allowed, set())
+        self.assertNotRegex(self.html, r"#[0-9A-Fa-f]{3}\b(?![0-9A-Fa-f])")  # no short forms
+        rgb_allowed = {tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) for c in allowed}
+        for r, g, b in re.findall(r"rgba\((\d+),\s*(\d+),\s*(\d+),", self.html):
+            self.assertIn((int(r), int(g), int(b)), rgb_allowed)
+        self.assertNotIn("855CD6", self.html.upper())  # never Scratch's purple
+
+    def test_every_text_pair_has_4_5_to_1_contrast(self):
+        listed = re.search(r"contrast-pairs:([^*]*)\*/", self.css).group(1)
+        pairs = [p.strip().split("/") for p in listed.replace("\n", " ").split(",") if p.strip()]
+        self.assertGreater(len(pairs), 5)
+        for text, back in pairs:
+            ratio = contrast(self.tokens[text], self.tokens[back])
+            self.assertGreaterEqual(ratio, 4.5, f"{text} on {back}: {ratio:.2f}")
+        # Every rule that sets both a text colour and a background is listed.
+        listed_pairs = {(t, b) for t, b in pairs}
+        for selector, body in self.rules:
+            fg = re.search(r"(?<![\w-])color:\s*var\(--([\w-]+)\)", body)
+            bg = re.search(r"background:\s*var\(--([\w-]+)\)", body)
+            if fg and bg:
+                self.assertIn((fg.group(1), bg.group(1)), listed_pairs, selector.strip())
+
+    def test_type_sizes_and_weights(self):
+        sizes = {v.strip() for v in self.values("font-size")}
+        self.assertEqual(sizes - {"16px", "20px", "28px", "36px"}, set())
+        weights = {v.strip() for v in self.values("font-weight")}
+        self.assertEqual(weights - {"400", "700"}, set())
+        for size in re.findall(r'font-size="(\d+)"', self.html):
+            self.assertIn(size, {"16", "20", "28", "36"})
+        for weight in re.findall(r'font-weight="(\d+)"', self.html):
+            self.assertIn(weight, {"400", "700"})
+        self.assertIn('ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif', self.css)
+
+    def test_monospace_only_on_the_board_screen(self):
+        for selector, body in self.rules:
+            if "monospace" in body:
+                self.assertEqual(selector.strip(), ".screen")
+
+    def test_spacing_is_on_the_8px_grid(self):
+        grid = {0, 8, 16, 24, 32, 48}
+        for prop in ("margin", "margin-top", "margin-bottom", "margin-left", "margin-right",
+                     "padding", "padding-top", "padding-bottom", "padding-left",
+                     "padding-right", "gap", "row-gap", "column-gap"):
+            for value in self.values(prop):
+                for number in re.findall(r"(-?\d+(?:\.\d+)?)px", value):
+                    self.assertIn(float(number), grid, f"{prop}: {value}")
+        self.assertRegex(self.css_code, r"\.zones \{[^}]*gap: 24px")
+
+    def test_one_shadow_and_thin_lines(self):
+        for value in self.values("box-shadow"):
+            self.assertEqual(value.strip(), "var(--shadow)")
+        for prop in ("border", "border-top", "border-bottom", "border-left", "border-right"):
+            for value in self.values(prop):
+                self.assertIn(value.strip(), {"0", "none", "1px solid var(--line)"}, prop)
+
+    def test_buttons_are_big_pills(self):
+        self.assertRegex(self.css_code, r"\.btn \{[^}]*min-height: 56px[^}]*border-radius: 999px")
+        self.assertRegex(self.css_code, r"\.opt \{[^}]*min-height: 56px")
+        self.assertRegex(self.css_code, r"\.btn:active \{[^}]*transform")
+        for button in ("check", "fixed"):
+            tag = re.search(rf'<button[^>]*id="{button}".*?</button>', self.html, re.S).group(0)
+            self.assertIn("<svg", tag)  # a small icon on the main buttons
+        self.assertIn('class="btn btn-blue" type="button" id="check"', self.html)
+        self.assertIn('class="btn btn-yellow" type="button" id="fixed"', self.html)
+
+    def test_three_zones_fill_the_screen(self):
+        self.assertIn("grid-template-rows: 72px minmax(0, 1fr)", self.css)
+        self.assertIn("grid-template-columns: minmax(0, 62fr) minmax(0, 38fr)", self.css)
+        self.assertRegex(self.css_code, r"\.zone \{[^}]*background: var\(--white\)"
+                                        r"[^}]*border-radius: 16px")
+        self.assertRegex(self.css_code, r"\.topbar \{[^}]*background: var\(--blue\)")
+        self.assertIn("The plan: where each part goes", self.html)
+        toggle = re.search(r'<button[^>]*id="teacher-toggle".*?</button>', self.html, re.S).group(0)
+        self.assertIn(">Teacher<", toggle)
+
+    def test_phone_stacks_top_bar_zip_stage(self):
+        phone = re.search(r"@media \(max-width: 999px\) \{(.*?)\n  \}", self.css, re.S).group(1)
+        self.assertIn(".zip { grid-column: 1; grid-row: 1; }", phone)
+        self.assertIn(".stage { grid-column: 1; grid-row: 2; }", phone)
+
+    def test_mini_lesson_pops_up_over_the_stage(self):
+        self.assertRegex(self.css_code, r"\.mini \{[^}]*position: absolute")
+        self.assertRegex(self.css_code, r"\.mini-head \{[^}]*background: var\(--yellow\)")
+        stage = re.search(r'<section class="zone stage".*?</section>', self.html, re.S).group(0)
+        self.assertIn('id="mini"', stage)
+        self.assertIn('id="mini-close"', stage)
+
+    def test_zip_bubble_holds_about_four_lines_then_scrolls(self):
+        self.assertRegex(self.css_code, r"\.hint \{[^}]*font-size: 28px[^}]*"
+                                        r"max-height: calc\(28px \* 1\.3 \* 4 \+ 32px\)"
+                                        r"[^}]*overflow-y: auto")
+
+    def test_teacher_drawer_slides_over_the_zip_panel(self):
+        self.assertRegex(self.css_code, r"\.zip \{ grid-column: 2; grid-row: 1; \}")
+        self.assertRegex(self.css_code, r"\.teacher \{[^}]*grid-column: 2; grid-row: 1;[^}]*"
+                                        r"transform: translateX")
+        drawer = re.search(r'<aside[^>]*id="teacher".*?</aside>', self.html, re.S).group(0)
+        self.assertIn("/api/notebook", drawer)
+
+    def test_red_never_shakes(self):
+        self.assertNotRegex(self.css_code, r"shake|translateX\(-?\d+px\)\s*;?\s*\}?\s*"
+                                           r"(?:\d+%|to)\s*\{\s*transform: translateX")
+
+
+class TestTalksToYou(Case):
+    """Every sentence a student sees says "you", never "the student"."""
+
+    def replies(self):
+        return [m["text"] for m in self.app.log if m["who"] == "tutor"]
+
+    def test_next_lesson_reason_after_a_pass(self):
+        self.assertIn("This is the next lesson you have not passed yet.", self.check()["reply"])
+
+    def test_next_lesson_reason_after_the_same_mistake_twice(self):
+        for _ in range(2):  # the same mistake twice: practise the lesson again
+            self.build("led_backwards")
+            self.check()
+        self.build("correct")
+        out = self.check("I fixed it, check again")
+        self.assertIn("practice this lesson once more", out["reply"])
+        self.assertIn("you made the same mistake", out["reply"])
+
+    def test_next_lesson_reason_when_everything_is_passed(self):
+        self.check()                    # lesson 1, no mistakes
+        out = self.check()              # lesson 2, no mistakes
+        self.assertIn("You passed every lesson", out["reply"])
+
+    def test_no_reply_talks_about_the_student(self):
+        for scenario in ("correct", "led_backwards", "no_resistor", "resistor_150",
+                         "open_circuit", "correct"):
+            self.build(scenario)
+            self.check("I fixed it, check again")
+        self.board.send("PRESS 2")
+        self.app.pump_events()
+        self.app.wait_for_buttons()
+        for text in self.replies():
+            self.assertNotRegex(text.lower(), r"\bthe student\b", text)
+
+    def test_session_reason_strings(self):
+        source = (ROOT / "agent" / "session.py").read_text(encoding="utf-8")
+        for reason in re.findall(r'_pick\([^,]+,\s*f?"([^"]+)"', source):
+            self.assertNotIn("the student", reason.lower())
+
+
 if __name__ == "__main__":
     unittest.main()

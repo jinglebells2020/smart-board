@@ -229,13 +229,13 @@ class TestPage(unittest.TestCase):
 
     def test_has_the_pretend_board(self):
         for needed in ['id="tile-board"', 'id="screen"', 'id="board-buttons"', 'id="tile-rows"',
-                       '"/api/press"', "Pretend board", "Rows this lesson uses",
+                       '"/api/press"', "Pretend board", "The plan: where each part goes",
                        "b.pretend", "screen_size"]:
             self.assertIn(needed, self.html)
 
     def test_keeps_card_quiz_and_history(self):
         for needed in ['id="mini"', 'id="mini-options"', '"/api/quiz"', "Mistake history",
-                       "function fitToScreen()"]:
+                       'id="mini-close"']:
             self.assertIn(needed, self.html)
 
     def test_plain_words(self):

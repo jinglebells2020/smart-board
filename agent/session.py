@@ -255,8 +255,8 @@ class Session:
         """For the AI's restore_power tool: only when the student asked."""
         if not self.restore_allowed:
             return {"power_on": None, "error": "not allowed",
-                    "say": "Only the student can turn the power on: they press "
-                           "button 4, or say they fixed the circuit."}
+                    "say": "Only you can turn the power on: press button 4, or "
+                           "say you fixed the circuit."}
         return self.turn_power_on()
 
     def toggle_power(self):
@@ -406,24 +406,25 @@ class Session:
         repeated = [m["id"] for m in self.lesson["mistakes"]
                     if self.times_seen(cur, m["id"]) >= REPEAT_IF_SEEN]
         if repeated and passes[str(cur)] == 1:
-            # The reason is shown to the student, so it uses plain words;
-            # the mistake ids stay available in "repeated" for the agent.
+            # The reason is shown to the student, so it talks to "you" in
+            # plain words; the mistake ids stay in "repeated" for the agent.
             result = self._pick(cur, "Let's practice this lesson once more, because "
-                                     "the same mistake happened more than once.")
+                                     "you made the same mistake more than once.")
             result["repeated"] = repeated
             return result
 
         for lid in sorted(self.lessons):
             if passes.get(str(lid), 0) == 0:
-                return self._pick(lid, "Next lesson the student has not passed yet.")
+                return self._pick(lid, "This is the next lesson you have not passed yet.")
 
         counts = {lid: sum(1 for m in self.history["mistakes"] if m["lesson"] == lid)
                   for lid in self.lessons}
         worst = max(counts, key=lambda lid: (counts[lid], -lid))
         if counts[worst] == 0:
-            return {"lesson": None, "reason": "All lessons passed with no mistakes. Done!"}
-        return self._pick(worst, f"All lessons passed. Review lesson {worst}: "
-                                 f"it had the most mistakes ({counts[worst]}).")
+            return {"lesson": None, "reason": "You passed every lesson with no mistakes. "
+                                              "Well done!"}
+        return self._pick(worst, f"You passed every lesson! Let's review lesson {worst}, "
+                                 f"where you made the most mistakes ({counts[worst]}).")
 
     def _pick(self, lesson_id, reason):
         changed = lesson_id != self.lesson_id or self.passed_current

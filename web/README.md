@@ -5,7 +5,7 @@ The one-page screen for the projector, made for an 11-year-old: Zip
 the lesson's breadboard shows each part and the live row lights and
 voltages, a lesson path shows stars, the mini-lesson card has its quiz,
 and a correct circuit gets a short celebration. Practice mode, board
-status, the tool trace and the mistake history are in **Teacher view**
+status, the tool trace and the mistake history are in the **Teacher** drawer
 (closed when the page opens).
 
 What the server adds for the page (worked out, no new rules): the
@@ -33,7 +33,7 @@ Clicking a button presses it on the fake board, so it goes exactly the
 way a real button press will. Button 3 builds the lesson step by step:
 the next part's rows light blue and the screen names the part.
 
-The drawing ("Your breadboard") shows each row the lesson uses with its
+The drawing ("The plan: where each part goes") shows each row the lesson uses with its
 live voltage, "empty" when nothing is connected to it, and its light in
 its real colour. During step-by-step building the current part is
 outlined in blue and later parts are faint.
@@ -48,7 +48,7 @@ the fake board with any of them:
     python web/server.py --fresh --rows T1-T16         # only 16 rows measured
     python web/server.py --fresh --no-screen           # no screen
 
-They can be combined. Teacher view says what the board has.
+They can be combined. The Teacher drawer says what the board has.
 
 ## A real board
 
@@ -56,7 +56,7 @@ They can be combined. Teacher view says what the board has.
 
 With a real board the practice-mode buttons and the pretend board's
 buttons are hidden (the student uses the real buttons), and a line in
-Teacher view says **Board connected on COM3 (115200 baud)**, or in red
+the Teacher drawer says **Board connected on COM3 (115200 baud)**, or in red
 **Board not answering on COM3** with what to do. While it is not
 answering, the numbers show "?" instead of old or made-up values. The
 page reconnects by itself when the cable is plugged back in. Windows

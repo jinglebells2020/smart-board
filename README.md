@@ -25,7 +25,7 @@ written at about a 6th grade reading level.
 | `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`) |
 | `tools/check_board.py`   | Done. Checks a board's firmware against the protocol and prints PASS or FAIL per rule. How the hardware teammate tests the firmware (docs/FIRMWARE_GUIDE.md) |
 | `firmware/`              | Not written yet. docs/FIRMWARE_GUIDE.md says what it must do |
-| `web/`                   | Done. Projector page made for an 11-year-old: Zip the guide with 4 moods, a drawn breadboard with the parts and live row lights, a lesson path with stars, mini-lesson card with quiz, a short celebration, a pretend board (screen + 4 buttons) with the fake board, and a Teacher view (`python web/server.py`) |
+| `web/`                   | Done. Projector page made for an 11-year-old: Zip the guide with 4 moods, a drawn plan of the breadboard with the parts and live row lights, a lesson path with stars, a pop-up mini-lesson with quiz, a short celebration, a pretend board (screen + 4 buttons) with the fake board, and a Teacher drawer (`python web/server.py`) |
 
 ## Folders
 
@@ -69,7 +69,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (282 tests). They never call Claude, so
+The last line should say `OK` (301 tests). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -137,24 +137,36 @@ python3 sim/fake_board.py --rows T1-T16 --no-current --no-power-switch
 ## The page
 
 Made for an 11-year-old: bright, friendly, never scary, with our own
-characters and colours.
+characters and colours. It feels like a bright creative studio: white
+work surfaces on a light blue-grey page, five colours with one job each
+(blue: top bar and main buttons; yellow: highlights, stars and Zip;
+green: correct; coral: problem here; sky blue: "put a part here"),
+big rounded buttons, and text that always has strong contrast. The
+design rules are checked by tests (`tests/test_page_design.py`).
 
-- **Zip**, our robot spark guide (drawn in the page), says the tutor's
-  words in a speech bubble. 4 faces: happy (correct), thinking
-  (checking), curious (a hint or a question) and careful (danger or
-  power off).
-- **Your breadboard**: a drawing of the lesson's rows with each part
-  where the lesson puts it, the row lights in their real colours (red
-  ones gently pulse: "look here", not "you failed") and each row's
-  voltage in small text.
+Three zones fill the screen:
+
+- **Top bar**: the lesson, the lesson path with stars, the power sign
+  and the **Teacher** button.
+- **The plan: where each part goes** (the stage): a drawing of the
+  lesson's rows with each part where the lesson puts it, the row
+  lights in their colours (red ones gently pulse: "look here", not
+  "you failed") and each row's voltage in small text. The current and
+  the power voltage are small pills on top; the pretend board (screen
+  and 4 buttons) sits underneath. The **mini-lesson** pops up over the
+  stage like a friendly tutorial window and can be closed.
+- **Zip**, our robot spark guide, says the tutor's words in a speech
+  bubble. 4 faces: happy (correct), thinking (checking), curious (a
+  hint or a question) and careful (danger or power off). Below Zip:
+  **Check my circuit**, **I fixed it** and a box to ask anything.
 - **Lesson path with stars**: 1 star for passing a lesson, a 2nd with
   no mistake made twice, a 3rd when every mini-lesson question in it
   was answered right. Worked out from the history; no new rules.
-- A short **celebration** (confetti and a bounce, no sound) when a
-  circuit is correct.
-- **Teacher view** (closed when the page opens): practice mode, board
-  status, New student, the notebook link, what the tutor did, and the
-  mistake history.
+- A short **celebration** when a circuit is correct: the rows glow
+  green, a little confetti, Zip bounces. No sound.
+- **Teacher drawer** (closed when the page opens, slides in over Zip):
+  practice mode, board status, New student, the notebook link, what the
+  tutor did, and the mistake history.
 
 One HTML file, no internet, fits one 1920x1080 screen without
 scrolling, and has a phone layout.
@@ -164,7 +176,7 @@ scrolling, and has a phone layout.
 Works today with the fake board. Show it on the projector page
 (`python web/server.py --fresh`, clicks in RUN.md Part E). The
 **pretend board** (under the drawing) has the board's screen and its 4
-buttons. Pick circuits in **Teacher view → Practice mode**.
+buttons. Pick circuits in **Teacher → Practice mode**.
 
 1. Build step by step: press **3 · Next step**. The drawing shows the
    red wire strong and the rest faint, row 5 lights blue and the screen
@@ -191,7 +203,7 @@ buttons. Pick circuits in **Teacher view → Practice mode**.
    still explains with a clue from the row voltages, lights that row
    yellow (careful), and then asks the **detective**, which answers
    with at most two questions ("Could the bottom 10k resistor be a
-   different value than the plan says...?"). In Teacher view, "What the
+   different value than the plan says...?"). In the Teacher drawer, "What the
    tutor did" says "asked the detective, wrote in the notebook", and
    **Open the student's notebook** shows the line it just wrote.
 7. Restart with `--no-power-switch --no-current --rows T1-T16`: the same
