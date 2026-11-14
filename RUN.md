@@ -100,10 +100,10 @@ back. A yellow "new release of pip" notice is fine to ignore.
 python -m unittest -v
 ```
 
-Wait about 10 seconds. The last lines should be:
+Wait about 15 seconds. The last lines should be:
 
 ```
-Ran 46 tests in 5.5s
+Ran 76 tests in 13.0s
 
 OK
 ```
@@ -134,18 +134,21 @@ lines are what a student would say.
 | You type                    | What happens                                     |
 |-----------------------------|--------------------------------------------------|
 | `/build led_backwards`      | Fake board now has the LED in backwards          |
-| `check my circuit`          | Tutor gives a hint about the LED's legs          |
+| `check my circuit`          | Tutor gives a hint: look at which way the LED faces and which row its legs are in |
 | `check again`               | Same mistake twice: tutor now explains fully     |
 | `/build no_resistor`        | Fake board now has no resistor                   |
 | `check`                     | Tutor cuts the power and asks what limits current |
 | `/build correct`            | Student fixes it                                  |
 | `I fixed it`                | Tutor turns power back on and says it is correct. Because the LED went in backwards twice, it asks for lesson 1 once more |
 | `check`                     | Correct again: tutor moves on to lesson 2         |
-| `/build middle_floating`    | Probe row not connected                          |
-| `check`                     | Tutor hints and lights up the probe row          |
+| `/build middle_floating`    | Measuring row not connected                      |
+| `check`                     | Tutor hints and lights up the measuring row      |
 | `/quit`                     | Stop                                              |
 
 `/list` shows every circuit you can `/build` for the current lesson.
+
+Mini-lessons and their quiz questions appear only on the web page
+(Part E), not in this terminal.
 
 The offline tutor always uses fixed sentences. It is there so you can
 test without paying for Claude.
@@ -202,21 +205,33 @@ The tests in Part B never use the key, even when it is set.
 
    | Click                                 | What the audience sees                         |
    |---------------------------------------|------------------------------------------------|
-   | **LED backwards**, then **Check my circuit** | Current tile turns red. Tutor gives a hint about the legs |
-   | **Check my circuit** again            | Same mistake twice: full explanation. History shows "2nd, Full explanation" |
-   | **No resistor**, then **Check my circuit** | **POWER OFF** badge turns red, readings drop to 0 |
-   | **Correct circuit**, then **I fixed it** | Power back on, all green. Tutor asks for lesson 1 once more |
-   | **Check my circuit**                  | Page switches to lesson 2                      |
-   | **Probe not connected**, then **Check my circuit** | Probe voltage jumps around. "Row 15 LED is lit" appears |
+   The buttons are on the right: **Check my circuit**, **I fixed it**,
+   and under them the practice-mode buttons that pick what the pretend
+   student built.
 
-   Under each hint, "Agent used: ..." lists the tools the agent called.
+   | Click                                 | What the audience sees                         |
+   |---------------------------------------|------------------------------------------------|
+   | **LED backwards**, then **Check my circuit** | Current tile turns red ("NOT YET"). The tutor gives a hint. Under it a purple **Mini-lesson** card appears: "LEDs are one-way doors", a short idea, a question and 3 answer buttons |
+   | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green, with "Right!" and one line saying why. In the mistake history, the Quiz column says "Right" |
+   | **Check my circuit** again            | Same mistake twice: the full explanation, and a fresh card. Click the first answer: it turns red, the right one turns green, and "Not quite." plus why appears. History: "2nd, Full explanation, Wrong" |
+   | **No resistor**, then **Check my circuit** | **POWER OFF** badge turns red, readings drop to 0. Card: "Resistors keep current small" |
+   | **Correct circuit**, then **I fixed it** | Power back on, all green, the card goes away. Tutor asks for lesson 1 once more |
+   | **Check my circuit**                  | Page switches to lesson 2                      |
+   | **Measuring row not connected**, then **Check my circuit** | The voltage at the measuring row jumps around. "Row 15 LED is lit" appears at the top. Card: "Measure only what you touch" |
+
+   Under each hint, a small grey line says what the tutor did, for
+   example "The tutor measured the current, measured the voltages,
+   saved the mistake".
+
+   Each quiz takes one answer. A second click does not change it.
 
 5. **New student** (top right) forgets the history and starts again
    at lesson 1. Use it before each demo.
 6. To stop: click the Command Prompt window and press **Ctrl+C**.
 
 With `set ANTHROPIC_API_KEY=...` done first (Part D), the page uses
-Claude. The bottom of the tutor box says which tutor is running.
+Claude. The top-left corner, under "Smart Breadboard", says which
+tutor is running.
 
 If the page shows a red bar saying it can't reach the server, the
 server window was closed. Run step 1 again.
@@ -256,5 +271,5 @@ server window was closed. Run step 1 again.
 | `No module named agent` or `Ran 0 tests`        | You are in the wrong folder. Run the `cd ...\smart-board` command |
 | `'git' is not recognized`                       | Do Step 2, then close and reopen Command Prompt |
 | Error with `401` or `authentication` in Part D  | The key is wrong or has spaces. Run the `set` line again |
-| The tutor says `These readings don't match`     | The fake board circuit is for a different lesson. Type `/list` and `/build` one of those |
+| The tutor says `The numbers don't match lesson` | The fake board circuit is for a different lesson. Type `/list` and `/build` one of those |
 | `OSError: ... address already in use` (Part E)  | The server is already running in another window. Use that one, or run `python web\server.py --port 8001` and open http://localhost:8001 |

@@ -1,8 +1,8 @@
 {
   "id": 1,
   "title": "LED with resistor",
-  "circuit": "5 V -> 220 ohm -> red LED -> ground",
-  "probe1": "LED anode: the row between the resistor and the LED",
+  "circuit": "5 V -> 220 ohm resistor -> red LED -> ground",
+  "probe1": "The row between the resistor and the LED",
   "probe1_row": 10,
   "notes": "probe1_row is a placeholder until docs/HARDWARE.md lists the real probe rows.",
   "expected": {
@@ -19,7 +19,7 @@
   "mistakes": [
     {
       "id": "led_backwards",
-      "description": "LED is in backwards",
+      "description": "LED may be backwards, or its long leg may not be in the resistor's row",
       "detect": {
         "current_ma": {
           "max": 1
@@ -29,24 +29,48 @@
         }
       },
       "action": "hint",
-      "hint": "Current is almost zero, but the LED row still has full voltage. LEDs only let current flow one way. Look at its two legs.",
-      "explain": "The LED is in backwards. The longer leg (anode, +) must face the resistor and 5 V; the shorter leg (cathode, -) goes to ground. Flip it around."
+      "hint": "Almost no current is flowing, but the row before the LED still has the full 5 volts. So the current is stopped at the LED. Look closely at the LED: which way it faces, and which row each of its legs is in.",
+      "explain": "Two things can cause this, and the board cannot tell which one: the LED may be in backwards, or its long leg may not be in the same row as the resistor. The long leg (+) should share a row with the resistor, and the short leg (-) should lead to ground.",
+      "mini_lesson": {
+        "title": "LEDs are one-way doors",
+        "idea": "An LED is like a one-way door. Current can only go through it in one direction, and only if the door is connected on both sides. If the door faces the wrong way or is not connected, the current stops.",
+        "question": "Current stops right at the LED. What could cause that?",
+        "options": [
+          "The resistor is the wrong color",
+          "The LED faces the wrong way, or a leg is not connected",
+          "The power is too weak to light it"
+        ],
+        "answer": 1,
+        "why": "An LED lets current through only one way, and only when both of its legs are connected."
+      }
     },
     {
       "id": "no_resistor",
-      "description": "No resistor, LED connected straight to 5 V",
+      "description": "No resistor: LED connected straight to 5 V",
       "detect": {
         "current_ma": {
           "min": 30
         }
       },
       "action": "cut_power",
-      "hint": "Power was cut because the current was far too high. What part in the circuit limits how much current flows through the LED?",
-      "explain": "The LED was connected straight to 5 V with no resistor. Without a resistor nothing limits the current, so it rushes far past what the LED can take and burns it out. Put the 220 ohm resistor between 5 V and the LED's long leg."
+      "hint": "Power was cut because the current was far too high. What part in the circuit keeps the current small enough for the LED?",
+      "explain": "There was no resistor, so the LED was connected straight to 5 volts. Nothing kept the current small, so it shot far past what the LED can handle, and that can burn it out. Put the 220 ohm resistor between 5 V and the LED's long leg.",
+      "mini_lesson": {
+        "title": "Resistors keep current small",
+        "idea": "A resistor slows down electric current, like a narrow pipe slows down water. Without one, a huge amount of current rushes through the LED. Too much current makes parts very hot and can burn them out.",
+        "question": "What is the job of the resistor in an LED circuit?",
+        "options": [
+          "It makes the LED change color",
+          "It stores electricity for later",
+          "It keeps the current small and safe"
+        ],
+        "answer": 2,
+        "why": "The resistor limits the current, so the LED gets only as much as it can handle."
+      }
     },
     {
       "id": "open_circuit",
-      "description": "Circuit is not closed (part in the wrong row)",
+      "description": "Circuit is not a closed loop (a part is in the wrong row)",
       "detect": {
         "current_ma": {
           "max": 1
@@ -56,9 +80,21 @@
         }
       },
       "action": "hint",
-      "hint": "No current and no voltage at the LED. Something is not connected. Check that each leg is in the row you think it is.",
       "show_row": true,
-      "explain": "The circuit is not a closed loop. Each part must share a row with the next part: 5 V to resistor, resistor to the LED's long leg, LED's short leg to ground. The lit row shows where the probe is; make sure the resistor and LED both reach it."
+      "hint": "No current, and no voltage at the LED. Something is not connected. Check that each leg is in the row you think it is.",
+      "explain": "The circuit is not a closed loop. Each part must share a row with the next one: 5 V to the resistor, the resistor to the LED's long leg, and the LED's short leg to ground. The lit row is the measuring row, so make sure the resistor and the LED both reach it.",
+      "mini_lesson": {
+        "title": "Circuits must be closed loops",
+        "idea": "Electric current only flows around a complete loop, from the power supply and back again. It is like a train track: if one piece is missing, the train cannot go around. A part in the wrong row is like a missing piece of track.",
+        "question": "What does current need in order to flow?",
+        "options": [
+          "A complete loop with no gaps",
+          "A very long wire",
+          "Two LEDs side by side"
+        ],
+        "answer": 0,
+        "why": "Current flows only around a closed loop, so one gap stops it everywhere."
+      }
     }
   ]
 }

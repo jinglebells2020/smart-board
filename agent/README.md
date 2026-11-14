@@ -23,7 +23,11 @@ also calls `cut_power`, but the board is already safe by then.
 
 `log_mistake` decides what the agent may say. The first time a
 mistake happens it returns the lesson's `hint`. From the second time
-it returns `explain`, the full answer.
+it returns `explain`, the full answer. Every time it also returns the
+mistake's `mini_lesson` (the idea behind it, never the fix), which the
+web page shows as a card with a quiz question. `Session.record_quiz`
+saves the student's answer, right or wrong, in the history file; the
+right answer always comes from the lesson file.
 
 ## How the next lesson is picked (session.py, `next_lesson`)
 

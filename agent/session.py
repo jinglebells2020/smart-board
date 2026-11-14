@@ -21,11 +21,15 @@ class Session:
         self.board = board
         self.lessons = lessons or load_lessons()
         self.history_path = Path(history_path) if history_path else None
-        self.history = {"mistakes": [], "passes": {}}
+        self.history = {"mistakes": [], "passes": {}, "quiz": []}
         if self.history_path and self.history_path.exists():
             self.history = json.loads(self.history_path.read_text(encoding="utf-8"))
+        self.history.setdefault("quiz", [])  # history files from before quizzes
         self.lesson_id = lesson
         self.passed_current = False
+        # The most recent log_mistake call: {"lesson", "mistake", "occurrence"}.
+        # The web page uses it to show the matching mini-lesson card.
+        self.last_logged = None
 
     # --- Lessons -------------------------------------------------------
     @property
@@ -69,8 +73,18 @@ class Session:
         return sum(1 for m in self.history["mistakes"]
                    if m["lesson"] == lesson_id and m["mistake"] == mistake_id)
 
+    def _mistake_spec(self, lesson_id, mistake_id):
+        lesson = self.lessons.get(lesson_id)
+        if lesson is None:
+            return None
+        return next((m for m in lesson["mistakes"] if m["id"] == mistake_id), None)
+
     def log_mistake(self, mistake_id):
-        """Record a mistake. Returns what the agent is allowed to say."""
+        """Record a mistake. Returns what the agent is allowed to say, and the
+        mini-lesson about the idea behind the mistake (shown on the page).
+
+        The mini-lesson explains the idea, never what to change on the board,
+        so it is allowed on the first try alongside the hint."""
         mistake = next((m for m in self.lesson["mistakes"] if m["id"] == mistake_id), None)
         if mistake is None:
             known = [m["id"] for m in self.lesson["mistakes"]]
@@ -79,11 +93,42 @@ class Session:
         self.history["mistakes"].append(
             {"lesson": self.lesson_id, "mistake": mistake_id, "time": time.time()})
         self._save()
+        occurrence = len(self.history["mistakes"]) - 1
+        self.last_logged = {"lesson": self.lesson_id, "mistake": mistake_id,
+                            "occurrence": occurrence}
         n = self.times_seen(self.lesson_id, mistake_id)
         # Rule from CLAUDE.md: hint first, never the full answer on the first try.
-        if n == 1:
-            return {"times_seen": n, "level": "hint", "say": mistake["hint"]}
-        return {"times_seen": n, "level": "explain", "say": mistake["explain"]}
+        level, say = ("hint", mistake["hint"]) if n == 1 else ("explain", mistake["explain"])
+        return {"times_seen": n, "level": level, "say": say,
+                "mini_lesson": dict(mistake["mini_lesson"])}
+
+    # --- Mini-lesson quiz ------------------------------------------------
+    def quiz_result(self, occurrence):
+        """The saved answer for one logged mistake, or None if not answered."""
+        return next((q for q in self.history["quiz"] if q.get("occurrence") == occurrence),
+                    None)
+
+    def record_quiz(self, lesson_id, mistake_id, choice, occurrence=None):
+        """Save the student's answer to a mini-lesson question.
+
+        The right answer comes from the lesson file, never from the page.
+        Returns {"correct", "choice", "answer", "why"} or {"error": ...}.
+        """
+        mistake = self._mistake_spec(lesson_id, mistake_id)
+        if mistake is None or "mini_lesson" not in mistake:
+            return {"error": f"no mini-lesson for lesson {lesson_id!r}, "
+                             f"mistake {mistake_id!r}"}
+        ml = mistake["mini_lesson"]
+        if isinstance(choice, bool) or not isinstance(choice, int) \
+                or not 0 <= choice < len(ml["options"]):
+            return {"error": f"choice must be 0 to {len(ml['options']) - 1}"}
+        correct = choice == ml["answer"]
+        self.history["quiz"].append({
+            "lesson": lesson_id, "mistake": mistake_id, "occurrence": occurrence,
+            "choice": choice, "correct": correct, "time": time.time()})
+        self._save()
+        return {"correct": correct, "choice": choice, "answer": ml["answer"],
+                "why": ml["why"]}
 
     def _save(self):
         if self.history_path:
@@ -111,8 +156,12 @@ class Session:
         repeated = [m["id"] for m in self.lesson["mistakes"]
                     if self.times_seen(cur, m["id"]) >= REPEAT_IF_SEEN]
         if repeated and passes[str(cur)] == 1:
-            return self._pick(cur, f"Practice this lesson once more: the mistake "
-                                   f"{', '.join(repeated)} happened more than once.")
+            # The reason is shown to the student, so it uses plain words;
+            # the mistake ids stay available in "repeated" for the agent.
+            result = self._pick(cur, "Let's practice this lesson once more, because "
+                                     "the same mistake happened more than once.")
+            result["repeated"] = repeated
+            return result
 
         for lid in sorted(self.lessons):
             if passes.get(str(lid), 0) == 0:

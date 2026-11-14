@@ -57,6 +57,9 @@ def make_tools(session):
 
         Returns "say": the only text you may give the student about this
         mistake. On the first time it is a hint, not the answer.
+        Also returns "mini_lesson": a short lesson about the idea behind the
+        mistake, with a quiz question. The page shows it to the student as a
+        card, so do not read it out or give away the quiz answer.
         """
         return json.dumps(session.log_mistake(mistake_id))
 
