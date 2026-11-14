@@ -38,9 +38,10 @@ class Case(unittest.TestCase):
 
     def quiz(self, right):
         card = self.app.card
-        ml = QUIZ[card["mistake"]]
+        ml = (self.app.session.ai_lesson(card["occurrence"]) if card.get("ai")
+              else QUIZ[card["mistake"]])
         choice = ml["answer"] if right else (ml["answer"] + 1) % len(ml["options"])
-        return self.app.quiz(card["occurrence"], choice)
+        return self.app.quiz(card["occurrence"], choice, written_by_zip=bool(card.get("ai")))
 
     def stars(self, lesson=1):
         return next(p for p in self.app.state()["path"] if p["id"] == lesson)

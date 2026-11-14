@@ -14,6 +14,8 @@ How to run it: see RUN.md in the main folder.
 | `lessons.py`    | Checks a circuit from row voltages against lessons/*.json, calculates current when there is no sensor, and writes the clue for unknown mistakes |
 | `prompts.py`    | The instructions Claude follows                           |
 | `detective.py`  | The detective subagent: for mistakes not on the lesson's list, at most two likely causes as questions (structured answer, checked in Python) |
+| `lesson_writer.py` | The lesson writer subagent: a new mini-lesson with a different everyday comparison, graded by RubricMiddleware, then checked in plain Python; offline writer and grader models |
+| `trace.py`      | "How Zip worked": a middleware that records every tool call (tutor and subagents), turned into plain steps |
 | `notebook.py`   | The student notebook: one Markdown file per student, loaded as memory, written by the agent with edit_file; the agent may write only there |
 | `mock_model.py` | Offline stand-in for Claude, used in tests and without a key |
 | `__main__.py`   | The chat in a terminal (`python -m agent`)                |

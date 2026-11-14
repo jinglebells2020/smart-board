@@ -121,18 +121,26 @@ def mistake_label(lesson, mistake_id):
     return f"mistake \"{spec.get('mini_lesson', {}).get('title') or mistake_id}\""
 
 
-def notebook_tools_backend(notebook):
+def notebook_tools_backend(notebook, on_memory_read=None):
     """The deepagents backend and permissions for one student's notebook.
 
     Files under /notebook/ are real files in the notebook folder; anything
     else lives only in the agent's short-term state. Permissions let the
-    agent read and write this student's file, and write nothing else."""
+    agent read and write this student's file, and write nothing else.
+    on_memory_read() is called each time deepagents loads the notebook as
+    memory (it downloads the file), for "How Zip worked"."""
     from deepagents import FilesystemPermission
     from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 
+    class NotebookFolder(FilesystemBackend):
+        def download_files(self, paths):
+            if on_memory_read is not None:
+                on_memory_read()
+            return super().download_files(paths)
+
     backend = CompositeBackend(
         default=StateBackend(),
-        routes={ROUTE: FilesystemBackend(root_dir=notebook.folder, virtual_mode=True)})
+        routes={ROUTE: NotebookFolder(root_dir=notebook.folder, virtual_mode=True)})
     permissions = [
         FilesystemPermission(operations=["read", "write"], paths=[notebook.agent_path]),
         FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),

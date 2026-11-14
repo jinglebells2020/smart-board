@@ -12,6 +12,7 @@ server sits in between. It uses only Python's built-in http.server.
     POST /api/quiz    {"occurrence": n, "choice": 0..2} -> answer the mini-lesson question
     POST /api/press   {"id": 1..4}         -> fake board only: press a board button
     POST /api/reset   start again with a new student (a fresh notebook)
+    POST /api/power-answer {"yes": true|false} -> answer "Turn the power back on?"
     GET  /api/notebook the student's notebook, as plain text
 """
 
@@ -27,10 +28,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # so "python web/server.py" can import agent and sim
 
 from agent.boardlink import BoardLink  # noqa: E402
-from agent.build import ask, build_agent, make_model  # noqa: E402
+from agent.build import POWER_QUESTION, answer_power, ask, build_agent, make_model  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
 from agent.lessons import summarize  # noqa: E402
 from agent.notebook import Notebook  # noqa: E402
+from agent.trace import describe_steps  # noqa: E402
 from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E402
 from agent.session import Session  # noqa: E402
 from protocol import (BUTTON_LABELS, COLORS, DEFAULT_BAUD, SCREEN_CHARS,  # noqa: E402
@@ -41,7 +43,8 @@ PAGE = Path(__file__).resolve().parent / "index.html"
 
 
 class App:
-    def __init__(self, board, lesson=1, history_path=None, model=None, notebook=None):
+    def __init__(self, board, lesson=1, history_path=None, model=None, notebook=None,
+                 confirm_power=False):
         self.is_sim = isinstance(board, FakeBoard)
         self.raw_board = board
         # One shared handle (with a lock) for the page, the tutor and buttons.
@@ -49,6 +52,9 @@ class App:
         self.start_lesson = lesson
         self.history_path = history_path
         self.notebook = notebook  # the student's notebook (agent/notebook.py) or None
+        # Ask "Turn the power back on?" before the tutor turns power on
+        # (deepagents human in the loop). The real page turns this on.
+        self.confirm_power = confirm_power
         if model is None:
             model, is_real = make_model()
         else:
@@ -63,7 +69,7 @@ class App:
     def _new_session(self, lesson):
         self.session = Session(self.board, lesson=lesson, history_path=self.history_path,
                                notebook=self.notebook)
-        self.agent = build_agent(self.session, self.model)
+        self.agent = build_agent(self.session, self.model, ask_before_power=self.confirm_power)
         self.chat = []  # agent message history
         self.log = []   # what the page shows: [{"who", "text", "time"}]
         # The mistake whose mini-lesson card is on the page, or None:
@@ -85,6 +91,9 @@ class App:
             self._new_session(self.start_lesson)
             self._welcome()
         return {"ok": True}
+
+    def student_name(self):
+        return self.notebook.student if self.notebook is not None else "the student"
 
     def _welcome(self):
         l = self.session.lesson
@@ -129,6 +138,8 @@ class App:
             t.join(timeout)
 
     def on_button(self, button_id):
+        if button_id == 4 and self.waiting_for_power_answer():
+            return self.answer_power(True)  # button 4 counts as Yes
         try:
             result = handle_button(button_id, self.session,
                                    lambda text: self.ask(text).get("reply", ""))
@@ -174,7 +185,12 @@ class App:
             return None
         spec = self.session._mistake_spec(self.card["lesson"], self.card["mistake"])
         ml = spec["mini_lesson"]
-        saved = self.session.quiz_result(self.card["occurrence"])
+        # A mini-lesson the lesson writer wrote (and Python accepted) for this
+        # mistake replaces the built-in one, with its own quiz.
+        ai = self.session.ai_lesson(self.card["occurrence"]) if self.card.get("ai") else None
+        if ai is not None:
+            ml = ai
+        saved = self.session.quiz_result(self.card["occurrence"], ai=ai is not None)
         answered = None
         if saved:
             answered = {"choice": saved["choice"], "correct": saved["correct"],
@@ -182,20 +198,35 @@ class App:
         return {"occurrence": self.card["occurrence"], "lesson": self.card["lesson"],
                 "mistake": self.card["mistake"], "title": ml["title"],
                 "idea": ml["idea"], "question": ml["question"],
-                "options": list(ml["options"]), "answered": answered}
+                "options": list(ml["options"]), "answered": answered,
+                "written_by_zip": ai is not None}
 
-    def quiz(self, occurrence, choice):
-        """Save the answer to the mini-lesson card that is on the page."""
+    def quiz(self, occurrence, choice, written_by_zip=False):
+        """Save the answer to the mini-lesson card that is on the page.
+        written_by_zip says which card was clicked (the built-in one, or the
+        one the lesson writer wrote), so a late click never lands on the
+        other card."""
         with self.agent_lock:
             card = self.card
             if card is None or occurrence != card["occurrence"]:
                 return {"error": "that question is no longer on the screen"}
-            saved = self.session.quiz_result(occurrence)
-            if saved:  # one answer per mistake; a second click changes nothing
-                view = self._card_view()["answered"]
-                return dict(view, already_answered=True)
-            return self.session.record_quiz(card["lesson"], card["mistake"],
-                                            choice, occurrence)
+            ai = bool(written_by_zip) and self.session.ai_lesson(occurrence) is not None
+            saved = self.session.quiz_result(occurrence, ai=ai)
+            if saved:  # one answer per card; a second click changes nothing
+                ml = (self.session.ai_lesson(occurrence) if ai else
+                      self.session._mistake_spec(card["lesson"], card["mistake"])["mini_lesson"])
+                return {"choice": saved["choice"], "correct": saved["correct"],
+                        "answer": ml["answer"], "why": ml["why"], "already_answered": True}
+            result = self.session.record_quiz(card["lesson"], card["mistake"],
+                                              choice, occurrence, ai=ai)
+        if result.get("correct") is False and not ai:
+            # A wrong answer: Zip asks the lesson writer for another way to
+            # explain it (in the background, so the page keeps updating).
+            t = threading.Thread(target=self.ask, daemon=True,
+                                 args=("I got the quiz wrong. Can you explain it another way?",))
+            self.button_threads.append(t)
+            t.start()
+        return result
 
     @staticmethod
     def _clean(v, floor=None):
@@ -268,6 +299,8 @@ class App:
         """The guide's mood right now."""
         if self.agent_lock.locked():
             return "thinking"
+        if self.waiting_for_power_answer():
+            return "curious"  # Zip is asking a question
         if not reading_ok or not reading.get("power_on"):
             return "careful"  # no board, or power is off
         latest = next((m for m in reversed(self.log) if m["who"] == "tutor"), None)
@@ -287,7 +320,8 @@ class App:
             ids = [m["mistake"] for _, m in mistakes]
             passed = passes.get(str(lid), 0) > 0
             no_repeat = passed and len(ids) == len(set(ids))
-            quizzes = [s.quiz_result(i) for i, _ in mistakes]
+            # The latest answer counts: the lesson writer's card if it was answered.
+            quizzes = [s.quiz_result(i, ai=True) or s.quiz_result(i) for i, _ in mistakes]
             quiz_right = passed and all(q is not None and q["correct"] for q in quizzes)
             out.append({"id": lid, "title": s.lessons[lid]["title"],
                         "current": lid == s.lesson_id, "passed": passed,
@@ -345,35 +379,79 @@ class App:
             "scenarios": SCENARIOS.get(s.lesson_id, []) if self.is_sim else [],
             "scenario": self.raw_board.scenario if self.is_sim else None,
             "busy": self.agent_lock.locked(),
+            # Zip is asking "Turn the power back on?" (Yes / No on the page).
+            "asks_power": self.waiting_for_power_answer(),
         }
+
+    def waiting_for_power_answer(self):
+        """Is a reply paused on "Turn the power back on?"?"""
+        return getattr(self.agent, "smart_board_pending", None) is not None
 
     def ask(self, text):
         text = (text or "").strip()[:500]
         if not text:
             return {"error": "empty message"}
         with self.agent_lock:
-            self.log.append({"who": "student", "text": text, "time": time.time()})
-            before = self.session.lesson_id
+            if self.waiting_for_power_answer():
+                # A new message instead of Yes or No: that is a no.
+                self._turn("No", lambda: answer_power(self.agent, self.chat, False), resume=True)
+            return self._turn(text, lambda: ask(self.agent, self.chat, text))
+
+    def answer_power(self, yes):
+        """The student's Yes or No to "Turn the power back on?"."""
+        with self.agent_lock:
+            if not self.waiting_for_power_answer():
+                return {"error": "Zip is not asking about the power right now"}
+            return self._turn("Yes" if yes else "No",
+                              lambda: answer_power(self.agent, self.chat, bool(yes)), resume=True)
+
+    def _turn(self, text, run, resume=False):
+        """Run one tutor reply (or the rest of a paused one) and log it."""
+        self.log.append({"who": "student", "text": text, "time": time.time()})
+        if not resume:
+            self._turn_start = (self.session.lesson_id, self.session.last_check)
             self.session.last_logged = None
-            check_before = self.session.last_check
-            try:
-                reply, new = ask(self.agent, self.chat, text)
-            except Exception as e:  # show the problem on the page, keep running
-                reply, new = f"Sorry, the tutor hit an error: {e}", []
-            # A mistake was logged in this reply: show its mini-lesson card.
-            # Otherwise (circuit correct, power off, ...) the old card goes away.
-            self.card = dict(self.session.last_logged) if self.session.last_logged else None
-            tools = [c["name"] for m in new for c in (getattr(m, "tool_calls", None) or [])]
-            checked = self.session.last_check is not check_before
-            result = self.session.last_check[1] if checked else None
-            mood = self.turn_mood(result, tools)
-            self.log.append({"who": "tutor", "text": reply, "time": time.time(),
-                             "tools": tools, "mood": mood,
-                             # The page shows a short celebration for this reply.
-                             "celebrate": bool(result and result.get("status") == "ok")})
-            if self.is_sim and self.session.lesson_id != before:
-                # New lesson: the pretend student starts with a correct build.
-                self.board.send(f"SCENARIO {self.session.lesson_id} correct")
+        before, check_before = getattr(self, "_turn_start", (self.session.lesson_id, None))
+        try:
+            reply, new = run()
+        except Exception as e:  # show the problem on the page, keep running
+            reply, new = f"Sorry, the tutor hit an error: {e}", []
+            self.agent.smart_board_pending = None
+        tools = [c["name"] for m in new for c in (getattr(m, "tool_calls", None) or [])]
+        steps = describe_steps(self.session.trace, self.student_name())
+        if self.waiting_for_power_answer():
+            # Paused: Zip asks before the power comes back on.
+            self.log.append({"who": "tutor", "text": reply, "time": time.time(), "steps": steps,
+                             "tools": tools, "mood": "curious", "asks_power": True,
+                             "celebrate": False})
+            return {"reply": reply, "tools": tools, "pending": True}
+        # A mistake was logged in this reply: show its mini-lesson card.
+        # Otherwise (circuit correct, power off, ...) the old card goes away,
+        # except after asking the lesson writer: then the card stays.
+        old_card = self.card
+        self.card = dict(self.session.last_logged) if self.session.last_logged else None
+        if self.session.new_ai_lesson is not None:
+            # The lesson writer's card was accepted: show it instead.
+            occ = self.session.new_ai_lesson
+            spec = self.session.ai_lesson(occ)
+            self.card = {"lesson": spec["lesson"], "mistake": spec["mistake"],
+                         "occurrence": occ, "ai": True}
+            self.session.new_ai_lesson = None
+        elif self.card is None and old_card is not None and "task" in tools \
+                and self.session.last_check is check_before:  # no new check this reply
+            self.card = old_card
+        checked = self.session.last_check is not check_before
+        result = self.session.last_check[1] if checked else None
+        mood = self.turn_mood(result, tools)
+        self.log.append({"who": "tutor", "text": reply, "time": time.time(),
+                         # "How Zip worked": the recorded steps of this reply.
+                         "steps": steps,
+                         "tools": tools, "mood": mood,
+                         # The page shows a short celebration for this reply.
+                         "celebrate": bool(result and result.get("status") == "ok")})
+        if self.is_sim and self.session.lesson_id != before:
+            # New lesson: the pretend student starts with a correct build.
+            self.board.send(f"SCENARIO {self.session.lesson_id} correct")
         return {"reply": reply, "tools": tools}
 
     def build(self, scenario):
@@ -418,10 +496,13 @@ def make_handler(app):
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})
                 self._send(200, app.press(body.get("id")))
+            elif self.path == "/api/power-answer":
+                self._send(200, app.answer_power(bool(body.get("yes"))))
             elif self.path == "/api/quiz":
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})
-                self._send(200, app.quiz(body.get("occurrence"), body.get("choice")))
+                self._send(200, app.quiz(body.get("occurrence"), body.get("choice"),
+                                         body.get("written_by_zip", False)))
             elif self.path == "/api/reset":
                 self._send(200, app.reset())
             else:
@@ -494,7 +575,8 @@ def main(argv=None):
     if board is None:
         return 2
     notebook = Notebook(args.notebooks, args.student)
-    app = App(board, lesson=args.lesson, history_path=args.history, notebook=notebook)
+    app = App(board, lesson=args.lesson, history_path=args.history, notebook=notebook,
+              confirm_power=True)
     server = make_server(app, args.port)
     caps = app.board.capabilities()
     where = f"real board on {board.port}" if args.serial else "fake board"

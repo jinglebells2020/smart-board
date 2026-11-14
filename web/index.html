@@ -221,12 +221,17 @@
   .zip.learning .bubble::before { display: none; }
   .learn { align-self: flex-start; margin-top: 16px; max-width: 100%; text-align: left; }
   .learn span { overflow: hidden; text-overflow: ellipsis; }
+  .ask-power { display: flex; gap: 16px; margin-top: 16px; }
+  .ask-power .btn { flex: 1 1 0; }
   .mini-head {
     display: flex; align-items: center; gap: 16px; padding: 8px 8px 8px 24px;
     background: var(--yellow); color: var(--ink); border-radius: 16px 16px 0 0;
   }
   .mini-head h3 { margin: 0; flex: 1 1 auto; font-size: 28px; font-weight: 700; line-height: 1.2; }
   .mini-head .btn { background: transparent; color: var(--ink); }
+  /* A mini-lesson the lesson writer wrote for this student */
+  .zip-tag { display: inline-block; vertical-align: middle; padding: 0 8px; border-radius: 999px;
+             background: var(--white); color: var(--ink); font-size: 16px; font-weight: 700; }
   .mini-body { padding: 16px 24px 24px; }
   .mini .label { font-size: 16px; font-weight: 700; }
   .mini .idea { margin: 0 0 16px; }
@@ -318,6 +323,11 @@
   .tutor-did, .log { font-size: 16px; }
   .log p { margin: 0 0 8px; }
   .log .who { font-weight: 700; }
+  /* "How Zip worked": the real steps of the latest reply */
+  .how { margin: 0; padding: 0 0 0 24px; font-size: 16px; }
+  .how li { margin: 0 0 8px; }
+  .how .sub { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px;
+              background: var(--yellow); color: var(--ink); font-size: 16px; font-weight: 700; }
   .table-scroll { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 16px; }
   th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
@@ -499,7 +509,8 @@
            below the bubble). It never covers the breadboard or Zip's words. -->
       <div class="mini" id="mini" role="region" aria-labelledby="mini-title" hidden>
         <div class="mini-head">
-          <h3><span class="label">Learn why:</span> <span id="mini-title"></span></h3>
+          <h3><span class="label">Learn why:</span> <span id="mini-title"></span>
+            <span class="zip-tag" id="mini-tag" hidden>Written by Zip for you</span></h3>
           <button class="btn btn-round" type="button" id="mini-close" aria-label="Close the mini-lesson">
             <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.8"
                  stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -520,6 +531,19 @@
               fill="#FFC93C" stroke="#1D2742" stroke-width="1.6" stroke-linejoin="round"/></svg>
         <span>Learn why: <span id="learn-title"></span></span>
       </button>
+      <!-- Zip asks before the power comes back on (button 4 also means Yes) -->
+      <div class="ask-power" id="ask-power" hidden>
+        <button class="btn btn-blue" type="button" id="power-yes">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6"
+               stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          Yes
+        </button>
+        <button class="btn btn-soft" type="button" id="power-no">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6"
+               stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          No
+        </button>
+      </div>
       </div>
 
       <form class="actions" id="say">
@@ -573,6 +597,10 @@
       </div>
       <p class="small muted">Stars: 1 for passing a lesson, 2 with no mistake made twice,
         3 when every quiz in it was answered right.</p>
+
+      <h3>How Zip worked</h3>
+      <p class="small muted" id="how-none">Each step of Zip's latest reply shows here.</p>
+      <ol class="how" id="how"></ol>
 
       <h3>What the tutor did</h3>
       <div class="tutor-did" id="tutor-did"></div>
@@ -702,6 +730,29 @@
     setTimeout(() => box.replaceChildren(), 2200);
   }
 
+  // "How Zip worked" (Teacher view): the steps recorded while Zip worked on
+  // the latest reply. Steps done by a helper (subagent) get a small badge.
+  const HELPERS = { detective: "detective", "lesson writer": "lesson writer", grader: "grader" };
+  function renderHow(latest) {
+    const list = $("how");
+    list.replaceChildren();
+    const steps = (latest && latest.steps) || [];
+    $("how-none").textContent = !latest ? "Each step of Zip's latest reply shows here."
+      : steps.length ? "" : "This reply came straight from a board button: Zip did not need to think.";
+    $("how-none").hidden = !!steps.length;
+    steps.forEach((step) => {
+      const li = document.createElement("li");
+      li.append(step.text);
+      if (HELPERS[step.who]) {
+        const badge = document.createElement("span");
+        badge.className = "sub";
+        badge.textContent = HELPERS[step.who];
+        li.append(badge);
+      }
+      list.append(li);
+    });
+  }
+
   function renderLog(log) {
     const key = log.length + ":" + (log.length ? log[log.length - 1].time : "");
     if (key === lastLogKey) return;
@@ -713,6 +764,7 @@
       ? "The tutor " + latest.tools.map((t) => TOOL_WORDS[t] || t).join(", ")
       : "Nothing yet.";
     if (!busy) showWords(latest ? latest.text : WELCOME, false);
+    renderHow(latest);
     // A short celebration for a new "correct!" reply (not for old ones
     // already there when the page opened).
     if (lastCelebrated === null) {
@@ -896,6 +948,7 @@
     $("model").textContent = "Tutor: " + state.model;
     renderLog(state.log);
     renderMini(state.mini_lesson);
+    $("ask-power").hidden = !state.asks_power || busy;
     renderHistory(state.history, state.passes, state.lesson_count);
     renderScenarios(state);
   }
@@ -1269,7 +1322,8 @@
     document.querySelector(".zip").classList.toggle("learning", open);
     if (!card) return;
 
-    $("learn-title").textContent = card.title;
+    $("learn-title").textContent = card.title + (card.written_by_zip ? " (written by Zip for you)" : "");
+    $("mini-tag").hidden = !card.written_by_zip;
     $("mini-title").textContent = card.title;
     $("mini-idea").textContent = card.idea;
     $("mini-question").textContent = card.question;
@@ -1306,7 +1360,8 @@
   async function answerQuiz(occurrence, choice) {
     document.querySelectorAll("#mini-options .opt").forEach((b) => { b.disabled = true; });
     try {
-      const out = await post("/api/quiz", { occurrence, choice });
+      const out = await post("/api/quiz", { occurrence, choice,
+                                            written_by_zip: !!(miniCard && miniCard.written_by_zip) });
       if (out.error) {
         $("mini-result").textContent = out.error;
         return;
@@ -1414,6 +1469,24 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => { if (lastState) renderBoard(lastState); }, 120);
   });
+
+  // Zip asked "Turn the power back on?": the student's Yes or No.
+  async function answerPower(yes) {
+    if (busy) return;
+    $("ask-power").hidden = true;
+    setBusy(true);
+    try {
+      const out = await post("/api/power-answer", { yes });
+      showWords(out.reply || out.error || "(no reply)");
+    } catch (e) {
+      showWords("Zip cannot reach the tutor program right now.");
+    } finally {
+      setBusy(false);
+      lastLogKey = "";
+    }
+  }
+  $("power-yes").addEventListener("click", () => answerPower(true));
+  $("power-no").addEventListener("click", () => answerPower(false));
 
   $("check").addEventListener("click", () => askTutor("Check my circuit"));
   $("fixed").addEventListener("click", () => askTutor("I fixed it, check again"));
