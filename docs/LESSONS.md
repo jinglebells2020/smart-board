@@ -87,7 +87,12 @@ lesson 1, and a new student starts there.
 - The check passes once the student has answered the question (right
   or wrong: the card says why). Before that, Zip asks for the answer
   first. Then the student moves on to lesson 1, and `next_lesson`
-  never sends anyone back to lesson 0.
+  never sends anyone back to lesson 0 in the middle.
+- Starting at a later lesson (`--lesson 1`, or `--demo`) **skips**
+  lesson 0; it is never counted as passed. After the last building
+  lesson Zip offers it: "You skipped lesson 0, How a breadboard
+  connects. Let's do it now." Only when every lesson is really passed
+  does Zip say "You passed every lesson".
 
 ## A loose leg (lessons 1 and 2)
 

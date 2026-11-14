@@ -100,13 +100,17 @@ back. A yellow "new release of pip" notice is fine to ignore.
 python -m unittest -v
 ```
 
-Wait about 40 seconds. The last lines should be:
+Wait about 2 minutes. The last lines should be:
 
 ```
-Ran 184 tests in 30.4s
+Ran 380 tests in 80.0s
 
-OK
+OK (skipped=1)
 ```
+
+(The time is different on every computer. `skipped=1` is the page
+layout check that needs a browser tool most laptops do not have; it is
+fine. Plain `OK` is fine too.)
 
 If it says `FAILED`, copy the whole output and send it to your
 teammate or to Claude.
@@ -233,6 +237,8 @@ The tests in Part B never use the key, even when it is set.
 
 2. Open Chrome or Edge and go to **http://localhost:8000**
 3. Press **F11** for full screen. Everything fits on one 1080p screen.
+   On a smaller laptop screen the page scrolls a little instead (scroll
+   down to see the pretend board); nothing is squeezed or covered.
 
    A new student starts at **lesson 0, How a breadboard connects**.
    There is nothing to build:

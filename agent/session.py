@@ -496,8 +496,11 @@ class Session:
         1. Current lesson not passed yet -> stay on it.
         2. The same mistake happened REPEAT_IF_SEEN+ times in this lesson
            and it has only been passed once -> practice it once more.
-        3. Otherwise -> the first lesson not passed yet.
-        4. All passed -> review the lesson with the most mistakes.
+        3. Otherwise -> the first lesson not passed yet (lesson 0 is not a
+           step back, so it comes last).
+        4. A lesson that was skipped (for example lesson 0, when the page
+           started at lesson 1) -> offered now. Never said to be passed.
+        5. All passed -> review the lesson with the most mistakes.
         """
         cur = self.lesson_id
         if not self.passed_current:
@@ -523,6 +526,12 @@ class Session:
                 continue  # lesson 0 is where new students start, never a step back
             if passes.get(str(lid), 0) == 0:
                 return self._pick(lid, "This is the next lesson you have not passed yet.")
+        # Every building lesson is passed. A lesson skipped earlier (lesson 0
+        # when the student started at lesson 1) comes now: it is not passed.
+        for lid in sorted(self.lessons):
+            if passes.get(str(lid), 0) == 0:
+                return self._pick(lid, f"You skipped lesson {lid}, "
+                                       f"{self.lessons[lid]['title']}. Let's do it now.")
 
         counts = {lid: sum(1 for m in self.history["mistakes"] if m["lesson"] == lid)
                   for lid in self.lessons}

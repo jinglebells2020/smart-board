@@ -69,7 +69,9 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (372 tests). They never call Claude, so
+The last line should say `OK` (380 tests; it says `OK (skipped=1)` on a
+computer without Node.js and Playwright, which the page-layout browser
+check needs). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -209,8 +211,12 @@ Three zones fill the screen:
   practice mode, board status, New student, Restart demo, the notebook link, what the
   tutor did, and the mistake history.
 
-One HTML file, no internet, fits one 1920x1080 screen without
-scrolling, and has a phone layout.
+One HTML file, no internet. On a 1920x1080 screen everything fits without
+scrolling. On shorter laptop windows (from 1280x560) the page scrolls
+instead of squeezing: the breadboard drawing keeps at least 300 px of
+height, Zip's words show at least 4 lines, and nothing overlaps
+(checked in a real browser by `tests/test_page_layout.py`). It also has
+a phone layout.
 
 ## Demo script
 
