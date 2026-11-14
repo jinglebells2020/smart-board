@@ -5,315 +5,591 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Smart Breadboard</title>
 <style>
-  /* Built for a projector: big text, strong contrast, light background
-     (dark themes wash out on most projectors). Every colour also has a
-     text label, so nothing depends on colour alone. */
+  /* A bright studio for young makers, with our own look and our own guide,
+     Zip. Design rules: white work surfaces on a light blue-grey page; five
+     colours, one job each; type 16/20/28/36 px at weights 400/700; spacing
+     on an 8 px grid; one soft shadow; 1 px lines.
+     contrast-pairs: ink/white, ink-2/white, ink/page, ink-2/page, white/blue,
+     blue/white, ink/yellow, ink/green, white/ink */
   :root {
-    --bg: #f4f4f1;
-    --card: #ffffff;
-    --ink: #111418;
-    --muted: #4a5058;
-    --line: #c9ccd1;
-    --good: #0b7a35;
-    --good-bg: #e3f4e8;
-    --bad: #b3261e;
-    --bad-bg: #fbe4e2;
-    --warn: #8a5a00;
-    --warn-bg: #fff1d1;
-    --accent: #1f4fd1;
-    --accent-ink: #ffffff;
-    --learn: #5b2a9e;
-    --learn-bg: #f4eefc;
+    --blue: #2F5FE8;    /* top bar and main buttons */
+    --yellow: #FFC93C;  /* highlights, stars, Zip's accents */
+    --green: #1FAA6B;   /* correct */
+    --coral: #E5484D;   /* problem here */
+    --sky: #4DB5FF;     /* "put a part here" lights */
+    --ink: #1D2742;     /* text */
+    --ink-2: #5B6785;   /* secondary text */
+    --white: #FFFFFF;   /* work surfaces */
+    --page: #EEF3FA;    /* the page around them */
+    --line: #DCE4F0;    /* thin lines */
+    /* Part colours, only for the drawing of the real parts: */
+    --part-tan: #E3C08F;      /* resistor body */
+    --band-brown: #8B5A2B; --band-orange: #F28C28; --band-violet: #6B47B8;
+    --band-grey: #8C95A6;
+    --shadow: 0 2px 8px rgba(29,39,66,0.08);
+    --font: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html { font-size: 22px; }
-  @media (min-width: 1400px) { html { font-size: 24px; } }
+  html, body { height: 100%; margin: 0; }
   body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    line-height: 1.35;
+    background: var(--page); color: var(--ink);
+    font-family: var(--font); font-size: 20px; font-weight: 400; line-height: 1.3;
   }
-  .wrap { max-width: 1900px; margin: 0 auto; padding: 0.6rem 1rem 0.6rem; }
+  button, input { font-family: var(--font); }
+  :focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .small { font-size: 16px; }
+  .muted { color: var(--ink-2); }
 
-  header {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.2rem;
-    padding-bottom: 0.4rem; border-bottom: 3px solid var(--ink); margin-bottom: 0.6rem;
+  /* ---- Three zones that fill the screen ---- */
+  .app { display: grid; grid-template-rows: 72px minmax(0, 1fr); height: 100vh; height: 100dvh; }
+  .zones {
+    display: grid; grid-template-columns: minmax(0, 62fr) minmax(0, 38fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 24px; padding: 24px; min-height: 0; overflow: hidden;
   }
-  .brand { font-weight: 800; font-size: 1.1rem; color: var(--muted); }
-  .brand .model { font-weight: 600; margin: 0; }
-  .lesson { flex: 1 1 24rem; }
-  .lesson h1 { margin: 0; font-size: 2rem; line-height: 1.15; }
-  .lesson .circuit { font-size: 1.15rem; color: var(--muted); font-weight: 600; }
-  .badge {
-    font-weight: 800; font-size: 1.3rem; padding: 0.3rem 0.9rem; border-radius: 0.4rem;
-    border: 3px solid currentColor; white-space: nowrap;
+  .zone {
+    background: var(--white); border-radius: 16px; box-shadow: var(--shadow);
+    padding: 24px; min-height: 0; display: flex; flex-direction: column; position: relative;
   }
-  .badge.on { color: var(--good); background: var(--good-bg); }
-  .badge.off { color: var(--bad); background: var(--bad-bg); }
-  .small-btn {
-    font: inherit; font-size: 0.8rem; font-weight: 700; padding: 0.35rem 0.7rem;
-    background: var(--card); color: var(--ink); border: 2px solid var(--line);
-    border-radius: 0.4rem; cursor: pointer;
-  }
+  .stage { grid-column: 1; grid-row: 1; }
+  .zip { grid-column: 2; grid-row: 1; }
 
-  .grid { display: grid; gap: 0.6rem; grid-template-columns: 1fr; }
-  .grid > * { min-width: 0; }
-  @media (min-width: 1100px) { .grid { grid-template-columns: 1fr 1fr; } }
-  .readings { margin-bottom: 0.5rem; }
-  .side { display: flex; flex-direction: column; gap: 0.8rem; }
-  section {
-    background: var(--card); border: 2px solid var(--line); border-radius: 0.6rem;
-    padding: 0.55rem 1rem;
+  /* ---- Top bar ---- */
+  .topbar {
+    background: var(--blue); color: var(--white);
+    display: flex; align-items: center; gap: 24px; padding: 0 24px; min-width: 0;
   }
-  h2 {
-    margin: 0 0 0.6rem; font-size: 1rem; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--muted);
-  }
-
-  /* Readings */
-  .tiles { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
-  .tile { border: 3px solid var(--line); border-radius: 0.5rem; padding: 0.35rem 0.9rem; }
-  .tile.good { border-color: var(--good); background: var(--good-bg); }
-  .tile.bad { border-color: var(--bad); background: var(--bad-bg); }
-  .tile .name { font-weight: 700; font-size: 1rem; }
-  .tile .where { font-size: 0.8rem; color: var(--muted); }
-  .tile .value {
-    font-size: 2.2rem; font-weight: 800; line-height: 1.05;
-    font-variant-numeric: tabular-nums;
-  }
-  .tile .unit { font-size: 1.6rem; font-weight: 700; margin-left: 0.2rem; }
-  .tile .target { font-size: 0.85rem; font-weight: 600; }
-  .tile .verdict { font-weight: 800; }
-  @media (min-width: 1100px) { .tiles { grid-template-columns: 1fr 0.7fr 1.3fr 1.2fr; } }
-  .tile .source { font-size: 0.75rem; color: var(--muted); }
-
-  /* Rows the lesson uses: live voltage and the light beside each row */
-  .rows { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0.15rem 0.7rem;
-          align-items: center; font-size: 0.95rem; margin-top: 0.25rem; }
-  .rows .rname { font-weight: 800; white-space: nowrap; }
-  .rows .rvolts { white-space: nowrap; }
-  @media (max-width: 600px) {
-    .rows { grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 0.15rem 0.45rem; }
-    .rows .rshould { white-space: normal; font-size: 0.75rem; }
-  }
-  .rows .rvolts { font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
-  .rows .rvolts.good { color: var(--good); }
-  .rows .rvolts.bad { color: var(--bad); }
-  .rows .rshould { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
-  .rows .rlight { font-size: 0.85rem; white-space: nowrap; }
-  .legend { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
-  .light { display: inline-block; width: 0.95rem; height: 0.95rem; border-radius: 50%;
-           border: 2px solid var(--ink); vertical-align: -0.15rem; margin-right: 0.25rem; }
-  .light.blue { background: #1f6fe0; } .light.green { background: #2e9e4f; }
-  .light.red { background: #d32f2f; } .light.yellow { background: #f2c200; }
-  .light.off { background: transparent; border-color: var(--line); }
-  .rows-note { font-size: 0.8rem; color: var(--bad); font-weight: 700; margin-top: 0.2rem; }
-
-  /* Pretend board: its small screen and 4 buttons */
-  .screen {
-    font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
-    background: #17361f; color: #c9f5c4; border-radius: 0.3rem; padding: 0.25rem 0.5rem;
-    font-size: 0.8rem; line-height: 1.2; white-space: pre; overflow: hidden;
-    max-width: 100%;
-  }
-  /* Screen and buttons side by side, like on the board */
-  .board-face { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem; align-items: stretch; }
-  .board-face .screen { flex: 0 1 auto; }
-  .board-buttons { display: flex; flex-direction: column; gap: 0.12rem; flex: 1 1 6.5rem; }
-  .bbtn {
-    font: inherit; font-size: 0.68rem; font-weight: 800; padding: 0.05rem 0.35rem;
+  .topbar :focus-visible { outline-color: var(--white); }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; white-space: nowrap; }
+  .brand svg { width: 32px; height: 32px; flex: none; }
+  .topbar h1 {
+    margin: 0; font-size: 36px; font-weight: 700; line-height: 1; flex: 1 1 auto; min-width: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    border-radius: 0.35rem; border: 2px solid var(--ink); background: var(--card);
-    color: var(--ink); cursor: pointer; text-align: left;
   }
-  .bbtn:disabled { opacity: 0.45; cursor: wait; }
-  .tile.good .verdict { color: var(--good); }
-  .tile.bad .verdict { color: var(--bad); }
-
-  /* Tutor */
-  .hint {
-    font-size: 1.35rem; font-weight: 600; line-height: 1.3; min-height: 3.6em;
-    overflow-wrap: anywhere;
-    padding: 0.8rem 1rem; border-left: 0.5rem solid var(--accent);
-    background: #eef2fd; border-radius: 0.3rem;
+  .path { display: flex; align-items: center; gap: 8px; }
+  .stop { display: flex; flex-direction: column; align-items: center; }
+  .stop .dot {
+    width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--white); color: var(--blue); font-size: 16px; font-weight: 700;
   }
-  .hint.thinking { color: var(--muted); font-style: italic; }
-  .tutor-did { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; min-height: 1.2em;
-               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stop.current .dot { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  .stop.passed .dot { background: var(--green); color: var(--ink); }
+  .stop .dot svg { width: 20px; height: 20px; }
+  .stop .stars { display: flex; height: 20px; }
+  .stop .stars svg { width: 20px; height: 20px; }
+  .star-off { fill: rgba(255,255,255,0.35); }
+  .star-on { fill: var(--yellow); }
+  .star-pop { animation: pop 0.7s ease-out; transform-origin: center; transform-box: fill-box; }
+  @keyframes pop { 0% { transform: scale(0.3); } 60% { transform: scale(1.5); } 100% { transform: scale(1); } }
+  .road { width: 24px; height: 2px; border-radius: 1px; background: rgba(255,255,255,0.4); margin-bottom: 16px; }
+  .road.done { background: var(--white); }
+  .power {
+    display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px;
+    border-radius: 999px; background: var(--white); color: var(--ink); font-weight: 700;
+    white-space: nowrap;
+  }
+  .power .led { width: 16px; height: 16px; border-radius: 50%; background: var(--line); }
+  .power.on .led { background: var(--green); }
+  .power.off .led { background: var(--yellow); }
 
-  /* Mini-lesson card: the idea behind the mistake, plus one question */
+  /* ---- Buttons: pills, 56 px tall, gentle press ---- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 56px; min-width: 56px; padding: 0 24px; border: 0; border-radius: 999px;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    transition: transform 0.12s ease, filter 0.12s ease;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn:hover:not(:disabled) { filter: brightness(1.05); }
+  .btn:disabled { opacity: 0.5; cursor: wait; }
+  .btn svg { width: 24px; height: 24px; flex: none; }
+  .btn-blue { background: var(--blue); color: var(--white); }
+  .btn-yellow { background: var(--yellow); color: var(--ink); }
+  .btn-white { background: var(--white); color: var(--blue); }
+  .btn-soft { background: var(--page); color: var(--ink); }
+  .btn-small { font-size: 16px; }
+  .btn-round { padding: 0; width: 56px; border-radius: 50%; }
+
+  /* ---- Stage: the drawn breadboard is the hero ---- */
+  .stage-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .stage-title { flex: 1 1 auto; min-width: 0; }
+  .stage-title h2 { margin: 0; font-size: 20px; font-weight: 700; }
+  .stage-title .circuit { font-size: 16px; color: var(--ink-2); }
+  .step-note { font-size: 16px; font-weight: 700; color: var(--blue); }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 16px;
+    border-radius: 999px; background: var(--page); white-space: nowrap;
+  }
+  .pill .name { font-size: 16px; color: var(--ink-2); }
+  .pill .value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pill .unit { font-size: 16px; font-weight: 700; }
+  .pill .target { font-size: 16px; display: inline-flex; align-items: center; gap: 8px; }
+  .pill .target:empty { display: none; }
+  .pill .target .mark { width: 16px; height: 16px; border-radius: 50%; flex: none; }
+  .pill.good .mark { background: var(--green); }
+  .pill.bad .mark { background: var(--coral); }
+  .pill .source { font-size: 16px; color: var(--ink-2); }
+  .pill .source:empty { display: none; }
+  .drawing { flex: 1 1 auto; min-height: 0; position: relative; margin-top: 16px; }
+  #bb { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 16px; color: var(--ink-2);
+            min-height: 24px; margin-top: 8px; }
+  .legend .chip { display: inline-flex; align-items: center; gap: 8px; }
+  .light { display: inline-block; width: 16px; height: 16px; border-radius: 50%; background: var(--line); }
+  .light.blue { background: var(--sky); } .light.green { background: var(--green); }
+  .light.red { background: var(--coral); } .light.yellow { background: var(--yellow); }
+  .rows-note { font-size: 16px; color: var(--ink); display: flex; gap: 8px; align-items: center; }
+  .rows-note::before { content: ""; width: 16px; height: 16px; border-radius: 50%;
+                       background: var(--coral); flex: none; }
+
+  /* The breadboard drawing (sizes are real pixels: the SVG matches its box) */
+  .bb-board { fill: var(--page); }
+  .bb-band { fill: var(--white); transition: fill 0.3s; }
+  .bb-band.cheer { fill: rgba(31,170,107,0.18); }
+  .bb-hole { fill: rgba(91,103,133,0.35); }
+  .bb-strip { stroke: var(--ink-2); stroke-width: 2; }
+  .bb-sign { font-size: 20px; font-weight: 700; fill: var(--ink); text-anchor: middle;
+             dominant-baseline: central; }
+  .bb-num { font-size: 16px; font-weight: 400; fill: var(--ink-2); text-anchor: middle; }
+  .bb-num.used { font-weight: 700; fill: var(--ink); }
+  .bb-volt { font-size: 16px; font-weight: 700; fill: var(--ink); text-anchor: middle; }
+  .bb-volt.empty { font-weight: 400; fill: var(--ink-2); }
+  .bb-mark { fill: transparent; }
+  .bb-mark.good { fill: var(--green); }
+  .bb-mark.bad { fill: var(--coral); }
+  .bb-light { fill: var(--white); stroke: rgba(91,103,133,0.4); stroke-width: 1; }
+  .bb-light.blue { fill: var(--sky); stroke: none; }
+  .bb-light.green { fill: var(--green); stroke: none; }
+  .bb-light.yellow { fill: var(--yellow); stroke: none; }
+  .bb-light.red { fill: var(--coral); stroke: none; animation: glow 1.8s ease-in-out infinite; }
+  @keyframes glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .bb-part { transition: opacity 0.3s; }
+  .bb-part.later { opacity: 0.18; }
+  .bb-outline { fill: none; stroke: none; }
+  .bb-part.now .bb-outline { stroke: var(--sky); stroke-width: 3; stroke-dasharray: 6 6; }
+  .bb-wire { stroke: var(--ink-2); stroke-width: 6; stroke-linecap: round; fill: none; }
+  .bb-wire.red { stroke: var(--coral); }
+  .bb-wire.black { stroke: var(--ink); }
+  .bb-end.red { fill: var(--coral); }
+  .bb-leg { stroke: var(--ink-2); stroke-width: 3; stroke-linecap: round; fill: none; }
+  .bb-end { fill: var(--ink); }
+  .bb-body { fill: var(--white); stroke: var(--ink); stroke-width: 2; }
+  .bb-body.resistor { fill: var(--part-tan); }
+  /* Resistor colour code: 0 black, 1 brown, 2 red, 3 orange, 4 yellow,
+     5 green, 6 blue, 7 violet, 8 grey, 9 white */
+  .band-0 { fill: var(--ink); } .band-1 { fill: var(--band-brown); } .band-2 { fill: var(--coral); }
+  .band-3 { fill: var(--band-orange); } .band-4 { fill: var(--yellow); } .band-5 { fill: var(--green); }
+  .band-6 { fill: var(--blue); } .band-7 { fill: var(--band-violet); } .band-8 { fill: var(--band-grey); }
+  .band-9 { fill: var(--white); }
+  .bb-led { fill: var(--coral); stroke: var(--ink); stroke-width: 2; opacity: 0.6;
+            transition: opacity 0.3s; }
+  .bb-led.on { opacity: 1; filter: drop-shadow(0 0 8px rgba(229,72,77,0.9)); }
+  .bb-label { font-size: 16px; font-weight: 700; fill: var(--ink-2); }
+  .bb-plus { font-size: 16px; font-weight: 700; fill: var(--ink); text-anchor: middle; }
+
+  /* The pretend board: a little device under the drawing */
+  .device {
+    display: flex; align-items: center; gap: 16px; margin-top: 16px;
+    padding: 16px; border-radius: 16px; background: var(--page);
+  }
+  .device-face { display: flex; flex-direction: column; gap: 8px; flex: none; }
+  .device .label { font-size: 16px; font-weight: 700; color: var(--ink-2); }
+  .screen {
+    font-family: ui-rounded, "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 16px; line-height: 1.3; white-space: pre; overflow: hidden;
+    background: var(--ink); color: var(--white); border-radius: 8px; padding: 8px 16px;
+  }
+  .board-buttons { display: grid; gap: 8px; flex: 1 1 auto; min-width: 0;
+                   grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); }
+  .board-buttons .btn { padding: 0 16px; background: var(--white); color: var(--ink); }
+  .board-buttons .num {
+    width: 24px; height: 24px; border-radius: 50%; background: var(--yellow); color: var(--ink);
+    display: inline-grid; place-items: center; font-size: 16px;
+  }
+
+  /* ---- The mini-lesson: opens in the Zip panel, in place of Zip's
+     picture. It never covers the breadboard, the numbers or Zip's words. ---- */
   .mini {
-    margin-top: 0.3rem; padding: 0.4rem 0.9rem; border: 3px solid var(--learn);
-    border-radius: 0.5rem; background: var(--learn-bg);
+    flex: 1 1 0; min-height: 192px; overflow-y: auto;
+    background: var(--white); border: 1px solid var(--line); border-radius: 16px;
+    animation: rise 0.25s ease-out;
   }
-  .mini .label {
-    font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--learn);
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+  .zip.learning .zip-top { display: none; }  /* the card takes Zip's place */
+  .zip.learning .bubble::before { display: none; }
+  .learn { align-self: flex-start; margin-top: 16px; max-width: 100%; text-align: left; }
+  .learn span { overflow: hidden; text-overflow: ellipsis; }
+  .mini-head {
+    display: flex; align-items: center; gap: 16px; padding: 8px 8px 8px 24px;
+    background: var(--yellow); color: var(--ink); border-radius: 16px 16px 0 0;
   }
-  .mini h3 { margin: 0 0 0.2rem; font-size: 1.2rem; line-height: 1.2; }
-  .mini h3 .label { margin-right: 0.4rem; vertical-align: 0.12rem; }
-  .mini .idea { margin: 0 0 0.3rem; font-size: 1rem; }
-  .mini .question { margin: 0 0 0.3rem; font-size: 1rem; font-weight: 800; }
-  .options { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .mini-head h3 { margin: 0; flex: 1 1 auto; font-size: 28px; font-weight: 700; line-height: 1.2; }
+  .mini-head .btn { background: transparent; color: var(--ink); }
+  .mini-body { padding: 16px 24px 24px; }
+  .mini .label { font-size: 16px; font-weight: 700; }
+  .mini .idea { margin: 0 0 16px; }
+  .mini .question { margin: 0 0 16px; font-weight: 700; }
+  .options { display: flex; flex-direction: column; gap: 8px; }
   .opt {
-    font: inherit; font-size: 0.9rem; font-weight: 700; text-align: left;
-    padding: 0.35rem 0.7rem; border-radius: 0.4rem; border: 3px solid var(--learn);
-    background: var(--card); color: var(--ink); cursor: pointer; flex: 1 1 8rem;
+    flex: none; min-height: 56px; padding: 8px 24px; border: 0; border-radius: 28px;
+    background: var(--page); color: var(--ink); font-size: 20px; font-weight: 700; text-align: left;
+    cursor: pointer; transition: transform 0.12s ease;
   }
+  .opt:active { transform: scale(0.97); }
   .opt:disabled { cursor: default; }
-  .opt.right { border-color: var(--good); background: var(--good-bg); }
-  .opt.wrong { border-color: var(--bad); background: var(--bad-bg); }
-  .opt.dim { opacity: 0.55; }
-  .result { margin: 0.3rem 0 0; font-size: 1rem; font-weight: 600; min-height: 0; }
-  .result .verdict { font-weight: 800; }
-  .result.right .verdict { color: var(--good); }
-  .result.wrong .verdict { color: var(--bad); }
-  .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0; }
-  .big-btn {
-    font: inherit; font-size: 1.15rem; font-weight: 800; padding: 0.6rem 1.1rem;
-    border-radius: 0.5rem; border: 3px solid var(--accent); cursor: pointer;
-    background: var(--accent); color: var(--accent-ink);
-  }
-  .big-btn.secondary { background: var(--card); color: var(--accent); }
-  .big-btn:disabled, .small-btn:disabled, .scenario:disabled { opacity: 0.45; cursor: wait; }
-  .actions input {
-    flex: 1 1 7rem; min-width: 0; font: inherit; font-size: 1.05rem; padding: 0.5rem 0.7rem;
-    border: 3px solid var(--line); border-radius: 0.5rem;
-  }
-  .actions input:focus { outline: none; border-color: var(--accent); }
-  /* Wide but short screens (a 1080p projector): hide the older messages so
-     everything fits without scrolling. The big hint and history stay. */
-  @media (min-width: 1100px) and (max-height: 1150px) { .log { display: none; } }
-  .log { margin-top: 0.8rem; overflow-wrap: anywhere; overflow-y: auto; font-size: 0.95rem; }
-  .log p { margin: 0 0 0.45rem; }
-  .log .who { font-weight: 800; }
+  .opt.right { background: var(--green); color: var(--ink); }
+  .opt.wrong { background: var(--page); color: var(--ink-2); }
+  .opt.dim { opacity: 0.5; }
+  .result { margin: 16px 0 0; }
+  .result:empty { display: none; }
+  .result .verdict { font-weight: 700; }
 
-  /* Practice mode (fake board) controls */
-  /* Which board, and is it answering? */
-  .boardline { margin: 0 0 0.8rem; padding: 0.55rem 0.9rem; border-radius: 10px;
-               font-size: 1.15rem; font-weight: 800; border: 3px solid var(--line); }
-  .boardline.ok  { border-color: var(--good); background: var(--good-bg); color: var(--good); }
-  .boardline.bad { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
-  .boardline.fake { font-size: 0.9rem; color: var(--muted); border-style: dashed; }
-  .sim { margin-top: 0.7rem; padding-top: 0.6rem; border-top: 2px dashed var(--line); }
+  /* ---- Zip panel ---- */
+  .zip-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  /* Zip is small (up to 160 px); the bubble gets the rest of the space and
+     scrolls only when the words are longer than that. */
+  .zip-top { flex: none; height: clamp(64px, 15vh, 160px); display: flex;
+             align-items: center; justify-content: center; }
+  .guide { height: 100%; width: auto; max-width: 100%; overflow: visible; }
+  /* Short screens: a smaller Zip leaves more room for his words. */
+  @media (max-height: 820px) and (min-width: 1000px) { .zip-top { height: 64px; } }
+  .guide .mood { display: none; }
+  .guide[data-mood="happy"] .mood-happy,
+  .guide[data-mood="thinking"] .mood-thinking,
+  .guide[data-mood="curious"] .mood-curious,
+  .guide[data-mood="careful"] .mood-careful { display: inline; }
+  .guide .spark { animation: twinkle 2.4s ease-in-out infinite; transform-origin: center;
+                  transform-box: fill-box; }
+  @keyframes twinkle { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+  .guide[data-mood="thinking"] .think-dot { animation: dots 1.2s infinite; }
+  .guide[data-mood="thinking"] .think-dot:nth-child(2) { animation-delay: 0.2s; }
+  .guide[data-mood="thinking"] .think-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dots { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+  .guide.bounce { animation: bounce 0.9s ease-out; }
+  @keyframes bounce { 0%, 50%, 100% { transform: translateY(0); } 25% { transform: translateY(-16px); }
+                      70% { transform: translateY(-8px); } }
+  .bubble {
+    position: relative; margin-top: 16px; border: 1px solid var(--line); border-radius: 16px;
+    background: var(--white); flex: 0 1 auto; min-height: 96px; display: flex;
+  }
+  .bubble::before {  /* the tail, pointing up at Zip */
+    content: ""; position: absolute; top: -9px; left: calc(50% - 8px); width: 16px; height: 16px;
+    background: var(--white); border-left: 1px solid var(--line); border-top: 1px solid var(--line);
+    transform: rotate(45deg);
+  }
+  .hint {
+    flex: 1 1 auto; min-height: 0; font-size: 28px; font-weight: 700; line-height: 1.3;
+    padding: 16px 24px; overflow-y: auto; overflow-wrap: anywhere;
+  }
+  .hint.thinking { color: var(--ink-2); font-weight: 400; }
+  .actions { margin-top: auto; padding-top: 24px; display: flex; flex-direction: column; gap: 16px; }
+  .actions .row { display: flex; flex-wrap: wrap; gap: 16px; }
+  .actions .row .btn { flex: 1 1 224px; white-space: nowrap; }
+  .ask { display: flex; gap: 8px; }
+  .ask input {
+    flex: 1 1 auto; min-width: 0; height: 56px; padding: 0 24px; border: 1px solid var(--line);
+    border-radius: 999px; font-size: 20px; color: var(--ink); background: var(--white);
+  }
+  .ask input::placeholder { color: var(--ink-2); }
+
+  /* ---- Teacher view: a drawer that slides in over the Zip panel ---- */
+  .teacher {
+    grid-column: 2; grid-row: 1; z-index: 20; overflow-y: auto;
+    transform: translateX(calc(100% + 24px)); transition: transform 0.3s ease;
+  }
+  .teacher.open { transform: none; }
+  .teacher .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .teacher h2 { margin: 0; font-size: 28px; font-weight: 700; }
+  .teacher h3 { margin: 24px 0 8px; font-size: 20px; font-weight: 700; }
+  .teacher p { margin: 8px 0; }
+  .teacher a { color: var(--blue); font-weight: 700; }
+  .teacher .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+  .boardline { font-size: 16px; font-weight: 700; padding: 8px 16px; border-radius: 16px;
+               background: var(--page); }
+  .boardline::before { content: ""; display: inline-block; width: 16px; height: 16px;
+                       border-radius: 50%; background: var(--line); margin-right: 8px;
+                       vertical-align: -2px; }
+  .boardline.ok::before { background: var(--green); }
+  .boardline.bad::before { background: var(--coral); }
+  .scenarios { display: flex; flex-wrap: wrap; gap: 8px; }
+  .circuit-pick.active { background: var(--blue); color: var(--white); }
+  .tutor-did, .log { font-size: 16px; }
+  .log p { margin: 0 0 8px; }
+  .log .who { font-weight: 700; }
   .table-scroll { overflow-x: auto; }
-  .more { font-size: 0.85rem; color: var(--muted); margin: 0.4rem 0 0; }
-  .sim .note { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin: 0 0 0.45rem; }
-  .scenarios { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-  .scenario {
-    font: inherit; font-size: 0.85rem; font-weight: 700; padding: 0.4rem 0.7rem;
-    border-radius: 0.4rem; border: 2px solid var(--ink); background: var(--card);
-    color: var(--ink); cursor: pointer;
-  }
-  .scenario.active { background: var(--ink); color: var(--card); }
-
-  /* History */
-  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-  th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 2px solid var(--line); }
-  th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 16px; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--ink-2); font-weight: 700; }
   td.nowrap { white-space: nowrap; }
-  td.given-hint { color: var(--accent); font-weight: 700; }
-  td.given-full { color: var(--warn); font-weight: 700; }
-  td.quiz-right { color: var(--good); font-weight: 700; }
-  td.quiz-wrong { color: var(--bad); font-weight: 700; }
-  .empty { color: var(--muted); font-size: 1rem; }
-  .passes { font-size: 1rem; margin: 0 0 0.6rem; font-weight: 600; }
+  td.given-full, td.quiz-right, td.quiz-wrong { font-weight: 700; }
+
+  /* ---- Celebration: short confetti, no sound ---- */
+  .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 50; }
+  .confetti i { position: absolute; top: -24px; width: 8px; height: 16px; border-radius: 2px;
+                animation: fall 1.5s ease-in forwards; }
+  @keyframes fall { to { transform: translateY(105vh) rotate(540deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .confetti { display: none; }
+    .guide .spark, .bb-light.red, .guide.bounce, .mini, .think-dot { animation: none !important; }
+    .teacher { transition: none; }
+  }
 
   .offline {
-    display: none; background: var(--bad); color: #fff; font-weight: 800;
-    padding: 0.7rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 1.1rem;
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;
+    display: none; padding: 16px 24px; border-radius: 16px; background: var(--yellow);
+    color: var(--ink); font-weight: 700; box-shadow: var(--shadow);
   }
-  .offline code { background: rgba(255,255,255,0.2); padding: 0.1rem 0.4rem; border-radius: 0.2rem; }
-  .model { font-size: 0.75rem; color: var(--muted); }
+
+  /* ---- Phone and narrow windows: top bar, Zip panel, stage ---- */
+  @media (max-width: 999px) {
+    .app { height: auto; grid-template-rows: auto auto; }
+    .topbar { flex-wrap: wrap; padding: 16px; gap: 16px; }
+    .topbar h1 { font-size: 28px; flex-basis: 100%; order: 3; white-space: normal; }
+    .zones { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto;
+             padding: 16px; gap: 16px; overflow: visible; }
+    .zone { padding: 16px; }
+    .zip { grid-column: 1; grid-row: 1; }
+    .stage { grid-column: 1; grid-row: 2; }
+    .drawing { height: 320px; flex: none; }
+    .zip-top { height: 80px; }
+    .bubble { min-height: 0; }
+    .hint { overflow: visible; }
+    .mini { order: 3; flex: none; min-height: 0; overflow: visible; margin-top: 16px; }
+    .zip.learning .zip-top { display: flex; }  /* on a phone Zip stays */
+    .learn { order: 2; }
+    .bubble { order: 1; }
+    .pills { width: 100%; }
+    .pill { white-space: normal; flex-wrap: wrap; max-width: 100%; padding: 8px 16px;
+            border-radius: 28px; }
+    .stage-head { flex-direction: column; }
+    .pills { justify-content: flex-start; }
+    .teacher { position: fixed; inset: 0; border-radius: 0; z-index: 40; }
+    .actions .row { flex-direction: column; }
+    .actions .row .btn { flex: none; }
+    .device { flex-direction: column; align-items: stretch; }
+    /* Top bar: name and Teacher button, then path and power, then the lesson */
+    .brand { flex: 1 1 auto; order: 0; }
+    #teacher-toggle { order: 1; }
+    .path, .power { order: 2; }
+  }
+  @media (max-width: 599px) {
+    #teacher-toggle { padding: 0; width: 56px; }
+    #teacher-toggle .word { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                            clip: rect(0 0 0 0); white-space: nowrap; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="app">
 
-  <div class="offline" id="offline">
-    The tutor program is not running. In Command Prompt run
-    <code>python web\server.py</code> and open <code>http://localhost:8000</code>
-  </div>
-
-  <header>
-    <div class="brand">Smart Breadboard<div class="model" id="model"></div><div class="model" id="caps"></div></div>
-    <div class="lesson">
-      <h1 id="lesson-title">Loading&hellip;</h1>
-      <div class="circuit" id="lesson-circuit"></div>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#FFC93C"/>
+        <path d="M18 5 L9 18 H15 L13 27 L23 13 H17 Z" fill="#1D2742"/></svg>
+      Smart Breadboard
     </div>
-    <div class="badge" id="power">&nbsp;</div>
-    <button class="small-btn" id="reset" title="Forget the mistake history and start at lesson 1">New student</button>
+    <h1 id="lesson-title">Loading&hellip;</h1>
+    <nav class="path" id="path" aria-label="Your lessons and stars"></nav>
+    <div class="power" id="power" role="status"><span class="led"></span><span id="power-text">&nbsp;</span></div>
+    <button class="btn btn-white btn-small" type="button" id="teacher-toggle" aria-expanded="false"
+            aria-controls="teacher">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4"
+           stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/>
+        <circle cx="10" cy="17" r="2"/></svg>
+      <span class="word">Teacher</span>
+    </button>
   </header>
 
-  <div class="boardline" id="boardline" role="status" hidden></div>
-
-  <section class="readings" aria-label="Live readings">
-    <div class="tiles">
-      <div class="tile" id="tile-current">
-        <div class="name">Current</div>
-        <div class="where">mA = milliamps</div>
-        <div><span class="value" id="v-current">&ndash;</span><span class="unit">mA</span></div>
-        <div class="target" id="t-current"></div>
-        <div class="source" id="current-source"></div>
-      </div>
-      <div class="tile" id="tile-supply">
-        <div class="name">Power voltage</div>
-        <div class="where">The supply's push</div>
-        <div><span class="value" id="v-supply">&ndash;</span><span class="unit">V</span></div>
-      </div>
-      <div class="tile" id="tile-rows">
-        <div class="name">Rows this lesson uses</div>
-        <div class="rows" id="rows"></div>
-        <div class="legend" id="legend"></div>
-        <div class="rows-note" id="rows-note" hidden></div>
-      </div>
-      <div class="tile" id="tile-board" hidden>
-        <div class="name">Pretend board</div>
-        <div class="board-face">
-          <div class="screen" id="screen" aria-label="Board screen"></div>
-          <div class="board-buttons" id="board-buttons"></div>
+  <main class="zones">
+    <!-- Stage -->
+    <section class="zone stage" id="tile-rows" aria-label="The plan: where each part goes">
+      <div class="stage-head">
+        <div class="stage-title">
+          <h2>The plan: where each part goes</h2>
+          <div class="circuit" id="lesson-circuit"></div>
+          <div class="step-note" id="step-note" hidden></div>
+        </div>
+        <div class="pills">
+          <div class="pill" id="tile-current">
+            <span class="name">Current</span>
+            <span><span class="value" id="v-current">&ndash;</span> <span class="unit">mA</span></span>
+            <span class="target" id="t-current"></span>
+            <span class="source" id="current-source"></span>
+          </div>
+          <div class="pill" id="tile-supply">
+            <span class="name">Power voltage</span>
+            <span><span class="value" id="v-supply">&ndash;</span> <span class="unit">V</span></span>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
 
-  <div class="grid">
-    <section aria-label="Tutor">
-      <div class="hint" id="hint">Build the circuit, then press "Check my circuit".</div>
-      <div class="tutor-did" id="tutor-did"></div>
-      <div class="mini" id="mini" hidden>
-        <h3><span class="label">Mini-lesson</span> <span id="mini-title"></span></h3>
-        <p class="idea" id="mini-idea"></p>
-        <p class="question" id="mini-question"></p>
-        <div class="options" id="mini-options"></div>
-        <p class="result" id="mini-result" aria-live="polite"></p>
+      <div class="drawing" id="drawing">
+        <svg id="bb" role="img" aria-label="Drawing of the breadboard: where each part of this lesson goes"></svg>
       </div>
-      <div class="log" id="log"></div>
+      <div class="legend" id="legend"></div>
+      <div class="rows-note" id="rows-note" hidden></div>
+
+      <div class="device" id="tile-board" hidden>
+        <div class="device-face">
+          <span class="label">Pretend board</span>
+          <div class="screen" id="screen" aria-label="Board screen"></div>
+        </div>
+        <div class="board-buttons" id="board-buttons"></div>
+      </div>
+
     </section>
 
-    <div class="side">
-      <section class="controls" aria-label="Check the circuit">
-        <form class="actions" id="say">
-          <button class="big-btn" type="button" id="check">Check my circuit</button>
-          <button class="big-btn secondary" type="button" id="fixed">I fixed it</button>
-          <input id="say-text" autocomplete="off" placeholder="Or ask something&hellip;" maxlength="500">
-          <button class="big-btn secondary" type="submit">Send</button>
-        </form>
-        <div class="sim" id="sim" hidden>
-          <div class="note">Practice mode: pick what the pretend student built</div>
-          <div class="scenarios" id="scenarios"></div>
+    <!-- Zip panel -->
+    <section class="zone zip" aria-label="Zip, your guide">
+      <div class="zip-main">
+      <div class="zip-top">
+        <svg class="guide" id="guide" data-mood="happy" viewBox="0 0 160 170" aria-hidden="true">
+          <!-- Zip: our own little robot spark -->
+          <line x1="80" y1="42" x2="80" y2="22" stroke="#1D2742" stroke-width="4" stroke-linecap="round"/>
+          <path class="spark" d="M80 2 L85 12 L96 13 L88 20 L90 31 L80 26 L70 31 L72 20 L64 13 L75 12 Z"
+                fill="#FFC93C" stroke="#1D2742" stroke-width="3" stroke-linejoin="round"/>
+          <g class="mood mood-happy" stroke="#1D2742" stroke-width="5" stroke-linecap="round">
+            <path d="M30 98 L14 74"/><path d="M130 98 L146 74"/>
+            <circle cx="13" cy="71" r="8" fill="#FFC93C" stroke-width="3"/>
+            <circle cx="147" cy="71" r="8" fill="#FFC93C" stroke-width="3"/>
+          </g>
+          <g class="mood mood-thinking mood-curious mood-careful" stroke="#1D2742" stroke-width="5"
+             stroke-linecap="round">
+            <path d="M30 104 L18 124"/><path d="M130 104 L142 124"/>
+            <circle cx="17" cy="127" r="8" fill="#FFC93C" stroke-width="3"/>
+            <circle cx="143" cy="127" r="8" fill="#FFC93C" stroke-width="3"/>
+          </g>
+          <rect x="28" y="42" width="104" height="92" rx="34" fill="#EEF3FA" stroke="#1D2742" stroke-width="4"/>
+          <rect x="42" y="56" width="76" height="58" rx="20" fill="#1D2742"/>
+          <g class="mood mood-happy" fill="none" stroke="#FFC93C" stroke-width="5" stroke-linecap="round">
+            <path d="M54 80 q7 -9 14 0"/><path d="M92 80 q7 -9 14 0"/>
+            <path d="M64 93 q16 13 32 0" fill="#FFC93C"/>
+          </g>
+          <g class="mood mood-thinking">
+            <circle cx="66" cy="77" r="6" fill="#FFC93C"/><circle cx="98" cy="77" r="6" fill="#FFC93C"/>
+            <circle cx="68" cy="75" r="2" fill="#1D2742"/><circle cx="100" cy="75" r="2" fill="#1D2742"/>
+            <path d="M72 99 h16" stroke="#FFC93C" stroke-width="4" stroke-linecap="round"/>
+            <g fill="#FFC93C" stroke="#1D2742" stroke-width="2">
+              <circle class="think-dot" cx="124" cy="30" r="5"/><circle class="think-dot" cx="138" cy="20" r="6"/>
+              <circle class="think-dot" cx="152" cy="8" r="7"/></g>
+          </g>
+          <g class="mood mood-curious">
+            <circle cx="66" cy="81" r="8" fill="#FFC93C"/><circle cx="98" cy="81" r="6" fill="#FFC93C"/>
+            <path d="M56 68 q9 -8 18 -3" fill="none" stroke="#FFC93C" stroke-width="4" stroke-linecap="round"/>
+            <circle cx="82" cy="100" r="5" fill="none" stroke="#FFC93C" stroke-width="4"/>
+            <text x="128" y="36" font-size="36" font-weight="700" fill="#FFC93C" stroke="#1D2742"
+                  stroke-width="2" font-family="ui-rounded, system-ui, sans-serif">?</text>
+          </g>
+          <g class="mood mood-careful">
+            <circle cx="66" cy="81" r="6" fill="#FFC93C"/><circle cx="98" cy="81" r="6" fill="#FFC93C"/>
+            <path d="M56 69 h18 M88 69 h18 M70 100 h20" stroke="#FFC93C" stroke-width="4" stroke-linecap="round"/>
+            <circle cx="136" cy="28" r="16" fill="#FFC93C" stroke="#1D2742" stroke-width="3"/>
+            <path d="M136 19 v11" stroke="#1D2742" stroke-width="4" stroke-linecap="round"/>
+            <circle cx="136" cy="37" r="2.5" fill="#1D2742"/>
+          </g>
+          <rect x="52" y="134" width="20" height="14" rx="6" fill="#1D2742"/>
+          <rect x="88" y="134" width="20" height="14" rx="6" fill="#1D2742"/>
+          <rect x="44" y="146" width="34" height="14" rx="7" fill="#FFC93C" stroke="#1D2742" stroke-width="3"/>
+          <rect x="82" y="146" width="34" height="14" rx="7" fill="#FFC93C" stroke="#1D2742" stroke-width="3"/>
+        </svg>
+      </div>
+      <!-- The mini-lesson opens here, in place of Zip's picture (on a phone:
+           below the bubble). It never covers the breadboard or Zip's words. -->
+      <div class="mini" id="mini" role="region" aria-labelledby="mini-title" hidden>
+        <div class="mini-head">
+          <h3><span class="label">Learn why:</span> <span id="mini-title"></span></h3>
+          <button class="btn btn-round" type="button" id="mini-close" aria-label="Close the mini-lesson">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.8"
+                 stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
         </div>
-      </section>
-      <section>
-        <h2>Mistake history</h2>
-        <p class="passes" id="passes"></p>
-        <div class="table-scroll" id="history"></div>
-      </section>
-    </div>
-  </div>
+        <div class="mini-body">
+          <p class="idea" id="mini-idea"></p>
+          <p class="question" id="mini-question"></p>
+          <div class="options" id="mini-options"></div>
+          <p class="result" id="mini-result" aria-live="polite"></p>
+        </div>
+      </div>
+      <div class="bubble" id="bubble">
+        <div class="hint" id="hint" aria-live="polite" tabindex="0">Build the circuit, then press "Check my circuit".</div>
+      </div>
+      <button class="btn btn-soft btn-small learn" type="button" id="mini-open" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5C3 4.7 3.7 4 4.5 4H10a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4.5A1.5 1.5 0 0 1 3 16.5zM21 5.5c0-.8-.7-1.5-1.5-1.5H14a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h5.5a1.5 1.5 0 0 0 1.5-1.5z"
+              fill="#FFC93C" stroke="#1D2742" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <span>Learn why: <span id="learn-title"></span></span>
+      </button>
+      </div>
 
+      <form class="actions" id="say">
+        <div class="row">
+          <button class="btn btn-blue" type="button" id="check">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6"
+                 stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+            Check my circuit
+          </button>
+          <button class="btn btn-yellow" type="button" id="fixed">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+            I fixed it
+          </button>
+        </div>
+        <div class="ask">
+          <input id="say-text" autocomplete="off" placeholder="Ask Zip something&hellip;" maxlength="500"
+                 aria-label="Ask Zip something">
+          <button class="btn btn-soft" type="submit">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4"
+                 stroke-linejoin="round"><path d="M3 11.5L21 4l-7.5 18-2.5-7.5z"/></svg>
+            Send
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Teacher view: closed when the page opens -->
+    <aside class="zone teacher" id="teacher" hidden aria-label="Teacher view">
+      <div class="top">
+        <h2>Teacher view</h2>
+        <button class="btn btn-soft btn-small" type="button" id="teacher-close">Close</button>
+      </div>
+
+      <h3>Board</h3>
+      <div class="boardline" id="boardline" role="status" hidden></div>
+      <p class="small muted" id="model"></p>
+      <p class="small muted" id="caps"></p>
+
+      <div class="sim" id="sim" hidden>
+        <h3>Practice mode</h3>
+        <p class="small muted">Pick what the pretend student built.</p>
+        <div class="scenarios" id="scenarios"></div>
+      </div>
+
+      <h3>Student</h3>
+      <div class="row">
+        <button class="btn btn-soft btn-small" type="button" id="reset"
+                title="Forget the mistake history and start at lesson 1">New student</button>
+        <a href="/api/notebook" target="_blank" rel="noopener">Open the student's notebook</a>
+      </div>
+      <p class="small muted">Stars: 1 for passing a lesson, 2 with no mistake made twice,
+        3 when every quiz in it was answered right.</p>
+
+      <h3>What the tutor did</h3>
+      <div class="tutor-did" id="tutor-did"></div>
+      <div class="log" id="log"></div>
+
+      <h3>Mistake history</h3>
+      <p class="small" id="passes"></p>
+      <div class="table-scroll" id="history"></div>
+    </aside>
+  </main>
 </div>
+
+<div class="offline" id="offline">
+  Zip cannot reach the tutor program. In Command Prompt run
+  python web\server.py, then open http://localhost:8000
+</div>
+<div class="confetti" id="confetti" aria-hidden="true"></div>
 
 <script>
   "use strict";
@@ -350,6 +626,9 @@
     read_file: "read the notebook",
   };
   const POLL_MS = 250;
+  const WELCOME = "Hi, I am Zip! Build the circuit, then press \u201cCheck my circuit\u201d.";
+  // The SVG name space, taken from an SVG already on the page.
+  const SVGNS = document.getElementById("guide").namespaceURI;
 
   const $ = (id) => document.getElementById(id);
   let busy = false;
@@ -358,8 +637,13 @@
   let lastScenarioKey = "";
   let lastMiniKey = "";
   let miniCard = null;
+  let miniOpen = null;       // the card opened with "Learn why" (its occurrence)
   let lastButtonsKey = "";
-  let serverBusy = false;  // the tutor is busy because of a board button
+  let lastPathKey = "";
+  let lastStars = null;      // stars per lesson, to make new ones pop
+  let lastCelebrated = null; // time of the last reply we celebrated
+  let serverBusy = false;    // the tutor is busy because of a board button
+  let lastState = null;
 
   // Never show "-0.00": tiny negative numbers are sensor noise around zero.
   function fmt(value, digits) {
@@ -367,33 +651,55 @@
     return Number(text) === 0 ? Number(0).toFixed(digits) : text;
   }
 
-  function inRange(value, range) {
-    return value >= range[0] && value <= range[1];
-  }
-
-  // A reading tile turns green/red only for values the lesson checks.
-  function renderTile(tile, valueEl, targetEl, value, digits, unit, expected, range, powerOn) {
-    if (range && !Array.isArray(range)) {  // lessons store ranges as {min, max}
-      range = [range.min ?? -Infinity, range.max ?? Infinity];
-    }
-    valueEl.textContent = fmt(value, digits);
-    tile.classList.remove("good", "bad");
-    targetEl.textContent = "";
-    if (expected === undefined) return;
-    if (!range) {
-      targetEl.textContent = `Should be about ${expected} ${unit}`;
-      return;
-    }
-    const ok = powerOn && inRange(value, range);
-    tile.classList.add(ok ? "good" : "bad");
-    const verdict = document.createElement("span");
-    verdict.className = "verdict";
-    verdict.textContent = ok ? "GOOD" : "NOT YET";
-    targetEl.append(verdict, ` · aim for ${range[0]} to ${range[1]} ${unit}`);
-  }
-
   function currentDigits(mA) {
     return Math.abs(mA) < 10 ? 2 : 1;
+  }
+
+  function svg(tag, attrs, parent, text) {
+    const e = document.createElementNS(SVGNS, tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => e.setAttribute(k, v));
+    if (text !== undefined) e.textContent = text;
+    if (parent) parent.append(e);
+    return e;
+  }
+
+  // ---- Zip ----------------------------------------------------------------
+  function setMood(mood) {
+    const guide = $("guide");
+    if (guide.dataset.mood !== mood) guide.dataset.mood = mood;
+  }
+
+  function showWords(text, thinking) {
+    const hint = $("hint");
+    if (hint.textContent !== text) {
+      hint.textContent = text;
+      hint.scrollTop = 0;  // long replies scroll inside the bubble
+    }
+    hint.classList.toggle("thinking", !!thinking);
+  }
+
+  function celebrate() {
+    const guide = $("guide");
+    guide.classList.remove("bounce");
+    void guide.getBoundingClientRect();  // restart the bounce
+    guide.classList.add("bounce");
+    // Green glow on the lesson's rows for a moment.
+    const bands = () => document.querySelectorAll("#bb .bb-band");
+    bands().forEach((b) => b.classList.add("cheer"));
+    setTimeout(() => bands().forEach((b) => b.classList.remove("cheer")), 2200);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const box = $("confetti");
+    box.replaceChildren();
+    const colors = ["#FFC93C", "#1FAA6B", "#4DB5FF", "#2F5FE8"];
+    for (let i = 0; i < 40; i++) {
+      const piece = document.createElement("i");
+      piece.style.left = Math.random() * 100 + "vw";
+      piece.style.background = colors[i % colors.length];
+      piece.style.animationDelay = Math.random() * 0.3 + "s";
+      piece.style.animationDuration = 1.1 + Math.random() * 0.5 + "s";
+      box.append(piece);
+    }
+    setTimeout(() => box.replaceChildren(), 2200);
   }
 
   function renderLog(log) {
@@ -405,19 +711,20 @@
     const latest = tutor[tutor.length - 1];
     $("tutor-did").textContent = latest && latest.tools && latest.tools.length
       ? "The tutor " + latest.tools.map((t) => TOOL_WORDS[t] || t).join(", ")
-      : "";
-    if (!busy) {
-      $("hint").textContent = tutor.length
-        ? tutor[tutor.length - 1].text
-        : 'Build the circuit, then press "Check my circuit".';
-      $("hint").classList.remove("thinking");
+      : "Nothing yet.";
+    if (!busy) showWords(latest ? latest.text : WELCOME, false);
+    // A short celebration for a new "correct!" reply (not for old ones
+    // already there when the page opened).
+    if (lastCelebrated === null) {
+      lastCelebrated = latest ? latest.time : 0;
+    } else if (latest && latest.celebrate && latest.time > lastCelebrated) {
+      lastCelebrated = latest.time;
+      celebrate();
     }
 
-    // Older messages, newest first, below the big hint.
     const box = $("log");
     box.replaceChildren();
-    // Only the 2 messages before the latest reply: whole lines, no scrolling.
-    log.slice(Math.max(0, log.length - 3), Math.max(0, log.length - 1)).reverse().forEach((m) => {
+    log.slice(Math.max(0, log.length - 9), Math.max(0, log.length - 1)).reverse().forEach((m) => {
       const p = document.createElement("p");
       const who = document.createElement("span");
       who.className = "who";
@@ -425,9 +732,52 @@
       p.append(who, m.text);
       box.append(p);
     });
-    fitToScreen();
   }
 
+  // ---- Lesson path with stars ----------------------------------------------
+  function star(on, pop) {
+    const s = svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" });
+    svg("path", { d: "M12 2.5l2.9 6.2 6.6.7-5 4.5 1.4 6.6L12 17.2 6.1 20.5l1.4-6.6-5-4.5 6.6-.7z",
+      class: (on ? "star-on" : "star-off") + (pop ? " star-pop" : "") }, s);
+    return s;
+  }
+
+  function renderPath(path) {
+    const key = JSON.stringify(path);
+    if (key === lastPathKey) return;
+    lastPathKey = key;
+    const nav = $("path");
+    nav.replaceChildren();
+    path.forEach((p, i) => {
+      if (i > 0) {
+        const road = document.createElement("div");
+        road.className = "road" + (path[i - 1].passed ? " done" : "");
+        nav.append(road);
+      }
+      const stop = document.createElement("div");
+      stop.className = "stop" + (p.passed ? " passed" : "") + (p.current ? " current" : "");
+      stop.title = `Lesson ${p.id}: ${p.title}. ${p.stars} of 3 stars.`;
+      stop.setAttribute("aria-label", stop.title);
+      const dot = document.createElement("div");
+      dot.className = "dot";
+      if (p.passed) {
+        const tick = svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, dot);
+        svg("path", { d: "M5 12.5l4.5 4.5L19 7.5", fill: "none", stroke: "#1D2742",
+          "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" }, tick);
+      } else {
+        dot.textContent = String(p.id);
+      }
+      const stars = document.createElement("div");
+      stars.className = "stars";
+      const before = lastStars ? (lastStars[p.id] || 0) : p.stars;
+      for (let s = 1; s <= 3; s++) stars.append(star(s <= p.stars, s <= p.stars && s > before));
+      stop.append(dot, stars);
+      nav.append(stop);
+    });
+    lastStars = Object.fromEntries(path.map((p) => [p.id, p.stars]));
+  }
+
+  // ---- Teacher view parts ---------------------------------------------------
   function renderHistory(history, passes, lessonCount) {
     const key = JSON.stringify(history.map((m) => m.quiz)) + history.length + JSON.stringify(passes);
     if (key === lastHistoryKey) return;
@@ -442,7 +792,7 @@
     box.replaceChildren();
     if (!history.length) {
       const p = document.createElement("p");
-      p.className = "empty";
+      p.className = "small muted";
       p.textContent = "No mistakes yet.";
       box.append(p);
       return;
@@ -455,7 +805,7 @@
       head.append(th);
     });
     const body = table.createTBody();
-    const SHOW = 2;
+    const SHOW = 12;
     history.slice().reverse().slice(0, SHOW).forEach((m) => {
       const row = body.insertRow();
       [m.lesson, m.description, ordinal(m.try)].forEach((v, i) => {
@@ -467,13 +817,13 @@
       given.textContent = m.given === "hint" ? "Hint" : "Full explanation";
       given.className = m.given === "hint" ? "given-hint" : "given-full";
       const quiz = row.insertCell();
-      quiz.textContent = m.quiz === "right" ? "Right" : m.quiz === "wrong" ? "Wrong" : "\u2013";
+      quiz.textContent = m.quiz === "right" ? "Right" : m.quiz === "wrong" ? "Wrong" : "–";
       quiz.className = "nowrap" + (m.quiz ? " quiz-" + m.quiz : "");
     });
     box.append(table);
     if (history.length > SHOW) {
       const more = document.createElement("p");
-      more.className = "more";
+      more.className = "small muted";
       more.textContent = `and ${history.length - SHOW} earlier`;
       box.append(more);
     }
@@ -493,7 +843,8 @@
     box.replaceChildren();
     state.scenarios.forEach((name) => {
       const b = document.createElement("button");
-      b.className = "scenario" + (name === state.scenario ? " active" : "");
+      b.type = "button";
+      b.className = "btn btn-soft btn-small circuit-pick" + (name === state.scenario ? " active" : "");
       b.textContent = SCENARIO_NAMES[name] || name;
       b.disabled = busy;
       b.addEventListener("click", () => post("/api/build", { scenario: name }));
@@ -501,53 +852,6 @@
     });
   }
 
-  function render(state) {
-    const L = state.lesson;
-    const r = state.reading;
-    $("lesson-title").textContent = `Lesson ${L.id} of ${state.lesson_count}: ${L.title}`;
-    $("lesson-circuit").textContent = L.circuit;
-
-    // A real board that is not answering: nothing is known, so say so.
-    const noBoard = state.reading_ok === false;
-    const power = $("power");
-    power.textContent = noBoard ? "NO BOARD" : r.power_on ? "POWER ON" : "POWER OFF";
-    power.className = "badge " + (r.power_on && !noBoard ? "on" : "off");
-
-    const accept = L.accept || {};
-    const expected = L.expected || {};
-    // "shown" holds the numbers cleaned up by the server for students.
-    // Current is never shown below 0.00 (clamped again here, to be safe).
-    // Current may be measured (sensor), calculated from the rows, or
-    // unknown (null): then the page says so instead of showing a number.
-    const shown = state.shown;
-    const current = shown.current_ma === null ? null : Math.max(0, shown.current_ma);
-    if (current === null || noBoard) {
-      $("v-current").textContent = "?";
-      $("tile-current").classList.remove("good", "bad");
-      $("t-current").textContent = "Not known";
-    } else {
-      renderTile($("tile-current"), $("v-current"), $("t-current"), current,
-        currentDigits(current), "mA", expected.current_ma, accept.current_ma, r.power_on);
-    }
-    $("current-source").textContent = noBoard ? "Board not answering" : {
-      measured: "Measured by the board",
-      calculated: "Calculated (no current sensor)",
-      unknown: "No current sensor",
-    }[shown.current_source] || "";
-    $("v-supply").textContent = noBoard ? "?" : fmt(shown.supply_v, 2);
-    renderBoard(state);
-
-    if (state.busy && !busy) { serverBusy = true; setBusy(true); }
-    else if (!state.busy && serverBusy) { serverBusy = false; setBusy(false); lastLogKey = ""; }
-    $("model").textContent = "Tutor: " + state.model;
-    renderLog(state.log);
-    renderMini(state.mini_lesson);
-    renderHistory(state.history, state.passes, state.lesson_count);
-    renderScenarios(state);
-  }
-
-  // The rows this lesson uses (any board) and, with the fake board, the
-  // pretend board: its screen and its 4 buttons.
   function renderBoardLine(state) {
     const st = state.board_status;
     const line = $("boardline");
@@ -555,58 +859,369 @@
     line.hidden = false;
     line.className = "boardline " + (st.kind === "fake" ? "fake" : st.connected ? "ok" : "bad");
     line.textContent = st.kind === "fake" ? "Practice mode: pretend board (no real board plugged in)"
-      : st.connected ? "\u2714 " + st.text : "\u2716 " + st.text;
+      : st.text;
+  }
+
+  // ---- Everything on the page ------------------------------------------------
+  function render(state) {
+    lastState = state;
+    const L = state.lesson;
+    const r = state.reading;
+    $("lesson-title").textContent = `Lesson ${L.id}: ${L.title}`;
+    $("lesson-circuit").textContent = L.circuit;
+
+    // A real board that is not answering: nothing is known, so say so.
+    const noBoard = state.reading_ok === false;
+    $("power-text").textContent = noBoard ? "No board" : r.power_on ? "Power on" : "Power off";
+    $("power").className = "power " + (noBoard ? "none" : r.power_on ? "on" : "off");
+
+    // "shown" holds the numbers cleaned up by the server for students.
+    // Current is never shown below 0.00 (clamped again here, to be safe).
+    // Current may be measured (sensor), worked out from the rows, or
+    // unknown (null): then the page says so instead of showing a number.
+    const shown = state.shown;
+    const current = shown.current_ma === null ? null : Math.max(0, shown.current_ma);
+    renderCurrent(current, noBoard, L, r.power_on);
+    $("current-source").textContent = noBoard ? "" : {
+      calculated: "worked out from the rows",
+      unknown: "no current sensor",
+    }[shown.current_source] || "";
+    $("v-supply").textContent = noBoard ? "?" : fmt(shown.supply_v, 2);
+    renderBoard(state);
+    renderPath(state.path || []);
+
+    if (state.busy && !busy) { serverBusy = true; setBusy(true); }
+    else if (!state.busy && serverBusy) { serverBusy = false; setBusy(false); lastLogKey = ""; }
+    setMood(busy ? "thinking" : (state.mood || "happy"));
+    $("model").textContent = "Tutor: " + state.model;
+    renderLog(state.log);
+    renderMini(state.mini_lesson);
+    renderHistory(state.history, state.passes, state.lesson_count);
+    renderScenarios(state);
+  }
+
+  // The current pill: green dot "just right" or coral dot "not yet", only
+  // for values the lesson checks. The words stay dark, easy to read.
+  function renderCurrent(current, noBoard, L, powerOn) {
+    const pill = $("tile-current");
+    const target = $("t-current");
+    pill.classList.remove("good", "bad");
+    target.replaceChildren();
+    if (current === null || noBoard) {
+      $("v-current").textContent = "?";
+      target.textContent = "not known";
+      return;
+    }
+    $("v-current").textContent = fmt(current, currentDigits(current));
+    let range = (L.accept || {}).current_ma;
+    if (!range) return;
+    range = [range.min ?? -Infinity, range.max ?? Infinity];
+    const ok = powerOn && current >= range[0] && current <= range[1];
+    pill.classList.add(ok ? "good" : "bad");
+    const mark = document.createElement("span");
+    mark.className = "mark";
+    target.append(mark, ok ? "just right" : `not yet (aim for ${range[0]} to ${range[1]})`);
+  }
+
+  // ---- The drawn breadboard --------------------------------------------------
+  // Columns are breadboard rows (1 to 63, along the board). Holes a-e are
+  // the top half (T rows), f-j the bottom half (B rows). The + and - strips
+  // run along the edge. The drawing is made in real pixels for its box, so
+  // its words are exactly 16 px, and it is redrawn when the box changes.
+  let bbKey = "";
+  let bbRefs = null;
+
+  function splitRow(name) {
+    const m = /^([TB])(\d+)$/.exec(name);
+    return m ? { half: m[1], n: Number(m[2]) } : null;
+  }
+
+  // The three colour bands of a resistor, as colour-code digits, from its
+  // name: "220 ohm resistor" -> [2, 2, 1] (red red brown), "10k" -> [1, 0, 3].
+  function resistorBands(part) {
+    const m = /(\d+(?:\.\d+)?)\s*([kM]?)/.exec(part);
+    if (!m) return [];
+    const ohms = Number(m[1]) * ({ k: 1e3, M: 1e6 }[m[2]] || 1);
+    if (!(ohms >= 10)) return [];
+    const exp = Math.floor(Math.log10(ohms) + 1e-9);
+    const first = Math.floor(ohms / 10 ** exp + 1e-9);
+    const second = Math.floor(ohms / 10 ** (exp - 1) + 1e-9) % 10;
+    return [first, second, exp - 1];
+  }
+
+  function shortName(part) {
+    const n = part.toLowerCase();
+    const ohms = /(\d+(\.\d+)?k?)\s*(ohm)?/.exec(part);
+    if (n.includes("resistor")) return ohms ? ohms[1] + " Ω" : "resistor";
+    if (n.includes("led")) return "LED";
+    return n;
+  }
+
+  function buildBreadboard(L, b, W, H) {
+    const box = $("bb");
+    box.replaceChildren();
+    box.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const layout = L.layout || [];
+    const names = new Set(L.rows || []);
+    layout.forEach((p) => p.legs.forEach((leg) => names.add(leg.row)));
+    const rows = [...names].map(splitRow).filter(Boolean);
+    const usesBottom = rows.some((r) => r.half === "B") ||
+      layout.some((p) => p.legs.some((leg) => leg.row.startsWith("PB")));
+    const nums = rows.map((r) => r.n);
+    const lo = Math.max(1, (nums.length ? Math.min(...nums) : 1) - 1);
+    const hi = Math.min(63, (nums.length ? Math.max(...nums) : 10) + 1);
+    const cols = hi - lo + 1;
+    const X0 = 56;                                     // room for + and -
+    const CW = Math.min(96, (W - X0 - 16) / cols);     // column width
+    const left = X0 + Math.max(0, (W - X0 - 16 - CW * cols) / 2);
+    const x = (n) => left + (n - lo) * CW + CW / 2;
+    const lr = Math.max(8, Math.min(20, CW * 0.26));   // light radius
+    // Heights in px. The board fills its whole box (no empty band): the
+    // holes grow with the box, and the rest is room for the parts above them.
+    const bottomBlock = lr * 2 + 64;                   // light, voltage, row number
+    const hs = Math.max(16, Math.min(40, H / 16));     // hole spacing
+    const half = 4 * hs;
+    const fixed = 64 + half + bottomBlock + (usesBottom ? half + bottomBlock + 48 : 0) + 24;
+    const room = Math.max(80, H - fixed);
+    const oy = 0;
+    const Y = { plus: oy + 24, minus: oy + 48 };
+    Y.top = [0, 1, 2, 3, 4].map((i) => oy + 48 + room + i * hs);
+    Y.light = Y.top[4] + 16 + lr;
+    Y.volt = Y.light + lr + 24;
+    Y.num = Y.volt + 24;
+    if (usesBottom) {
+      Y.bot = [0, 1, 2, 3, 4].map((i) => Y.num + 32 + i * hs);
+      Y.lightB = Y.bot[4] + 16 + lr;
+      Y.voltB = Y.lightB + lr + 24;
+      Y.plusB = Y.voltB + 24;
+      Y.minusB = Y.plusB + 24;
+    }
+    const bottom = usesBottom ? Y.minusB + 16 : Y.num + 16;
+    if (bottom > H) box.setAttribute("viewBox", `0 0 ${W} ${bottom}`);
+
+    svg("rect", { x: 0, y: 0, width: W, height: Math.max(H, bottom), rx: 16, class: "bb-board" }, box);
+    const lesson = new Set(L.rows || []);
+    for (let n = lo; n <= hi; n++) {
+      if (lesson.has("T" + n)) svg("rect", { x: x(n) - CW / 2 + 4, y: Y.top[0] - 16,
+        width: CW - 8, height: Y.num - Y.top[0] + 24, rx: 12, class: "bb-band" }, box);
+      if (usesBottom && lesson.has("B" + n)) svg("rect", { x: x(n) - CW / 2 + 4, y: Y.bot[0] - 16,
+        width: CW - 8, height: Y.voltB - Y.bot[0] + 24, rx: 12, class: "bb-band" }, box);
+    }
+    const strip = (y, sign) => {
+      svg("line", { x1: X0 - 8, x2: W - 16, y1: y - 12, y2: y - 12, class: "bb-strip" }, box);
+      svg("text", { x: 24, y, class: "bb-sign" }, box, sign);
+      for (let n = lo; n <= hi; n++) svg("rect", { x: x(n) - 3, y: y - 3, width: 6, height: 6,
+        rx: 2, class: "bb-hole" }, box);
+    };
+    strip(Y.plus, "+");
+    strip(Y.minus, "−");
+    if (usesBottom) { strip(Y.plusB, "+"); strip(Y.minusB, "−"); }
+
+    // Narrow columns (a phone): voltages without the "V", so they never touch.
+    const refs = { lights: {}, volts: {}, marks: {}, leds: [], narrow: CW < 48 };
+    for (let n = lo; n <= hi; n++) {
+      Y.top.forEach((y) => svg("rect", { x: x(n) - 3, y: y - 3, width: 6, height: 6, rx: 2,
+        class: "bb-hole" }, box));
+      const used = lesson.has("T" + n) || lesson.has("B" + n);
+      svg("text", { x: x(n), y: Y.num, class: "bb-num" + (used ? " used" : "") }, box, String(n));
+      refs.lights["T" + n] = svg("circle", { cx: x(n), cy: Y.light, r: lr, class: "bb-light" }, box);
+      if (lesson.has("T" + n)) {
+        refs.volts["T" + n] = svg("text", { x: x(n), y: Y.volt, class: "bb-volt" }, box, "");
+        refs.marks["T" + n] = svg("rect", { x: x(n) - 12, y: Y.volt + 4, width: 24, height: 4,
+          rx: 2, class: "bb-mark" }, box);
+      }
+      if (usesBottom) {
+        Y.bot.forEach((y) => svg("rect", { x: x(n) - 3, y: y - 3, width: 6, height: 6, rx: 2,
+          class: "bb-hole" }, box));
+        refs.lights["B" + n] = svg("circle", { cx: x(n), cy: Y.lightB, r: lr, class: "bb-light" }, box);
+        if (lesson.has("B" + n)) {
+          refs.volts["B" + n] = svg("text", { x: x(n), y: Y.voltB, class: "bb-volt" }, box, "");
+          refs.marks["B" + n] = svg("rect", { x: x(n) - 12, y: Y.voltB + 4, width: 24, height: 4,
+            rx: 2, class: "bb-mark" }, box);
+        }
+      }
+    }
+
+    // Parts, where the lesson layout puts them. Each leg takes the next
+    // free hole in its row, so parts never sit on top of each other.
+    const free = {};
+    const point = (leg, other) => {
+      const r = splitRow(leg.row);
+      if (r) {
+        const holes = r.half === "T" ? Y.top : Y.bot;
+        free[leg.row] = free[leg.row] || 0;
+        const y = holes[Math.min(free[leg.row], holes.length - 1)];
+        free[leg.row] += 1;
+        return { x: x(r.n), y };
+      }
+      const o = splitRow(other.row);
+      const ox = o ? x(o.n) : left + CW / 2;
+      const y = { "PT+": Y.plus, "PT-": Y.minus, "PB+": Y.plusB, "PB-": Y.minusB }[leg.row] ?? Y.plus;
+      return { x: ox - CW * 0.3, y };
+    };
+    const lift = Math.min(room - 24, 160, Math.max(40, room * 0.5));
+    const step = b.step;  // 1-based step being built, or null
+    layout.forEach((part, i) => {
+      if (part.legs.length < 2) return;
+      const g = svg("g", { class: "bb-part" }, box);
+      if (step) g.classList.add(i < step - 1 ? "done" : i === step - 1 ? "now" : "later");
+      svg("title", {}, g, part.part + ": " +
+        part.legs.map((leg) => `${leg.leg} in ${leg.row}`).join(", "));
+      const p1 = point(part.legs[0], part.legs[1]);
+      const p2 = point(part.legs[1], part.legs[0]);
+      const name = part.part.toLowerCase();
+      const mx = (p1.x + p2.x) / 2;
+      if (name.includes("wire")) {
+        const up = Math.max(24, Math.abs(p2.x - p1.x) * 0.3);
+        const d = `M${p1.x} ${p1.y} C${p1.x} ${p1.y - up}, ${p2.x} ${p2.y - up}, ${p2.x} ${p2.y}`;
+        svg("path", { d, class: "bb-outline" }, g);
+        // Wires in their real colours: the red wire red, the black wire black.
+        const colour = name.includes("red") ? " red" : name.includes("black") ? " black" : "";
+        svg("path", { d, class: "bb-wire" + colour }, g);
+        [p1, p2].forEach((p) => svg("circle", { cx: p.x, cy: p.y, r: 5, class: "bb-end" + colour }, g));
+        // The name beside the wire, on the side with more room (left out
+        // when there is no room for words, like on a phone or a short screen).
+        const rowEnd = splitRow(part.legs[0].row) ? p1 : p2;
+        const right = rowEnd.x + 140 < W;
+        if (CW >= 44 && room >= 160) svg("text", { x: rowEnd.x + (right ? 16 : -16), y: (Y.minus + Y.top[0]) / 2 + 8,
+          class: "bb-label", "text-anchor": right ? "start" : "end" }, g, shortName(part.part));
+      } else if (name.includes("resistor")) {
+        const top = Math.min(p1.y, p2.y) - lift * 0.6;
+        const len = Math.max(40, Math.min(96, Math.abs(p2.x - p1.x) * 0.6));
+        svg("path", { d: `M${p1.x} ${p1.y} L${p1.x} ${top} L${p2.x} ${top} L${p2.x} ${p2.y}`,
+          class: "bb-leg" }, g);
+        svg("rect", { x: mx - len / 2 - 8, y: top - 16, width: len + 16, height: 32, rx: 16,
+          class: "bb-outline" }, g);
+        svg("rect", { x: mx - len / 2, y: top - 10, width: len, height: 20, rx: 10,
+          class: "bb-body resistor" }, g);
+        // Colour bands for its value: 220 ohm red red brown, 10k brown black orange.
+        resistorBands(part.part).forEach((digit, k) => svg("rect", { x: mx - len / 2 + 10 + k * 10,
+          y: top - 10, width: 6, height: 20, class: "band-" + digit }, g));
+        [p1, p2].forEach((p) => svg("circle", { cx: p.x, cy: p.y, r: 4, class: "bb-end" }, g));
+        svg("text", { x: mx, y: top - 24, class: "bb-label", "text-anchor": "middle" }, g, shortName(part.part));
+      } else if (name.includes("led")) {
+        const top = Math.min(p1.y, p2.y) - lift * 0.75;
+        svg("path", { d: `M${p1.x} ${p1.y} L${p1.x} ${top + 24} L${mx - 8} ${top + 12}`, class: "bb-leg" }, g);
+        svg("path", { d: `M${p2.x} ${p2.y} L${p2.x} ${top + 28} L${mx + 8} ${top + 12}`, class: "bb-leg" }, g);
+        svg("circle", { cx: mx, cy: top, r: 24, class: "bb-outline" }, g);
+        const dome = svg("path", { d: `M${mx - 16} ${top + 12} L${mx - 16} ${top} ` +
+          `A16 16 0 0 1 ${mx + 16} ${top} L${mx + 16} ${top + 12} Z`, class: "bb-led" }, g);
+        svg("text", { x: p1.x - 12, y: top + 40, class: "bb-plus" }, g, "+");
+        [p1, p2].forEach((p) => svg("circle", { cx: p.x, cy: p.y, r: 4, class: "bb-end" }, g));
+        svg("text", { x: mx, y: top - 32, class: "bb-label", "text-anchor": "middle" }, g, shortName(part.part));
+        refs.leds.push({ el: dome, plus: part.legs[0].row, minus: part.legs[1].row });
+      } else {
+        svg("path", { d: `M${p1.x} ${p1.y} L${p1.x} ${p1.y - 32} M${p2.x} ${p2.y} L${p2.x} ${p2.y - 32}`,
+          class: "bb-leg" }, g);
+        svg("rect", { x: Math.min(p1.x, p2.x) - 8, y: Math.min(p1.y, p2.y) - 56,
+          width: Math.abs(p2.x - p1.x) + 16, height: 24, rx: 8, class: "bb-body" }, g);
+        svg("text", { x: mx, y: Math.min(p1.y, p2.y) - 64, class: "bb-label", "text-anchor": "middle" }, g, part.part);
+      }
+    });
+    return refs;
+  }
+
+  function updateBreadboard(state, noBoard) {
+    const L = state.lesson, b = state.board;
+    const area = $("drawing");
+    const W = Math.round(area.clientWidth), H = Math.round(area.clientHeight);
+    if (W < 40 || H < 40) return;
+    const key = [L.id, JSON.stringify(L.layout), JSON.stringify(L.rows), b.step, W, H].join("|");
+    if (key !== bbKey || !bbRefs) {
+      bbKey = key;
+      bbRefs = buildBreadboard(L, b, W, H);
+    }
+    Object.entries(bbRefs.lights).forEach(([row, dot]) => {
+      const cls = "bb-light " + (b.lights[row] || "off");
+      if (dot.getAttribute("class") !== cls) dot.setAttribute("class", cls);
+    });
+    const ranges = (L.accept && L.accept.rows) || {};
+    const should = (L.expected && L.expected.rows) || {};
+    const volts = {};
+    b.rows.forEach((row) => {
+      const t = bbRefs.volts[row.name];
+      if (row.measured && !row.floating) volts[row.name] = row.volts;
+      if (!t) return;
+      let text, cls = "bb-volt", mark = "bb-mark";
+      if (noBoard) text = "?";
+      else if (!row.measured) { text = "–"; cls += " empty"; }
+      else if (row.floating) { text = "empty"; cls += " empty"; }
+      else {
+        text = fmt(row.volts, 2) + (bbRefs.narrow ? "" : " V");
+        const rng = ranges[row.name];
+        if (rng && state.reading.power_on) {
+          const ok = row.volts >= (rng.min ?? -Infinity) && row.volts <= (rng.max ?? Infinity);
+          mark += ok ? " good" : " bad";
+        }
+      }
+      if (t.textContent !== text) t.textContent = text;
+      if (t.getAttribute("class") !== cls) t.setAttribute("class", cls);
+      const m = bbRefs.marks[row.name];
+      if (m && m.getAttribute("class") !== mark) m.setAttribute("class", mark);
+      let title = t.querySelector("title");
+      if (!title) title = svg("title", {}, t);
+      title.textContent = `${row.label}: ${!row.measured ? "not measured" : text}` +
+        (row.name in should ? `, should be ${should[row.name]} V` : "");
+    });
+    // The LED lights up in the drawing when it really has about 2 volts.
+    const at = (row) => row === "PT+" || row === "PB+" ? state.shown.supply_v
+      : row.startsWith("P") ? 0 : volts[row];
+    bbRefs.leds.forEach((led) => {
+      const across = at(led.plus) - at(led.minus);
+      const on = !noBoard && state.reading.power_on && across > 1.6 && across < 3.3 &&
+        (state.shown.current_ma === null || state.shown.current_ma > 1);
+      const cls = "bb-led" + (on ? " on" : "");
+      if (led.el.getAttribute("class") !== cls) led.el.setAttribute("class", cls);
+    });
   }
 
   function renderBoard(state) {
     renderBoardLine(state);
     const noBoard = state.reading_ok === false;
     const b = state.board;
-    const L = state.lesson;
     const c = b.capabilities;
     $("caps").textContent = `Board: ${c.rows} rows measured, current sensor ` +
       `${c.has_current ? "yes" : "no"}, power switch ${c.has_power_switch ? "yes" : "no"}`;
 
-    const box = $("rows");
-    box.replaceChildren();
-    const should = (L.expected && L.expected.rows) || {};
-    const ranges = (L.accept && L.accept.rows) || {};
-    b.rows.forEach((row) => {
-      const cell = (cls, text) => {
-        const d = document.createElement("div");
-        d.className = cls;
-        d.textContent = text;
-        box.append(d);
-        return d;
-      };
-      cell("rname", row.label.charAt(0).toUpperCase() + row.label.slice(1));
-      const v = cell("rvolts", noBoard ? "?" : !row.measured ? "not measured"
-        : row.floating ? "empty" : fmt(row.volts, 2) + " V");
-      const rng = ranges[row.name];
-      if (row.measured && !row.floating && rng && state.reading.power_on) {
-        const ok = row.volts >= (rng.min ?? -Infinity) && row.volts <= (rng.max ?? Infinity);
-        v.classList.add(ok ? "good" : "bad");
-      }
-      cell("rshould", row.name in should ? `should be ${should[row.name]} V` : "");
-      const l = cell("rlight", "");
-      const dot = document.createElement("span");
-      dot.className = "light " + row.light;
-      l.append(dot, row.light);
-    });
-    // Explain the colors that are lit right now (each color has one meaning).
-    const lit = [...new Set(b.rows.map((row) => row.light).filter((c) => c !== "off"))];
-    $("legend").textContent = lit.map((c) => `${c} = ${b.colors[c]}`).join(", ");
-    const note = $("rows-note");
-    note.hidden = !b.missing_rows.length || noBoard;
-    note.textContent = b.missing_rows.length
+    // The device strip first: its height changes the drawing's box.
+    $("tile-board").hidden = !b.pretend;
+    if (b.pretend) renderDevice(b, c);
+
+    updateBreadboard(state, noBoard);
+    const note = $("step-note");
+    const layout = state.lesson.layout || [];
+    note.hidden = !b.step;
+    if (b.step && layout[b.step - 1]) {
+      note.textContent = `Step ${b.step} of ${b.steps}: ${layout[b.step - 1].part}`;
+    }
+    // Explain the colours that are lit right now (each colour has one meaning).
+    const lit = [...new Set(Object.values(b.lights).filter((c) => c !== "off"))];
+    const legend = $("legend");
+    const legendKey = lit.join(",");
+    if (legend.dataset.key !== legendKey) {
+      legend.dataset.key = legendKey;
+      legend.replaceChildren();
+      lit.forEach((color) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        const dot = document.createElement("span");
+        dot.className = "light " + color;
+        chip.append(dot, `${color} light = ${b.colors[color]}`);
+        legend.append(chip);
+      });
+    }
+    const missing = $("rows-note");
+    missing.hidden = !b.missing_rows.length || noBoard;
+    missing.textContent = b.missing_rows.length
       ? `This board does not measure ${b.missing_rows.join(", ")}, so this lesson cannot be checked.`
       : "";
+  }
 
-    $("tile-board").hidden = !b.pretend;
-    if (!b.pretend) return;
+  // The pretend board (b.pretend): its little screen and its 4 buttons.
+  function renderDevice(b, c) {
     const lines = [];
     for (let i = 0; i < b.screen_size[0]; i++) lines.push((b.screen[i] || "").padEnd(b.screen_size[1]));
-    $("screen").textContent = c.has_screen ? lines.join("\n") : "(this board has no screen)";
+    $("screen").textContent = c.has_screen ? lines.join("\n") : "(no screen)";
 
     const key = JSON.stringify(b.buttons) + busy;
     if (key === lastButtonsKey) return;
@@ -616,8 +1231,11 @@
     Object.entries(b.buttons).forEach(([id, label]) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "bbtn";
-      btn.textContent = `${id} \u00b7 ${label}`;
+      btn.className = "btn btn-small";
+      const num = document.createElement("span");
+      num.className = "num";
+      num.textContent = id;
+      btn.append(num, label);
       btn.disabled = busy;
       btn.addEventListener("click", () => pressButton(Number(id)));
       btns.append(btn);
@@ -628,38 +1246,30 @@
     if (busy) return;
     try {
       const out = await post("/api/press", { id });
-      if (out.error) $("hint").textContent = out.error;
+      if (out.error) showWords(out.error);
     } catch (e) {
-      $("hint").textContent = "Could not reach the tutor server.";
+      showWords("Zip cannot reach the tutor program right now.");
     }
     lastLogKey = "";
   }
 
-  // The mini-lesson card for the latest mistake. Hidden while the tutor
-  // is thinking and after a reply with no mistake.
-  // On a widescreen display (projector), make sure everything fits one
-  // screen: if the page is taller than the window, shrink only the tutor's
-  // message, step by step, never below 1rem (24 px on a 1080p screen).
-  function fitToScreen() {
-    const hint = $("hint");
-    hint.style.fontSize = "";
-    if (window.innerWidth < 1100) return;  // phones and narrow windows scroll
-    let size = 1.35;
-    while (document.documentElement.scrollHeight > window.innerHeight && size > 1.0) {
-      size = Math.round((size - 0.05) * 100) / 100;
-      hint.style.fontSize = size + "rem";
-    }
-  }
-  window.addEventListener("resize", fitToScreen);
-
+  // ---- The mini-lesson pop-up --------------------------------------------------
+  // It sits over the stage and never moves the layout. Closing it keeps it
+  // closed for that mistake; the "Mini-lesson" pill opens it again.
   function renderMini(card) {
-    const key = JSON.stringify(card) + busy;
+    const key = JSON.stringify(card) + busy + miniOpen;
     if (key === lastMiniKey) return;
     lastMiniKey = key;
     miniCard = card;
-    $("mini").hidden = !card || busy;
-    if (!card) { fitToScreen(); return; }
+    // After a mistake: a "Learn why" tab under the bubble. Clicking it opens
+    // the card in the Zip panel, in place of Zip's picture, until closed.
+    const open = !!card && !busy && miniOpen === card.occurrence;
+    $("mini").hidden = !open;
+    $("mini-open").hidden = !card || busy || open;
+    document.querySelector(".zip").classList.toggle("learning", open);
+    if (!card) return;
 
+    $("learn-title").textContent = card.title;
     $("mini-title").textContent = card.title;
     $("mini-idea").textContent = card.idea;
     $("mini-question").textContent = card.question;
@@ -688,10 +1298,9 @@
     if (a) {
       const verdict = document.createElement("span");
       verdict.className = "verdict";
-      verdict.textContent = a.correct ? "Right! " : "Not quite. ";
+      verdict.textContent = a.correct ? "Right! " : "Good try! ";
       result.append(verdict, a.why);
     }
-    fitToScreen();
   }
 
   async function answerQuiz(occurrence, choice) {
@@ -714,6 +1323,20 @@
     }
   }
 
+  $("mini-close").addEventListener("click", () => {
+    miniOpen = null;
+    lastMiniKey = "";
+    renderMini(miniCard);
+    $("mini-open").focus();
+  });
+  $("mini-open").addEventListener("click", () => {
+    if (miniCard) miniOpen = miniCard.occurrence;
+    lastMiniKey = "";
+    renderMini(miniCard);
+    $("mini-close").focus();
+  });
+
+  // ---- Talking to the server ---------------------------------------------------
   async function poll() {
     try {
       const res = await fetch("/api/state", { cache: "no-store" });
@@ -740,11 +1363,11 @@
     ["check", "fixed", "reset"].forEach((id) => { $(id).disabled = on; });
     document.querySelectorAll("#say input, #say button[type=submit]").forEach((el) => { el.disabled = on; });
     lastScenarioKey = ""; // redraw circuit buttons enabled/disabled
-    lastMiniKey = "";     // hide or show the mini-lesson card
+    lastMiniKey = "";     // hide or show the mini-lesson
     lastButtonsKey = "";  // board buttons enabled/disabled
     if (on) {
-      $("hint").textContent = "The tutor is measuring and thinking…";
-      $("hint").classList.add("thinking");
+      showWords("Let me look at your circuit…", true);
+      setMood("thinking");
     }
   }
 
@@ -753,15 +1376,44 @@
     setBusy(true);
     try {
       const out = await post("/api/ask", { text });
-      $("hint").textContent = out.reply || out.error || "(no reply)";
+      showWords(out.reply || out.error || "(no reply)");
     } catch (e) {
-      $("hint").textContent = "Could not reach the tutor server.";
+      showWords("Zip cannot reach the tutor program right now.");
     } finally {
-      $("hint").classList.remove("thinking");
       setBusy(false);
       lastLogKey = "";
     }
   }
+
+  // ---- Teacher drawer: closed when the page opens ----------------------------
+  function setTeacher(open) {
+    const drawer = $("teacher");
+    $("teacher-toggle").setAttribute("aria-expanded", String(open));
+    if (open) {
+      drawer.hidden = false;
+      void drawer.getBoundingClientRect();  // let it slide in
+      drawer.classList.add("open");
+      $("teacher-close").focus();
+    } else {
+      drawer.classList.remove("open");
+      const slow = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 320;
+      setTimeout(() => { if (!drawer.classList.contains("open")) drawer.hidden = true; }, slow);
+    }
+  }
+  $("teacher-toggle").addEventListener("click", () => setTeacher(!$("teacher").classList.contains("open")));
+  $("teacher-close").addEventListener("click", () => { setTeacher(false); $("teacher-toggle").focus(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if ($("teacher").classList.contains("open")) { setTeacher(false); $("teacher-toggle").focus(); }
+    else if (!$("mini").hidden) $("mini-close").click();
+  });
+
+  // The drawing is made for its box: redraw when the window changes size.
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (lastState) renderBoard(lastState); }, 120);
+  });
 
   $("check").addEventListener("click", () => askTutor("Check my circuit"));
   $("fixed").addEventListener("click", () => askTutor("I fixed it, check again"));
@@ -775,7 +1427,9 @@
   $("reset").addEventListener("click", async () => {
     if (!confirm("Start again with a new student? This forgets the mistake history.")) return;
     await post("/api/reset");
-    lastLogKey = lastHistoryKey = lastScenarioKey = lastMiniKey = lastButtonsKey = "";
+    lastLogKey = lastHistoryKey = lastScenarioKey = lastMiniKey = lastButtonsKey = lastPathKey = "";
+    lastStars = null;
+    miniOpen = null;
   });
 
   poll();

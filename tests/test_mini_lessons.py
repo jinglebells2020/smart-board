@@ -422,16 +422,18 @@ class TestPage(unittest.TestCase):
     def test_no_hard_words_on_the_page(self):
         text = visible_page_text()
         self.assertIn("Check my circuit", text)  # the extraction works
-        self.assertIn("Rows this lesson uses", text)
+        self.assertIn("The plan: where each part goes", text)
         for word in HARD_WORDS:
             with self.subTest(word=word):
                 self.assertFalse(has_word(text, word),
                                  re.findall(rf".{{0,40}}\b{word}.{{0,40}}", text, re.I))
 
     def test_stays_on_one_projector_screen(self):
-        # Widescreen: the tutor's message shrinks if the page would scroll.
-        self.assertIn("function fitToScreen()", self.html)
-        self.assertIn("window.innerWidth < 1100", self.html)
+        # Widescreen: three zones fill the window exactly (100vh), and long
+        # replies scroll inside Zip's bubble instead of growing the page.
+        self.assertRegex(self.html, r"\.app \{[^}]*height: 100vh")
+        self.assertIn("grid-template-rows: 72px minmax(0, 1fr)", self.html)
+        self.assertRegex(self.html, r"\.hint \{[^}]*overflow-y: auto")
 
 
 if __name__ == "__main__":

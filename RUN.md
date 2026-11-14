@@ -213,53 +213,80 @@ The tests in Part B never use the key, even when it is set.
 
 2. Open Chrome or Edge and go to **http://localhost:8000**
 3. Press **F11** for full screen. Everything fits on one 1080p screen.
-4. Run the demo with the mouse. Two places have buttons:
-   - **Pretend board** (top right): the board's own screen and its 4
-     buttons, **1 · Check my circuit**, **2 · I need a hint**,
-     **3 · Next step** and **4 · Power off / on**. They work like the
-     real board's buttons will.
-   - **Practice mode** (right side): pick what the pretend student
-     built.
 
-   The **Rows this lesson uses** tile shows rows 5, 10 and 12 with their
-   live voltage and the color of the light beside each row.
+   What you see: three parts that fill the screen.
+
+   - **Top bar** (blue): the app name, the lesson name, the **lesson
+     path** (a circle for each lesson, with 3 stars under it), the
+     **Power on / Power off** sign and the **Teacher** button.
+   - **The plan: where each part goes** (left, the big white area): a
+     drawing of the lesson's rows with every part where the lesson puts
+     it (wires, the resistor with its value, the LED with its long leg
+     marked +). Under each row: its light (sky blue, green, red or
+     yellow) and its voltage in small text. The current and the power
+     voltage are small pills at the top. Under the drawing, the
+     **Pretend board**: its little screen and its 4 buttons.
+   - **Zip** (right): our robot spark guide, with the tutor's words in
+     a big speech bubble (it scrolls only if a reply is longer than the
+     space). Zip has 4 faces:
+     **happy** (correct), **thinking** (while checking), **curious** (a
+     hint or a question) and **careful** (danger or power off). Below:
+     **Check my circuit** (blue), **I fixed it** (yellow) and a box to
+     ask Zip anything, with **Send**.
+
+4. Run the demo with the mouse. The pretend board's buttons work like
+   the real board's buttons will. To choose what the pretend student
+   built, click **Teacher** (top right): a drawer slides in over Zip.
+   Click a circuit under **Practice mode**, then **Close** (or press
+   Esc).
 
    | Click | What the audience sees |
    |---|---|
-   | **3 · Next step** | Row 5 light turns **blue** (put a part here). Board screen: "Step 1 of 4 / Red wire / top + and row 5". Tutor box: "Put one end in the top + line (5 V) and the other end in row 5" |
-   | **3 · Next step** three more times | Resistor (rows 5 and 10), LED ("long leg: row 10 / short leg: row 12"), black wire (row 12). Each time the part's rows are blue |
-   | **3 · Next step** once more | Lights off. Screen: "All parts placed! / Press 1 to check." |
-   | **LED backwards**, then **1 · Check my circuit** | Rows 10 and 12 turn **red** (problem here). The tutor gives a hint. Screen: "LEDs are one-way doors / Red rows: look here." A purple **Mini-lesson** card appears with a question and 3 answers |
-   | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green: "Right!" and why. History, Quiz column: "Right" |
-   | **2 · I need a hint** | The next level of help: the full explanation. Nothing is measured, power is not touched, and the history still has one entry |
-   | **No resistor**, then **1 · Check my circuit** | **POWER OFF** turns red, rows 5 and 10 red. Card: "Resistors keep current small" |
-   | **4 · Power off / on** (before fixing) | Power comes on, is measured at once and goes off again. Tutor: "The power went off again right away, because the circuit is still not safe: 100 mA flowed…". Screen: "Still unsafe! Power is off again." |
-   | **Correct circuit**, then **I fixed it** | Power back on, all three rows **green**. Screen: "Correct! Well done." The page moves to lesson 2 and the lights go off |
-   | **4 · Power off / on** (twice) | Power off, then on again. The screen says which |
+   | **3 · Next step** | The red wire is drawn strong with a dashed sky-blue outline, the other parts faint. Row 5's light turns **sky blue** (put a part here). Under the title: "Step 1 of 4: Red wire". Zip: "Put one end in the top + line (5 V) and the other end in row 5" |
+   | **3 · Next step** three more times | Resistor (rows 5 and 10), LED ("long leg: row 10 / short leg: row 12"), black wire (row 12). Each time that part is outlined and its rows light sky blue |
+   | **3 · Next step** once more | Lights off, all parts drawn. Screen: "All parts placed! / Press 1 to check." |
+   | Teacher → **LED backwards**, Close, then **1 · Check my circuit** | Zip looks **thinking**, then **curious**. The lights of rows 10 and 12 turn **red** and gently pulse (red means "look here"). Zip gives a hint. Under Zip's words a tab appears: **Learn why: LEDs are one-way doors** (yellow book). Click it: the mini-lesson opens in Zip's panel, in place of Zip's picture, with a yellow top strip, a question and 3 big answers. The breadboard and Zip's words stay in view (on a phone it opens below Zip's words) |
+   | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green: "Right!" and why. Click **✕** to close the mini-lesson and Zip comes back; the **Learn why** tab opens it again |
+   | **2 · I need a hint** | Zip, still **curious**, gives the next level of help: the full explanation. Nothing is measured, power is not touched |
+   | Teacher → **No resistor**, Close, then **1 · Check my circuit** | Zip looks **careful** (a friendly yellow sign, nothing scary). The power sign says **Power off**. Mini-lesson: "Resistors keep current small" |
+   | **4 · Power off / on** (before fixing) | Power comes on, is measured at once and goes off again. Zip: "The power went off again right away, because the circuit is still not safe: 100 mA flowed…" |
+   | Teacher → **Correct circuit**, Close, then **I fixed it** | Zip turns **happy** and bounces, the lesson's rows glow green for a moment, a short burst of confetti falls (no sound), the LED in the drawing lights up yellow, and lesson 1 on the path gets a green tick with its stars. Zip: "…This is the next lesson you have not passed yet." The page moves to lesson 2 |
+   | **4 · Power off / on** (twice) | Power off (Zip careful), then on again (Zip happy) |
+
+   **The stars** (under each lesson on the path) come from what the
+   student already did: 1 star for passing the lesson, a 2nd if no
+   mistake happened twice in it, a 3rd if every mini-lesson question in
+   it was answered right. A lesson passed with no mistakes gets all 3.
+   New stars pop when they appear.
 
    Power only comes back on when the student asks: button 4, or saying
    they fixed it ("I fixed it", "I added the resistor"). "Check my circuit"
    while power is off just says how to turn it on. Every time power comes
    on, the circuit is measured at once and switched off again if unsafe.
 
-   Under each hint, a small grey line says what the tutor did, for
-   example "The tutor measured the rows, saved the mistake, cleared the
-   lights, lit rows, wrote on the screen".
-
    Each quiz takes one answer. A second click does not change it.
 
-   More circuits to try. Pick one, then click **1 · Check my circuit**:
+   **Teacher** (top right, closed when the page opens) slides in a
+   drawer over Zip with everything for the grown-ups: whether a board is connected, which
+   tutor is running, **Practice mode**, **New student**, a link to the
+   student's notebook, "What the tutor did" (for example "The tutor
+   measured the rows, saved the mistake, cleared the lights, lit rows,
+   wrote on the screen"), the earlier messages and the **Mistake
+   history** table. Close it with **Close** or the Esc key.
 
-   | Lesson | Button | What the tutor does |
+   More circuits to try. In the Teacher drawer pick one, close it, then click
+   **1 · Check my circuit**:
+
+   | Lesson | Circuit | What the tutor does |
    |---|---|---|
-   | 1 | **Part in wrong row** | Row 10 shows "empty" and lights red. Card: "Circuits must be closed loops" |
-   | 1 | **Resistor too big (1k)** | Hint: the LED gets much less current, so it is dim. Card: "Bigger resistor, less current" |
-   | 1 | **Current skips the LED** | Hint: lots of current but 0 V on row 10. No power cut (22.7 mA is safe). Card: "Current takes the easy path" |
-   | 1 | **Not on the list: 150 ohm resistor** | No card. The tutor gives a clue: the current is a little higher than it should be |
-   | 2 | **Wrong top resistor (1k)** | Hint: the middle is much higher than half. Card: "Bigger resistor, bigger share" |
-   | 2 | **Bottom resistor missing** | Hint: no current, full 5 V in the middle. Card: "No flow, no voltage drop" |
-   | 2 | **Top resistor missing** | Hint: no current, 0 V in the middle. Card: "Voltage needs a path from power" |
-   | 2 | **Not on the list: 4.7k bottom resistor** | No card. Row 10 lights **yellow** (careful), and the tutor gives a clue: row 10 has less voltage than it should |
+   | 1 | **Part in wrong row** | Row 10 shows "empty" and lights red. Mini-lesson: "Circuits must be closed loops" |
+   | 1 | **Resistor too big (1k)** | Hint: the LED gets much less current, so it is dim. Mini-lesson: "Bigger resistor, less current" |
+   | 1 | **Current skips the LED** | Hint: lots of current but 0 V on row 10. No power cut (22.7 mA is safe). Mini-lesson: "Current takes the easy path" |
+   | 1 | **Not on the list: 150 ohm resistor** | No mini-lesson. Zip gives a clue, then the detective's question |
+   | 2 | **Wrong top resistor (1k)** | Hint: the middle is much higher than half. Mini-lesson: "Bigger resistor, bigger share" |
+   | 2 | **Bottom resistor missing** | Hint: no current, full 5 V in the middle. Mini-lesson: "No flow, no voltage drop" |
+   | 2 | **Top resistor missing** | Hint: no current, 0 V in the middle. Mini-lesson: "Voltage needs a path from power" |
+   | 2 | **Not on the list: 4.7k bottom resistor** | No mini-lesson. Row 10 lights **yellow** (careful), Zip gives a clue and the detective's two questions |
 
    **Try a different board.** The real board's details are not decided
    yet. Stop the server (Ctrl+C in its window) and start it with any of
@@ -269,33 +296,37 @@ The tests in Part B never use the key, even when it is set.
    python web\server.py --fresh --no-current --no-power-switch --rows T1-T16
    ```
 
-   The top-left corner now says "Board: 16 rows measured, current
-   sensor no, power switch no". Both lessons still work. The current tile
-   says "Calculated (no current sensor)". Click **No resistor**, then
-   **1 · Check my circuit**: the tutor says "Switch the power off by hand
+   The Teacher drawer now says "Board: 16 rows measured, current sensor no,
+   power switch no". Both lessons still work. The current pill says
+   "worked out from the rows". Pick **No resistor**, then
+   **1 · Check my circuit**: Zip says "Switch the power off by hand
    right now", and the board screen says "DANGER! Switch the power OFF by
    hand now." **4 · Power off / on** says the board cannot switch power.
    With `--no-current`, **Resistor too big (1k)** looks correct, and the
    tutor says plainly that this board cannot measure current, so it could
    not check for it.
 
-5. **New student** (top right) forgets the history and starts again
-   at lesson 1, with an empty notebook. (The old notebook is kept in
-   the `notebooks` folder with the date in its name.) Use it before
-   each demo.
-6. To see the student's notebook, open http://localhost:8000/api/notebook
-   in a second browser tab, and press F5 to refresh it after a check.
-   To give the notebook a name, start the server with
-   `--student Maya`. `--fresh` forgets the history but keeps the
-   notebook.
+5. **New student** (in the Teacher drawer) forgets the history and the stars
+   and starts again at lesson 1, with an empty notebook. (The old
+   notebook is kept in the `notebooks` folder with the date in its
+   name.) Use it before each demo.
+6. To see the student's notebook, open the Teacher drawer and click **Open
+   the student's notebook** (or go to http://localhost:8000/api/notebook
+   in a second tab), and press F5 to refresh it after a check. To give
+   the notebook a name, start the server with `--student Maya`.
+   `--fresh` forgets the history but keeps the notebook.
 7. To stop: click the Command Prompt window and press **Ctrl+C**.
 
 With `set ANTHROPIC_API_KEY=...` done first (Part D), the page uses
-Claude. The top-left corner, under "Smart Breadboard", says which
-tutor is running.
+Claude. The Teacher drawer says which tutor is running.
 
-If the page shows a red bar saying it can't reach the server, the
-server window was closed. Run step 1 again.
+If the page shows a yellow bar saying Zip cannot reach the tutor
+program, the server window was closed. Run step 1 again.
+
+The page also has a phone layout. To see it on this laptop, make the
+browser window narrow: the top bar, then Zip and the buttons, then
+the plan with the breadboard. (The server only answers on this laptop, so a real phone
+cannot open it.)
 
 ---
 
@@ -362,13 +393,14 @@ with the right name.
 
 Open http://localhost:8000 in Chrome or Edge. With a real board:
 
-- A green line at the top says **Board connected on COM3 (115200
-  baud)**.
+- Click **Teacher** (top right): a green line says **Board
+  connected on COM3 (115200 baud)**.
 - If it turns red, **Board not answering on COM3**, the cable is loose
-  or the board restarted. Plug it back in. The page reconnects by
-  itself within a few seconds.
-- The practice-mode buttons and the pretend board's buttons are gone.
-  The student uses the real board's buttons.
+  or the board restarted. The student's side shows **No board** and "?"
+  instead of numbers. Plug it back in. The page reconnects by itself
+  within a few seconds.
+- Practice mode and the pretend board's buttons are gone. The student
+  uses the real board's buttons.
 
 The terminal tutor works the same way:
 
