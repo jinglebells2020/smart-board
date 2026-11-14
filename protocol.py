@@ -39,6 +39,35 @@ BUTTONS = {1: "check", 2: "hint", 3: "next_step", 4: "power"}
 BUTTON_LABELS = {1: "Check my circuit", 2: "I need a hint",
                  3: "Next step", 4: "Power off / on"}
 
+# --- Power cut by the board itself ----------------------------------------
+# A board with a current sensor and a power switch must switch power off by
+# itself when the current is too high, and say so with one line:
+#   {"type": "power_cut", "reason": "overcurrent", "current_ma": 104.2, "t_ms": 51230}
+# These are the reasons, with plain words the laptop shows the student.
+POWER_CUT_REASONS = {
+    "overcurrent": "too much current was flowing",
+    "short": "there was a short circuit",
+    "overheat": "something got too hot",
+    "other": "the board found a problem",
+}
+# Suggested firmware limit. The laptop cuts at 30 mA (SAFETY_MAX_MA in
+# agent/lessons.py) when it sees it; the firmware cut is the backstop
+# that works even when the laptop is slow or not connected.
+FIRMWARE_CUT_MA = 50.0
+
+# The serial speed both sides use unless told otherwise.
+DEFAULT_BAUD = 115200
+
+
+def power_cut_words(event):
+    """Plain words for a power_cut line, for the student."""
+    reason = POWER_CUT_REASONS.get(event.get("reason"), POWER_CUT_REASONS["other"])
+    current = event.get("current_ma")
+    seen = f" It measured {current:.0f} mA." if isinstance(current, (int, float)) else ""
+    return (f"The board switched the power off by itself, because {reason}.{seen} "
+            "Fix the circuit, then press 4 to turn the power back on.")
+
+
 # --- Screen -------------------------------------------------------------
 # The real screen size is not known yet. Change it here and only here.
 # The laptop never sends more than this.

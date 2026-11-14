@@ -56,23 +56,43 @@ class ScriptedTutorModel(BaseChatModel):
         def result_of(name):
             return next((d for n, d in reversed(results) if n == name), {})
 
+        last_human = max(i for i, m in enumerate(messages) if isinstance(m, HumanMessage))
+        asked = str(messages[last_human].content).lower()
+
+        # A hint request: only the next level of help. No measuring, no power.
+        if "hint" in asked:
+            if not results:
+                return call("get_hint")
+            return reply(result_of("get_hint")["say"])
+
         if not results:
             return call("read_rows")
 
-        reads = [d for n, d in results if n in ("read_rows", "read_current")]
+        broken = next((d for n, d in results if "board_error" in d), None)
+        if broken is not None:
+            return reply(f"{broken['say']} ({broken['board_error']})")
+
+        # restore_power also measures, so its answer counts as a reading.
+        reads = [d for n, d in results
+                 if n in ("read_rows", "read_current", "restore_power") and "lesson_check" in d]
         last_read = reads[-1] if reads else None
         check = last_read["lesson_check"] if last_read else {}
         status = check.get("status")
 
-        # Power is off and the student is back: turn it on and measure again.
+        # Power is off: ask for it to come back on. Plain Python decides
+        # whether the student asked; if not, restore_power refuses.
         if (status == "power_off" and "restore_power" not in called
                 and not last_read["safety_cut"]):
             return call("restore_power")
         if called[-1] == "restore_power":
-            if "do_instead" in result_of("restore_power"):
+            restored = result_of("restore_power")
+            if "do_instead" in restored:
                 return reply("This board cannot switch the power for you. Please switch "
                              "the power back on by hand, then tell me to check again.")
-            return call("read_rows")
+            if restored.get("error"):
+                return reply("Power is off. When you have fixed the circuit, press button 4 "
+                             "or tell me you fixed it, and the power will come back on.")
+            # Power came on and was measured at once: carry on from that check.
 
         if status == "mistake":
             if check["action"] == "cut_power" and "cut_power" not in called:
@@ -92,10 +112,16 @@ class ScriptedTutorModel(BaseChatModel):
                     note = f"{logged['mini_lesson']['title']}|Red rows: look here."
                 return call("show_on_board", text=note)
             say = logged["say"]
+            restored = result_of("restore_power")
+            if restored.get("recut"):
+                return reply(f"{restored['why']} {say}")
             if manual:
                 return reply(f"Switch the power off by hand right now, to keep your parts "
                              f"safe. {say}")
             if check["action"] == "cut_power":
+                if check.get("board_cut"):  # the board did it by itself
+                    first = check["board_cut"]["say"].split(". ")[0] + "."
+                    return reply(f"{first} {say}")
                 return reply(f"I cut the power to keep your parts safe. {say}")
             return reply(f"{say} The red lights show where to look.")
 
@@ -120,6 +146,8 @@ class ScriptedTutorModel(BaseChatModel):
                          f"{nxt['title']} ({nxt['circuit']}). {nxt['reason']}{note}")
 
         if status == "power_off":
+            if check.get("board_cut"):
+                return reply(check["board_cut"]["say"])
             return reply("Power is off. Tell me when you have fixed the circuit "
                          "and I will turn it back on.")
 

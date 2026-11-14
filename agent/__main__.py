@@ -2,6 +2,7 @@
 
     python -m agent                 # uses the fake board (sim/fake_board.py)
     python -m agent --rows T1-T16 --no-current --no-power-switch
+    python -m agent --serial COM3          # a real board (or --serial auto)
 
 Type what a student would say ("check my circuit", "I fixed it").
 Commands for testing with the fake board:
@@ -18,8 +19,9 @@ from pathlib import Path
 
 from agent.build import ask, build_agent, make_model
 from agent.buttons import handle_button
+from agent.serial_board import BoardError, SerialBoard, choose_port
 from agent.session import Session
-from protocol import BUTTON_LABELS
+from protocol import BUTTON_LABELS, DEFAULT_BAUD
 from sim.fake_board import SCENARIOS, FakeBoard
 
 DEFAULT_HISTORY = Path(__file__).resolve().parent / "student_history.json"
@@ -46,21 +48,35 @@ def main(argv=None):
     p.add_argument("--no-current", action="store_true", help="no current sensor")
     p.add_argument("--no-power-switch", action="store_true", help="cannot switch power")
     p.add_argument("--no-screen", action="store_true", help="no screen")
+    p.add_argument("--serial", metavar="PORT",
+                   help='use a real board on this port (COM3, /dev/ttyUSB0) or "auto"')
+    p.add_argument("--baud", type=int, default=DEFAULT_BAUD,
+                   help=f"serial speed for --serial (default {DEFAULT_BAUD})")
     args = p.parse_args(argv)
 
     if args.fresh and Path(args.history).exists():
         Path(args.history).unlink()
 
-    board = FakeBoard(args.lesson, args.scenario, rows=args.rows,
-                      has_current=not args.no_current,
-                      has_power_switch=not args.no_power_switch,
-                      has_screen=not args.no_screen)
+    if args.serial:
+        try:
+            port = choose_port(args.serial)
+            print(f"Connecting to the board on {port} at {args.baud} baud...")
+            board = SerialBoard(port, args.baud)
+        except BoardError as e:
+            print(f"Could not use the real board. {e}")
+            return 2
+    else:
+        board = FakeBoard(args.lesson, args.scenario, rows=args.rows,
+                          has_current=not args.no_current,
+                          has_power_switch=not args.no_power_switch,
+                          has_screen=not args.no_screen)
+    fake = isinstance(board, FakeBoard)
     session = Session(board, lesson=args.lesson, history_path=args.history)
     model, is_real = make_model()
     agent = build_agent(session, model)
     caps = session.board.capabilities()
 
-    print("Smart breadboard tutor (fake board)")
+    print("Smart breadboard tutor (" + ("fake board" if fake else f"real board on {board.port}") + ")")
     print(f"Board: {caps['rows']} rows measured, current sensor "
           f"{'yes' if caps['has_current'] else 'no'}, power switch "
           f"{'yes' if caps['has_power_switch'] else 'no'}, screen "
@@ -71,15 +87,22 @@ def main(argv=None):
         print("No ANTHROPIC_API_KEY set: using the offline practice tutor.")
     print(f"Lesson {session.lesson_id}: {session.lesson['title']} "
           f"({session.lesson['circuit']})")
-    print(f"Fake board circuit: {args.scenario}. Type /help for commands.\n")
+    if fake:
+        print(f"Fake board circuit: {args.scenario}. Type /help for commands.\n")
+    else:
+        print("Type what a student would say. /board shows lights and screen, /quit stops.\n")
 
     history = []
 
     def tutor(text):
         lesson_before = session.lesson_id
-        reply, _ = ask(agent, history, text)
+        try:
+            reply, _ = ask(agent, history, text)
+        except BoardError as e:
+            print(f"board> {e}")
+            return str(e)
         print(f"tutor> {reply}")
-        if session.lesson_id != lesson_before:
+        if session.lesson_id != lesson_before and fake:
             # New lesson: the pretend student starts it with a correct build.
             board.send(f"SCENARIO {session.lesson_id} correct")
             print(f"(fake board now shows lesson {session.lesson_id}, circuit "
@@ -104,6 +127,10 @@ def main(argv=None):
             continue
         if text == "/board":
             show_board(session)
+            continue
+        if (text.startswith("/build") or text.startswith("/press")) and not fake:
+            print("board> /build and /press are for the fake board. Use the real "
+                  "board's buttons.")
             continue
         if text.startswith("/build"):
             parts = text.split()

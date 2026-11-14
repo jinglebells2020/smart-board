@@ -224,11 +224,16 @@ The tests in Part B never use the key, even when it is set.
    | **3 · Next step** once more | Lights off. Screen: "All parts placed! / Press 1 to check." |
    | **LED backwards**, then **1 · Check my circuit** | Rows 10 and 12 turn **red** (problem here). The tutor gives a hint. Screen: "LEDs are one-way doors / Red rows: look here." A purple **Mini-lesson** card appears with a question and 3 answers |
    | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green: "Right!" and why. History, Quiz column: "Right" |
-   | **2 · I need a hint** | Same mistake twice: the full explanation, and a fresh card. History: "2nd, Full explanation" |
+   | **2 · I need a hint** | The next level of help: the full explanation. Nothing is measured, power is not touched, and the history still has one entry |
    | **No resistor**, then **1 · Check my circuit** | **POWER OFF** turns red, rows 5 and 10 red. Card: "Resistors keep current small" |
-   | **Correct circuit**, then **I fixed it** | Power back on, all three rows **green**. Screen: "Correct! Well done." The tutor asks for lesson 1 once more |
-   | **1 · Check my circuit** | Correct again: the page moves to lesson 2 and the lights go off |
+   | **4 · Power off / on** (before fixing) | Power comes on, is measured at once and goes off again. Tutor: "The power went off again right away, because the circuit is still not safe: 100 mA flowed…". Screen: "Still unsafe! Power is off again." |
+   | **Correct circuit**, then **I fixed it** | Power back on, all three rows **green**. Screen: "Correct! Well done." The page moves to lesson 2 and the lights go off |
    | **4 · Power off / on** (twice) | Power off, then on again. The screen says which |
+
+   Power only comes back on when the student asks: button 4, or saying
+   they fixed it ("I fixed it", "I added the resistor"). "Check my circuit"
+   while power is off just says how to turn it on. Every time power comes
+   on, the circuit is measured at once and switched off again if unsafe.
 
    Under each hint, a small grey line says what the tutor did, for
    example "The tutor measured the rows, saved the mistake, cleared the
@@ -280,6 +285,88 @@ server window was closed. Run step 1 again.
 
 ---
 
+## Part F: use a real board
+
+Do this when the hardware teammate gives you a board with firmware on
+it. Everything else (lessons, tutor, page) stays the same.
+
+### Step 1. Find the board's COM port
+
+Windows gives every USB serial device a name like `COM3`.
+
+1. Plug the board into the laptop with its USB cable. (Some cables only
+   charge and carry no data. If nothing below shows up, try another
+   cable.)
+2. Press the Windows key, type `Device Manager`, press Enter.
+3. Click the arrow next to **Ports (COM & LPT)**.
+4. You see a line like **USB-SERIAL CH340 (COM3)** or
+   **Arduino Uno (COM4)**. The name in brackets is the port. Write it
+   down.
+5. To be sure: unplug the board. The line disappears. Plug it back in.
+   It comes back.
+
+You can also list the ports in Command Prompt (with `(.venv)` showing):
+
+```
+python -m serial.tools.list_ports -v
+```
+
+If **Ports (COM & LPT)** is missing, Windows needs a driver for the
+board's USB chip. Ask the hardware teammate which chip it uses (often
+CH340 or CP2102) and install that driver.
+
+### Step 2. Check the board
+
+1. **Close the Arduino IDE's Serial Monitor** if it is open. Only one
+   program can use a COM port at a time.
+2. In Command Prompt, in the project folder with `(.venv)` showing,
+   run (use your port name):
+
+   ```
+   python tools\check_board.py --serial COM3
+   ```
+
+3. The last line should say `RESULT: PASS`. If it says `RESULT: FAIL`,
+   send the whole output to the hardware teammate. They know what to do
+   (docs/FIRMWARE_GUIDE.md).
+
+### Step 3. Start the page with the real board
+
+```
+python web\server.py --fresh --serial COM3
+```
+
+If only one board is plugged in, `--serial auto` finds the port by
+itself:
+
+```
+python web\server.py --fresh --serial auto
+```
+
+If there is more than one port, it lists them and stops. Run it again
+with the right name.
+
+Open http://localhost:8000 in Chrome or Edge. With a real board:
+
+- A green line at the top says **Board connected on COM3 (115200
+  baud)**.
+- If it turns red, **Board not answering on COM3**, the cable is loose
+  or the board restarted. Plug it back in. The page reconnects by
+  itself within a few seconds.
+- The practice-mode buttons and the pretend board's buttons are gone.
+  The student uses the real board's buttons.
+
+The terminal tutor works the same way:
+
+```
+python -m agent --fresh --serial COM3
+```
+
+If the firmware uses another speed than 115200, add `--baud` with that
+number, for example `--baud 57600`. Both sides must use the same speed.
+
+---
+
 ## Every time after the first
 
 1. Press the Windows key, type `cmd`, press Enter.
@@ -300,7 +387,7 @@ server window was closed. Run step 1 again.
    ```
 
 4. If `requirements.txt` changed, run Step 6 again. Then run Part B,
-   C, D or E.
+   C, D, E or F.
 
 ---
 
@@ -315,3 +402,7 @@ server window was closed. Run step 1 again.
 | Error with `401` or `authentication` in Part D  | The key is wrong or has spaces. Run the `set` line again |
 | The tutor says `This is not a mistake I know yet` | Normal for the "Not on the list" circuits. Otherwise the fake board may show a circuit for another lesson: type `/list` and `/build` one of those |
 | `OSError: ... address already in use` (Part E)  | The server is already running in another window. Use that one, or run `python web\server.py --port 8001` and open http://localhost:8001 |
+| `Cannot open COM3 ... Access is denied` (Part F) | Another program has the port: close the Arduino Serial Monitor, or the other server window (Ctrl+C), then try again |
+| `No serial ports found` (Part F)                | The board is not plugged in, the cable carries no data, or the driver is missing. See Part F, Step 1 |
+| `More than one serial port found` (Part F)      | Use the name instead of `auto`, for example `--serial COM3`. The message lists the ports |
+| `did not send a hello line` (Part F)            | The firmware is not running or uses another speed. Press the board's reset button. Ask the hardware teammate to run `tools\check_board.py` |

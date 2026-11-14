@@ -24,8 +24,12 @@ WINDOW = 20
 
 
 def window(lesson, scenario, seed=1, **board_options):
+    """Readings, keeping only those taken while power was on, like the
+    laptop does (a board with a current sensor and a power switch cuts
+    power by itself when the current is too high)."""
     board = FakeBoard(lesson, scenario, seed=seed, **board_options)
-    return [board.read() for _ in range(WINDOW)]
+    readings = [board.read() for _ in range(WINDOW)]
+    return [r for r in readings if r["power_on"]] or readings
 
 
 def ideal(lesson, scenario, **board_options):

@@ -190,6 +190,12 @@
   .log .who { font-weight: 800; }
 
   /* Practice mode (fake board) controls */
+  /* Which board, and is it answering? */
+  .boardline { margin: 0 0 0.8rem; padding: 0.55rem 0.9rem; border-radius: 10px;
+               font-size: 1.15rem; font-weight: 800; border: 3px solid var(--line); }
+  .boardline.ok  { border-color: var(--good); background: var(--good-bg); color: var(--good); }
+  .boardline.bad { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
+  .boardline.fake { font-size: 0.9rem; color: var(--muted); border-style: dashed; }
   .sim { margin-top: 0.7rem; padding-top: 0.6rem; border-top: 2px dashed var(--line); }
   .table-scroll { overflow-x: auto; }
   .more { font-size: 0.85rem; color: var(--muted); margin: 0.4rem 0 0; }
@@ -239,6 +245,8 @@
     <div class="badge" id="power">&nbsp;</div>
     <button class="small-btn" id="reset" title="Forget the mistake history and start at lesson 1">New student</button>
   </header>
+
+  <div class="boardline" id="boardline" role="status" hidden></div>
 
   <section class="readings" aria-label="Live readings">
     <div class="tiles">
@@ -331,6 +339,7 @@
     read_rows: "measured the rows",
     cut_power: "cut the power",
     restore_power: "turned the power on",
+    get_hint: "gave a hint",
     light_row: "lit rows",
     clear_lights: "cleared the lights",
     show_on_board: "wrote on the screen",
@@ -495,9 +504,11 @@
     $("lesson-title").textContent = `Lesson ${L.id} of ${state.lesson_count}: ${L.title}`;
     $("lesson-circuit").textContent = L.circuit;
 
+    // A real board that is not answering: nothing is known, so say so.
+    const noBoard = state.reading_ok === false;
     const power = $("power");
-    power.textContent = r.power_on ? "POWER ON" : "POWER OFF";
-    power.className = "badge " + (r.power_on ? "on" : "off");
+    power.textContent = noBoard ? "NO BOARD" : r.power_on ? "POWER ON" : "POWER OFF";
+    power.className = "badge " + (r.power_on && !noBoard ? "on" : "off");
 
     const accept = L.accept || {};
     const expected = L.expected || {};
@@ -507,7 +518,7 @@
     // unknown (null): then the page says so instead of showing a number.
     const shown = state.shown;
     const current = shown.current_ma === null ? null : Math.max(0, shown.current_ma);
-    if (current === null) {
+    if (current === null || noBoard) {
       $("v-current").textContent = "?";
       $("tile-current").classList.remove("good", "bad");
       $("t-current").textContent = "Not known";
@@ -515,12 +526,12 @@
       renderTile($("tile-current"), $("v-current"), $("t-current"), current,
         currentDigits(current), "mA", expected.current_ma, accept.current_ma, r.power_on);
     }
-    $("current-source").textContent = {
+    $("current-source").textContent = noBoard ? "Board not answering" : {
       measured: "Measured by the board",
       calculated: "Calculated (no current sensor)",
       unknown: "No current sensor",
     }[shown.current_source] || "";
-    $("v-supply").textContent = fmt(shown.supply_v, 2);
+    $("v-supply").textContent = noBoard ? "?" : fmt(shown.supply_v, 2);
     renderBoard(state);
 
     if (state.busy && !busy) { serverBusy = true; setBusy(true); }
@@ -534,7 +545,19 @@
 
   // The rows this lesson uses (any board) and, with the fake board, the
   // pretend board: its screen and its 4 buttons.
+  function renderBoardLine(state) {
+    const st = state.board_status;
+    const line = $("boardline");
+    if (!st) { line.hidden = true; return; }
+    line.hidden = false;
+    line.className = "boardline " + (st.kind === "fake" ? "fake" : st.connected ? "ok" : "bad");
+    line.textContent = st.kind === "fake" ? "Practice mode: pretend board (no real board plugged in)"
+      : st.connected ? "\u2714 " + st.text : "\u2716 " + st.text;
+  }
+
   function renderBoard(state) {
+    renderBoardLine(state);
+    const noBoard = state.reading_ok === false;
     const b = state.board;
     const L = state.lesson;
     const c = b.capabilities;
@@ -554,7 +577,7 @@
         return d;
       };
       cell("rname", row.label.charAt(0).toUpperCase() + row.label.slice(1));
-      const v = cell("rvolts", !row.measured ? "not measured"
+      const v = cell("rvolts", noBoard ? "?" : !row.measured ? "not measured"
         : row.floating ? "empty" : fmt(row.volts, 2) + " V");
       const rng = ranges[row.name];
       if (row.measured && !row.floating && rng && state.reading.power_on) {
@@ -571,7 +594,7 @@
     const lit = [...new Set(b.rows.map((row) => row.light).filter((c) => c !== "off"))];
     $("legend").textContent = lit.map((c) => `${c} = ${b.colors[c]}`).join(", ");
     const note = $("rows-note");
-    note.hidden = !b.missing_rows.length;
+    note.hidden = !b.missing_rows.length || noBoard;
     note.textContent = b.missing_rows.length
       ? `This board does not measure ${b.missing_rows.join(", ")}, so this lesson cannot be checked.`
       : "";

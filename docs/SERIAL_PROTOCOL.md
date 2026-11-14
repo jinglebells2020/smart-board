@@ -5,6 +5,9 @@ firmware and `sim/fake_board.py` must both follow it, so the agent and
 the web page work with either one without changes. The names and rules
 below are also in `protocol.py`, which the code uses.
 
+Writing the firmware? Start with [FIRMWARE_GUIDE.md](FIRMWARE_GUIDE.md),
+and test it with `python tools/check_board.py --serial COM3`.
+
 Version 2 replaces version 1 (one `probe1` voltage). The board now
 measures many breadboard rows, has a light beside every row and may
 have a small screen with 4 buttons.
@@ -89,6 +92,27 @@ the `HELLO` command.
 | 2 | I need a hint |
 | 3 | Next step (light the rows for the next part) |
 | 4 | Power off / on |
+
+### `power_cut`: when the board switches power off by itself
+
+A board with a current sensor **and** a power switch must not wait for
+the laptop: when the current is too high it switches power off at once
+(suggested limit: 50 mA, `FIRMWARE_CUT_MA` in `protocol.py`), then says
+so with one line, and keeps power off until it gets `RESTORE`:
+
+```json
+{"type": "power_cut", "reason": "overcurrent", "current_ma": 104.2, "t_ms": 51230}
+```
+
+| Field | Meaning |
+|---|---|
+| `reason` | `overcurrent`, `short`, `overheat` or `other` |
+| `current_ma` | The current it saw, in mA (`null` if it has no current sensor) |
+| `t_ms` | When it happened |
+
+After this line, readings show `"power_on": false`. The laptop tells the
+student what happened, in plain words, and power only comes back on when
+the student asks (button 4).
 
 ### Answers to commands
 
