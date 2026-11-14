@@ -8,15 +8,14 @@ question for the student. It never says a fix for certain, because the
 board cannot know.
 
 Plain Python, not the AI, guards the answer: it is a structured
-response (DetectiveAnswer). deepagents rejects an answer with more than
-two questions, a sentence that is not a question, or a word that sounds
-certain, and the model has to try again.
+response (DetectiveAnswer). Python keeps at most two questions and drops
+any item that is not a question or sounds certain, so the student never
+sees it. There is no "try again": a bad item is simply left out.
 """
 
 import json
 import re
 
-from langchain.agents.structured_output import ToolStrategy
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -29,32 +28,34 @@ CERTAIN = ["definitely", "certainly", "for sure", "surely", "obviously", "100%",
            "the problem is", "the fix is", "you must", "must be", "always", "guaranteed"]
 
 
+def careful_question(q):
+    """q as a careful question for the student, or None to drop it: only
+    the text up to its first "?", at most 200 characters, and no word that
+    sounds certain."""
+    if not isinstance(q, str) or "?" not in q:
+        return None
+    q = q[:q.index("?") + 1].strip()
+    if len(q) > 200:
+        return None
+    if any(re.search(rf"\b{re.escape(w)}\b", q.lower()) for w in CERTAIN):
+        return None
+    return q
+
+
 class DetectiveAnswer(BaseModel):
     """The detective's answer: at most two likely causes of the mistake,
     each asked as a short question a middle school student can check on
     the breadboard."""
 
     questions: list[str] = Field(
-        max_length=2,
         description="At most 2 questions, most likely first. Each one names a part and a "
                     "row and ends with '?'. Never say a fix is certain.")
 
     @field_validator("questions")
     @classmethod
     def _only_careful_questions(cls, questions):
-        trimmed = []
-        for q in questions:
-            if "?" not in q:
-                raise ValueError(f"every item must be a question ending with '?': {q.strip()!r}")
-            # Keep only the question: the text up to and including the first "?".
-            q = q[:q.index("?") + 1].strip()
-            if len(q) > 200:
-                raise ValueError(f"keep each question under 200 characters: {q[:60]!r}")
-            bad = [w for w in CERTAIN if re.search(rf"\b{re.escape(w)}\b", q.lower())]
-            if bad:
-                raise ValueError(f"do not sound certain ({bad[0]!r}): only ask what to look at")
-            trimmed.append(q)
-        return trimmed
+        # Never raises: bad items are dropped, at most two are kept.
+        return [q for q in map(careful_question, questions) if q][:2]
 
 
 DETECTIVE_PROMPT = """\
@@ -189,7 +190,10 @@ def detective_spec(session, model=None, middleware=None):
 
     spec = {"name": "detective", "description": DETECTIVE_DESCRIPTION,
             "system_prompt": DETECTIVE_PROMPT, "tools": [look_at_the_case],
-            "response_format": ToolStrategy(DetectiveAnswer)}
+            # A plain schema, not ToolStrategy: ToolStrategy forces tool_choice,
+            # and langchain_anthropic does not support forced tool choice for
+            # claude-opus-5-5 ("400 invalid_request_error tool_choice: type tool").
+            "response_format": DetectiveAnswer}
     if model is not None:
         spec["model"] = model
     if middleware:

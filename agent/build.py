@@ -22,7 +22,10 @@ from agent.tools import make_tools
 from agent.trace import TraceMiddleware
 
 DEFAULT_MODEL = "claude-opus-5-5"
-CLAUDE_TIMEOUT = 25  # seconds: after this the offline tutor answers instead
+# Seconds for a whole reply; after this the offline tutor answers instead.
+# A reply that asks the lesson writer took more than 25 s with real Claude.
+CLAUDE_TIMEOUT = 60
+CALL_TIMEOUT = 25  # seconds for one call to Claude
 
 
 def make_model():
@@ -48,10 +51,10 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
     if model is None:
         model, _ = make_model()
     if isinstance(model, str):
-        # Claude: each call gives up after CLAUDE_TIMEOUT seconds (so the
+        # Claude: each call gives up after CALL_TIMEOUT seconds (so the
         # offline tutor can answer) and is tried at most twice.
         from langchain.chat_models import init_chat_model
-        model = init_chat_model(model, timeout=CLAUDE_TIMEOUT, max_retries=1)
+        model = init_chat_model(model, timeout=CALL_TIMEOUT, max_retries=1)
     # The detective subagent (task tool). Offline, it gets its own scripted
     # model; with Claude it uses the same model as the tutor.
     if detective_model is None and isinstance(model, ScriptedTutorModel):

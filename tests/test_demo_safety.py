@@ -124,10 +124,10 @@ class TestOfflineFallback(Base):
         self.assertEqual(app.session.trace, trace)
         self.assertEqual(len(app.session.history["mistakes"]), 1)
 
-    def test_the_default_time_limit_is_25_seconds(self):
-        self.assertEqual(CLAUDE_TIMEOUT, 25)
+    def test_the_default_time_limit_is_60_seconds(self):
+        self.assertEqual(CLAUDE_TIMEOUT, 60)
         self.assertEqual(App(FakeBoard(1, seed=1), lesson=1, model=ScriptedTutorModel(),
-                             history_path=Path(self.tmp.name) / "x.json").timeout, 25)
+                             history_path=Path(self.tmp.name) / "x.json").timeout, 60)
 
     def test_without_a_key_nothing_is_logged_and_no_note(self):
         app = App(FakeBoard(1, "led_backwards", seed=1), lesson=1, model=ScriptedTutorModel(),

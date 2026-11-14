@@ -9,7 +9,6 @@ from pathlib import Path
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from pydantic import ValidationError
 
 from agent.build import ask, build_agent
 from agent.detective import CERTAIN, DetectiveAnswer, case_file, leads
@@ -100,14 +99,18 @@ class TestDetective(Case):
                          ["220 ohm resistor (other leg)", "Red LED (long leg (+))"])
 
     def test_answer_rules_are_enforced_in_python(self):
-        DetectiveAnswer(questions=["Is the LED's long leg in row 10?"])
-        DetectiveAnswer(questions=[])
-        for bad in (["a?", "b?", "c?"],                          # more than two
-                    ["The resistor is wrong."],                  # not a question
-                    ["Is it definitely the resistor?"],          # sounds certain
-                    ["The problem is the LED, right?"]):
-            with self.assertRaises(ValidationError):
-                DetectiveAnswer(questions=bad)
+        good = "Is the LED's long leg in row 10?"
+        self.assertEqual(DetectiveAnswer(questions=[good]).questions, [good])
+        self.assertEqual(DetectiveAnswer(questions=[]).questions, [])
+        # More than two: only the first two are kept.
+        self.assertEqual(DetectiveAnswer(questions=["a?", "b?", "c?"]).questions, ["a?", "b?"])
+        # Never raises: an item that breaks the rules is dropped.
+        for bad in ("The resistor is wrong.",                    # not a question
+                    "Is it definitely the resistor?",            # sounds certain
+                    "The problem is the LED, right?",
+                    "Is " + "the resistor " * 20 + "in row 10?"):  # longer than 200
+            with self.subTest(bad=bad):
+                self.assertEqual(DetectiveAnswer(questions=[bad]).questions, [])
 
     def test_every_lead_passes_the_rules(self):
         directions = [("empty", "voltage in row 10", "T10"), ("almost all", "voltage", "T10"),
@@ -121,10 +124,8 @@ class TestDetective(Case):
                     DetectiveAnswer(questions=[q])
             DetectiveAnswer(questions=leads(lesson, {"details": []})[:2])
 
-    def test_a_detective_that_breaks_the_rules_must_try_again(self):
-        class SloppyThenCareful(BaseChatModel):
-            tries: int = 0
-
+    def test_questions_that_break_the_rules_never_reach_the_student(self):
+        class Sloppy(BaseChatModel):
             @property
             def _llm_type(self):
                 return "sloppy"
@@ -133,18 +134,16 @@ class TestDetective(Case):
                 return self
 
             def _generate(self, messages, stop=None, run_manager=None, **kw):
-                self.tries += 1
-                qs = (["The resistor is definitely wrong.", "a?", "b?"] if self.tries == 1
-                      else ["Is the resistor the 220 ohm one?"])
+                qs = ["The resistor is definitely wrong.", "Is the resistor the 220 ohm one?",
+                      "Is the LED's long leg in row 10?", "c?"]
                 msg = AIMessage(content="", tool_calls=[
-                    {"name": "DetectiveAnswer", "args": {"questions": qs}, "id": f"s{self.tries}"}])
+                    {"name": "DetectiveAnswer", "args": {"questions": qs}, "id": "s1"}])
                 return ChatResult(generations=[ChatGeneration(message=msg)])
 
-        sloppy = SloppyThenCareful()
-        self.tutor(1, "resistor_150", detective_model=sloppy)
+        self.tutor(1, "resistor_150", detective_model=Sloppy())
         reply, _, new = self.say("Check my circuit")
-        self.assertEqual(sloppy.tries, 2)
-        self.assertEqual(questions_in(new), ["Is the resistor the 220 ohm one?"])
+        self.assertEqual(questions_in(new), ["Is the resistor the 220 ohm one?",
+                                             "Is the LED's long leg in row 10?"])
         self.assertNotIn("definitely", reply)
 
     def test_works_without_a_current_sensor_or_notebook(self):
