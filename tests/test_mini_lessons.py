@@ -422,7 +422,7 @@ class TestPage(unittest.TestCase):
     def test_no_hard_words_on_the_page(self):
         text = visible_page_text()
         self.assertIn("Check my circuit", text)  # the extraction works
-        self.assertIn("Voltage at the measuring row", text)
+        self.assertIn("Rows this lesson uses", text)
         for word in HARD_WORDS:
             with self.subTest(word=word):
                 self.assertFalse(has_word(text, word),

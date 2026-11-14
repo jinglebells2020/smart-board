@@ -30,7 +30,7 @@ from agent.build import ask, build_agent, make_model  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
 from agent.lessons import summarize  # noqa: E402
 from agent.session import Session  # noqa: E402
-from protocol import BUTTON_LABELS, SCREEN_CHARS, SCREEN_LINES, row_label  # noqa: E402
+from protocol import BUTTON_LABELS, COLORS, SCREEN_CHARS, SCREEN_LINES, row_label  # noqa: E402
 from sim.fake_board import SCENARIOS, FakeBoard  # noqa: E402
 
 PAGE = Path(__file__).resolve().parent / "index.html"
@@ -51,6 +51,7 @@ class App:
         self.model = model
         self.model_name = model if is_real else "offline practice tutor"
         self.agent_lock = threading.Lock()  # one question at a time
+        self.button_threads = []  # button presses being handled
         self._new_session(lesson)
         self._welcome()
 
@@ -99,9 +100,17 @@ class App:
         """Handle button presses the board has sent. Questions for the
         tutor run in the background so the page keeps updating."""
         events = [e for e in self.board.events() if e.get("type") == "button"]
+        self.button_threads = [t for t in self.button_threads if t.is_alive()]
         for ev in events:
-            threading.Thread(target=self.on_button, args=(ev["id"],), daemon=True).start()
+            t = threading.Thread(target=self.on_button, args=(ev["id"],), daemon=True)
+            self.button_threads.append(t)
+            t.start()
         return [e["id"] for e in events]
+
+    def wait_for_buttons(self, timeout=30):
+        """Wait until every button press being handled is done."""
+        for t in list(self.button_threads):
+            t.join(timeout)
 
     def on_button(self, button_id):
         result = handle_button(button_id, self.session,
@@ -112,10 +121,16 @@ class App:
             if result.get("done"):
                 text = "All parts are in place. Press 1 (Check my circuit) when you are ready."
             else:
-                legs = result["legs"]
-                where = " and ".join(f"{l['leg']} in {self._where(l['row'])}" for l in legs)
+                a, b = result["legs"]
+                if "(" in a["leg"]:  # a part with + and - legs
+                    where = (f"the {a['leg']} in {self._where(a['row'])} and the "
+                             f"{b['leg']} in {self._where(b['row'])}")
+                else:
+                    kind = a["leg"].split()[-1]  # "leg" or "end"
+                    where = (f"one {kind} in {self._where(a['row'])} and the other "
+                             f"{kind} in {self._where(b['row'])}")
                 text = (f"Step {result['step']} of {result['of']}: {result['part']}. "
-                        f"Put the {where}. The blue lights show the rows.")
+                        f"Put {where}. The blue lights show the rows.")
         elif result.get("action") == "power":
             text = result.get("say") or ("Power is off." if not result.get("power_on")
                                          else "Power is on.")
@@ -168,7 +183,7 @@ class App:
         v = round(float(v), 3)
         if floor is not None:
             v = max(floor, v)
-        elif -0.005 < v < 0:
+        elif -0.05 < v < 0:  # sensor noise around 0 V
             v = 0.0
         return v + 0.0  # turns -0.0 into 0.0
 
@@ -193,7 +208,7 @@ class App:
                          "light": b.lights.get(name, "off")})
         return {"capabilities": b.capabilities(), "pretend": self.is_sim,
                 "rows": rows, "missing_rows": summary["missing_rows"],
-                "lights": dict(b.lights), "screen": list(b.screen),
+                "lights": dict(b.lights), "screen": list(b.screen), "colors": COLORS,
                 "screen_size": [SCREEN_LINES, SCREEN_CHARS],
                 "buttons": {str(i): BUTTON_LABELS[i] for i in range(1, b.buttons + 1)},
                 "step": self.session.step + 1 if self.session.step >= 0 else None,
