@@ -206,13 +206,19 @@ class TestShowTheClass(unittest.TestCase):
 
 
 class TestConsultedWith(unittest.TestCase):
-    def test_readme_has_a_clear_placeholder(self):
+    def test_readme_names_the_center_and_keeps_the_quote(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        part = readme.split("## Consulted with", 1)[1]
-        for needed in ("[CENTER NAME]", "[PERSON'S NAME]", "[ROLE]", "polarity",
-                       "loose connections"):
+        part = readme.split("## Consulted with", 1)[1].split("\n## ", 1)[0]
+        for needed in ("STEAM Works Studio", "Princeton, NJ", "Center Director",
+                       "November 14, 2026", "email", "Polarity", "Lesson 0",
+                       "Loose connections", "Show the class"):
             self.assertIn(needed, part)
-
+        quote = " ".join(line[2:] for line in part.splitlines() if line.startswith("> "))
+        self.assertEqual(quote, '"Polarity of component (ex LED) keeping the idea of what lines of '
+                                'holes are connected in breadboard, lose connections. If many kids '
+                                'are stuck we show the slides for breadboards or draw on whiteboard '
+                                'the concept to clarify. Need to see an example to evaluate."')
+        self.assertNotIn("[CENTER NAME]", part)
 
 if __name__ == "__main__":
     unittest.main()
