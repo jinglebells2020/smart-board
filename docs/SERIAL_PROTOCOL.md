@@ -1,60 +1,149 @@
-# Serial protocol (board ↔ laptop)
+# Serial protocol, version 2 (board ↔ laptop)
 
 This is the contract between the board and the laptop. The real
-firmware and `sim/fake_board.py` must both follow it, so the agent
-and web page work with either one without changes.
+firmware and `sim/fake_board.py` must both follow it, so the agent and
+the web page work with either one without changes. The names and rules
+below are also in `protocol.py`, which the code uses.
 
-One message per line. Every line is one JSON object. Lines end
-with `\n`.
+Version 2 replaces version 1 (one `probe1` voltage). The board now
+measures many breadboard rows, has a light beside every row and may
+have a small screen with 4 buttons.
 
-## Board → laptop: readings
+**Rules for every line**
 
-Sent about 10 times per second (every 100 ms).
+- One JSON object per line, ending with `\n`. Both directions are text,
+  so you can drive the board by hand from a serial terminal.
+- The board keeps streaming readings on its own. Commands can arrive at
+  any time between them.
+- The reading rate is **not fixed**. Each reading has `t_ms`
+  (milliseconds since the board started). The laptop uses `t_ms`, never
+  an assumed rate.
+
+## Names
+
+| Name | Meaning |
+|---|---|
+| `T1` … `T63` | Row 1 to 63, holes a–e (top half of the breadboard) |
+| `B1` … `B63` | Row 1 to 63, holes f–j (bottom half) |
+| `PT+`, `PT-` | Top power strip, + and − |
+| `PB+`, `PB-` | Bottom power strip, + and − |
+
+Rows have a light beside them; the power strips do not.
+
+## Board → laptop
+
+### `hello`: once, when the board starts
+
+Says what this board has, because that is not decided yet (see
+docs/HARDWARE_SUMMARY.md). The laptop adapts to it.
 
 ```json
-{"type": "reading", "t_ms": 1200, "power_on": true,
- "supply_v": 5.0, "current_ma": 13.6,
- "voltages": {"probe1": 2.0}, "led_row": null}
+{"type": "hello", "protocol": 2,
+ "rows": ["T1", "T2", "T3", "PT+", "PT-"],
+ "has_current": false, "has_power_switch": false,
+ "has_screen": true, "buttons": 4}
 ```
 
-| Field        | Type          | Meaning                                         |
-|--------------|---------------|-------------------------------------------------|
-| `type`       | string        | Always `"reading"` for readings                 |
-| `t_ms`       | integer       | Milliseconds since the board started            |
-| `power_on`   | true/false    | false after `CUT`, true after `RESTORE`         |
-| `supply_v`   | number, volts | Voltage on the breadboard supply rail           |
-| `current_ma` | number, mA    | Current flowing out of the supply               |
-| `voltages`   | object        | Probe name → volts. Only `probe1` for now       |
-| `led_row`    | integer/null  | Row whose indicator LED is lit, or null         |
+| Field | Meaning |
+|---|---|
+| `protocol` | Always `2` for this version |
+| `rows` | Every name this board measures. Can be any set: all 130, or only 16 rows |
+| `has_current` | `true` if a current sensor measures the supply current |
+| `has_power_switch` | `true` if the board can switch breadboard power off and on |
+| `has_screen` | `true` if the board has a screen |
+| `buttons` | How many buttons (0 to 4) |
 
-Where `probe1` sits on the breadboard depends on the lesson. Each
-`lessons/*.json` file says where (field `probe1`). The real row
-number goes in docs/HARDWARE.md once it is decided.
+If the laptop connects after the board started, it can ask again with
+the `HELLO` command.
+
+### `reading`: streamed all the time
+
+```json
+{"type": "reading", "t_ms": 51230, "power_on": true, "supply_v": 5.0,
+ "current_ma": null,
+ "rows": {"T5": 4.99, "T10": 2.01, "T12": 0.0, "T13": 0.12},
+ "floating": ["T13"]}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `t_ms` | integer | Milliseconds since the board started |
+| `power_on` | true/false | Is breadboard power on? Always `true` without a power switch |
+| `supply_v` | number | Voltage of the breadboard supply |
+| `current_ma` | number or `null` | Supply current in mA. **`null` when there is no current sensor** |
+| `rows` | object | Name → volts, **only for measured names** (the `rows` in `hello`) |
+| `floating` | list | Measured names that nothing is driving (an empty row). Their volts mean nothing |
+
+### `button`: when a button is pressed
+
+```json
+{"type": "button", "id": 1}
+```
+
+`id` is 1 to 4. What each one does is set on the laptop, in one place
+(`BUTTONS` in `protocol.py`):
+
+| Button | Meaning |
+|---|---|
+| 1 | Check my circuit |
+| 2 | I need a hint |
+| 3 | Next step (light the rows for the next part) |
+| 4 | Power off / on |
+
+### Answers to commands
+
+Every command gets exactly one answer line:
+
+```json
+{"type": "ack", "cmd": "LED T10 red"}
+{"type": "error", "cmd": "CUT", "msg": "no power switch"}
+```
 
 ## Laptop → board: commands
 
-Plain text, one per line.
+Plain text, one command per line.
 
-| Command      | Effect                                   |
-|--------------|------------------------------------------|
-| `CUT`        | Turn breadboard power off                |
-| `RESTORE`    | Turn breadboard power back on            |
-| `LED <row>`  | Light the indicator LED for row `<row>`  |
+| Command | Effect |
+|---|---|
+| `LED <row> <color>` | Light the light beside `<row>` in a color (below) |
+| `LED CLEAR` | Turn every light off |
+| `SHOW <line>\|<line>\|…` | Show text on the screen; `\|` starts a new line |
+| `CUT` | Switch breadboard power off |
+| `RESTORE` | Switch breadboard power back on |
+| `HELLO` | Send the `hello` line again |
 
-The board answers every command with one line:
+**Light colors.** Each color always means the same thing:
 
-```json
-{"type": "ack", "cmd": "CUT"}
-{"type": "error", "msg": "unknown command: FOO"}
-```
+| Color | Meaning |
+|---|---|
+| `blue` | Put a part here |
+| `green` | Correct |
+| `red` | Problem here |
+| `yellow` | Careful |
+| `off` | Light off |
+
+**Errors the board must give:**
+
+- `CUT` or `RESTORE` on a board with no power switch:
+  `{"type": "error", "cmd": "CUT", "msg": "no power switch"}`.
+  The laptop then tells the student to switch the power off by hand,
+  on the laptop and on the board screen.
+- `SHOW` on a board with no screen: `"msg": "no screen"`.
+- `SHOW` with more lines or longer lines than the screen holds:
+  `"msg": "too long"`. The laptop never sends that: it fits the text
+  first (`fit_screen` in `protocol.py`, 4 lines of 20 characters for
+  now, plain ASCII).
+- `LED` with a name that is not a row, or an unknown color.
 
 ## Simulator only
 
-`sim/fake_board.py` also accepts this command. The real board
-ignores it (it answers with an error):
+`sim/fake_board.py` also accepts these. A real board answers them with
+an error.
 
-| Command                       | Effect                                |
-|-------------------------------|---------------------------------------|
-| `SCENARIO <lesson> <name>`    | Pretend the student built this circuit |
+| Command | Effect |
+|---|---|
+| `SCENARIO <lesson> <name>` | Pretend the student built this circuit |
+| `PRESS <id>` | Pretend button `<id>` was pressed (sends a `button` line) |
 
-Example: `SCENARIO 1 led_backwards`. See `python sim/fake_board.py --list`.
+See `python sim/fake_board.py --help` for starting it with or without a
+current sensor, with or without a power switch, and with any set of rows.
