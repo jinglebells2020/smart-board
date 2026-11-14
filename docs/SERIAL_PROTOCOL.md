@@ -5,6 +5,9 @@ firmware and `sim/fake_board.py` must both follow it, so the agent and
 the web page work with either one without changes. The names and rules
 below are also in `protocol.py`, which the code uses.
 
+Writing the firmware? Start with [FIRMWARE_GUIDE.md](FIRMWARE_GUIDE.md),
+and test it with `python tools/check_board.py --serial COM3`.
+
 Version 2 replaces version 1 (one `probe1` voltage). The board now
 measures many breadboard rows, has a light beside every row and may
 have a small screen with 4 buttons.

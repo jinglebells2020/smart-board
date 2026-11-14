@@ -68,6 +68,10 @@ class ScriptedTutorModel(BaseChatModel):
         if not results:
             return call("read_rows")
 
+        broken = next((d for n, d in results if "board_error" in d), None)
+        if broken is not None:
+            return reply(f"{broken['say']} ({broken['board_error']})")
+
         # restore_power also measures, so its answer counts as a reading.
         reads = [d for n, d in results
                  if n in ("read_rows", "read_current", "restore_power") and "lesson_check" in d]

@@ -8,7 +8,8 @@ How to run it: see RUN.md in the main folder.
 | `build.py`      | Builds the agent. Uses Claude if ANTHROPIC_API_KEY is set, otherwise the offline mock |
 | `tools.py`      | The tools: read_rows, read_current, cut_power, restore_power, get_hint, light_row, clear_lights, show_on_board, log_mistake, next_lesson |
 | `session.py`    | Rules that must never go wrong: safety, hints first, step-by-step building, the power button, picking the next lesson, saving history |
-| `boardlink.py`  | The laptop's handle on any board (fake or real): what it has, lights and screen as last set, checks before sending |
+| `boardlink.py`  | The laptop's handle on any board (fake or real): what it has, lights and screen as last set, checks before sending, power cuts the board made by itself |
+| `serial_board.py` | A real board on a USB serial port: same methods as the fake board (hello, read, send, events). Skips junk lines, asks HELLO when the hello line is missing, reconnects about once a second after the cable is unplugged, and gives every problem as BoardError in plain words |
 | `buttons.py`    | What the 4 board buttons do (the meanings are in `protocol.py`) |
 | `lessons.py`    | Checks a circuit from row voltages against lessons/*.json, calculates current when there is no sensor, and writes the clue for unknown mistakes |
 | `prompts.py`    | The instructions Claude follows                           |

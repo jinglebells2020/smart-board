@@ -40,6 +40,18 @@ the fake board with any of them:
 They can be combined. The top-left corner of the page says what the
 board has.
 
+## A real board
+
+    python web/server.py --fresh --serial COM3     # or --serial auto
+
+With a real board the practice-mode buttons and the pretend board's
+buttons are hidden (the student uses the real buttons), and a line at
+the top says **Board connected on COM3 (115200 baud)**, or in red
+**Board not answering on COM3** with what to do. While it is not
+answering, the numbers show "?" instead of old or made-up values. The
+page reconnects by itself when the cable is plugged back in. Windows
+steps: RUN.md, Part F.
+
 The page fits one 1920x1080 screen without scrolling (checked for every
 circuit, first and second try, with and without those options).
 Press F11 in the browser for full screen. It also works on a phone.

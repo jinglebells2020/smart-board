@@ -7,14 +7,29 @@ after the student fixes a circuit.
 Every tool returns a JSON string, which is what the model reads.
 """
 
+import functools
 import json
 
+from agent.serial_board import BoardError
 from protocol import COLORS
 
 MANUAL_OFF = ("This board has no power switch. Tell the student to switch the "
               "power off by hand right now. The board screen already says so.")
 MANUAL_ON = ("This board has no power switch. Tell the student to switch the "
              "power back on by hand after fixing the circuit.")
+
+
+def _board_errors_in_words(tool):
+    """A board that stops answering gives the AI a plain message, not a crash."""
+    @functools.wraps(tool)
+    def wrapper(*args, **kwargs):
+        try:
+            return tool(*args, **kwargs)
+        except BoardError as e:
+            return json.dumps({"type": "error", "board_error": str(e),
+                               "say": "The board is not answering. Check that its USB "
+                                      "cable is plugged in."})
+    return wrapper
 
 
 def make_tools(session):
@@ -138,5 +153,6 @@ def make_tools(session):
         Call only after lesson_check status is "ok"."""
         return json.dumps(session.next_lesson())
 
-    return [read_rows, read_current, cut_power, restore_power, get_hint, light_row,
-            clear_lights, show_on_board, log_mistake, next_lesson]
+    tools = [read_rows, read_current, cut_power, restore_power, get_hint, light_row,
+             clear_lights, show_on_board, log_mistake, next_lesson]
+    return [_board_errors_in_words(t) for t in tools]

@@ -21,7 +21,9 @@ The software must work with any of those answers.
   what the board has, JSON readings with a voltage per measured row
   (T1..T63, B1..B63), floating rows, and current_ma (null without a
   current sensor). Commands: LED <row> <color>, LED CLEAR, SHOW,
-  CUT, RESTORE. Sends a line when a button is pressed.
+  CUT, RESTORE. Sends a line when a button is pressed, and a
+  power_cut line when it switched power off by itself.
+  docs/FIRMWARE_GUIDE.md is for the hardware teammate.
 - protocol.py : row names, light colors and meanings, what the 4
   buttons do, and the screen size (4 x 20 for now), in one place.
 - agent/ : Python, built with LangChain deepagents
@@ -37,6 +39,12 @@ The software must work with any of those answers.
   mistake.
 - sim/fake_board.py : simulates the board for testing, with or
   without a current sensor, power switch or screen, and any rows.
+  sim/fake_port.py : a pretend serial port with the fake board on it.
+- agent/serial_board.py : SerialBoard, a real board on a USB serial
+  port (pyserial), same methods as the fake board. Server and
+  python -m agent take --serial <port|auto> and --baud.
+- tools/check_board.py : checks a board's firmware against the
+  protocol, PASS or FAIL per rule.
 
 ## Light colors (always the same meaning)
 blue = put a part here, green = correct, red = problem here,
@@ -59,6 +67,10 @@ yellow = careful, off = light off.
   (button 4, or saying they fixed it). Enforced in plain Python.
 - The hint button never measures, never changes power and never adds
   a mistake: it only gives the next level of help.
+- A board with a current sensor and a power switch cuts power by
+  itself above the limit and sends a power_cut line (firmware
+  backstop; the laptop also cuts at 30 mA).
+- Every firmware must pass tools/check_board.py.
 - Never commit API keys. Read ANTHROPIC_API_KEY from environment.
 - Keep README updated: target user, setup steps, demo script.
 - I am a beginner. Explain every step I must do by hand.

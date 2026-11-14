@@ -88,7 +88,9 @@ class BoardLink:
                 elif ev.get("type") == "power_cut":
                     self.power_cuts.append(ev)
                     self.last_cut = ev
-                    self.before_cut = list(self._recent_on)
+                    # A real board's line brings the readings that came just
+                    # before it (the laptop may have skipped them).
+                    self.before_cut = list(ev.get("readings_before") or self._recent_on)
 
     def events(self):
         """Button presses since the last call."""

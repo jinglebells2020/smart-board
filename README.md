@@ -22,16 +22,21 @@ written at about a 6th grade reading level.
 | `docs/SERIAL_PROTOCOL.md`| Done, version 2: a voltage per row, empty rows, current (or null), row lights with colors, screen text, 4 buttons |
 | `protocol.py`            | Done. Row names, light colors, button meanings and screen size, in one place |
 | `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
-| `firmware/`              | Waiting on docs/HARDWARE.md                    |
+| `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`) |
+| `tools/check_board.py`   | Done. Checks a board's firmware against the protocol and prints PASS or FAIL per rule. How the hardware teammate tests the firmware (docs/FIRMWARE_GUIDE.md) |
+| `firmware/`              | Not written yet. docs/FIRMWARE_GUIDE.md says what it must do |
 | `web/`                   | Done. Projector page: lesson, live readings, the lesson's rows with their lights, hints, mini-lesson card with quiz, mistake history, and a pretend board (screen + 4 buttons) with the fake board (`python web/server.py`) |
 
 ## Folders
 
-- `docs/` : plans. TRACKS, HARDWARE, LESSONS, SERIAL_PROTOCOL.
+- `docs/` : plans. TRACKS, HARDWARE, LESSONS, SERIAL_PROTOCOL, and
+  FIRMWARE_GUIDE (for the hardware teammate).
 - `lessons/` : one JSON file per lesson: expected values, the accept
   range, how to spot each mistake, and what to teach for it.
 - `protocol.py` : the shared names and rules of the serial protocol.
-- `sim/fake_board.py` : pretends to be the board.
+- `sim/fake_board.py` : pretends to be the board. `sim/fake_port.py`
+  pretends to be a serial port with the fake board on it (for tests).
+- `tools/check_board.py` : checks a real board's firmware.
 - `agent/` : the deepagents tutor (see agent/README.md).
 - `tests/` : automatic checks for the simulator, the agent and the web page.
 - `web/` : the projector page and its small local server.
@@ -61,7 +66,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (184 tests). They never call Claude, so
+The last line should say `OK` (238 tests). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -71,6 +76,24 @@ python web/server.py --fresh
 ```
 
 Then open http://localhost:8000.
+
+## Use a real board
+
+Plug the board in, then (Windows steps in RUN.md Part F):
+
+```bash
+python tools/check_board.py --serial auto
+```
+
+```bash
+python web/server.py --fresh --serial auto
+```
+
+`--serial auto` finds the board when it is the only serial port;
+otherwise give its name (`COM3`, `/dev/ttyUSB0`). `--baud` changes the
+speed (default 115200). A line at the top of the page says "Board
+connected on COM3" or, in red, "Board not answering". Without
+`--serial` the fake board is used.
 
 ## Run the tutor in a terminal
 

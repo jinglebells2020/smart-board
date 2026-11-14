@@ -29,9 +29,10 @@ from agent.boardlink import BoardLink  # noqa: E402
 from agent.build import ask, build_agent, make_model  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
 from agent.lessons import summarize  # noqa: E402
+from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E402
 from agent.session import Session  # noqa: E402
-from protocol import (BUTTON_LABELS, COLORS, SCREEN_CHARS, SCREEN_LINES,  # noqa: E402
-                      power_cut_words, row_label)
+from protocol import (BUTTON_LABELS, COLORS, DEFAULT_BAUD, SCREEN_CHARS,  # noqa: E402
+                      SCREEN_LINES, power_cut_words, row_label)
 from sim.fake_board import SCENARIOS, FakeBoard  # noqa: E402
 
 PAGE = Path(__file__).resolve().parent / "index.html"
@@ -122,8 +123,12 @@ class App:
             t.join(timeout)
 
     def on_button(self, button_id):
-        result = handle_button(button_id, self.session,
-                               lambda text: self.ask(text).get("reply", ""))
+        try:
+            result = handle_button(button_id, self.session,
+                                   lambda text: self.ask(text).get("reply", ""))
+        except BoardError as e:
+            self.log.append({"who": "tutor", "text": str(e), "time": time.time(), "tools": []})
+            return {"error": str(e)}
         action = result.get("action")
         if action == "check":
             return result  # self.ask already put the tutor's reply in the log
@@ -219,11 +224,26 @@ class App:
                 "step": self.session.step + 1 if self.session.step >= 0 else None,
                 "steps": len(self.session.lesson["layout"])}
 
+    def board_status(self):
+        """For the page: which board, and is it answering?"""
+        status = getattr(self.raw_board, "status", None)
+        if callable(status):
+            return status()
+        return {"kind": "fake", "connected": True, "text": "Fake board (simulator)"}
+
+    # A reading to show while a real board is not answering: nothing measured.
+    NO_READING = {"type": "reading", "t_ms": 0, "power_on": False, "supply_v": 0.0,
+                  "current_ma": None, "rows": {}, "floating": []}
+
     def state(self):
         self.pump_events()  # a real board's buttons arrive with the readings
         s = self.session
         lesson = s.lesson
-        reading = self.board.read()
+        reading_ok = True
+        try:
+            reading = self.board.read()
+        except BoardError:
+            reading, reading_ok = dict(self.NO_READING), False
         summary = summarize([reading], lesson)
         counts = {}
         history = []
@@ -249,6 +269,8 @@ class App:
             "reading": reading,
             "shown": self._shown(reading, summary),
             "board": self._board_view(reading, summary),
+            "board_status": self.board_status(),
+            "reading_ok": reading_ok,  # False: the board is not answering, numbers unknown
             "mini_lesson": self._card_view(),
             "history": history,
             "log": self.log,
@@ -336,6 +358,23 @@ def make_handler(app):
     return Handler
 
 
+def open_board(args):
+    """The fake board, or with --serial a real one. Problems are printed
+    in plain words and give None."""
+    if not args.serial:
+        return FakeBoard(args.lesson, args.scenario, rows=args.rows,
+                         has_current=not args.no_current,
+                         has_power_switch=not args.no_power_switch,
+                         has_screen=not args.no_screen)
+    try:
+        port = choose_port(args.serial)
+        print(f"Connecting to the board on {port} at {args.baud} baud...")
+        return SerialBoard(port, args.baud)
+    except BoardError as e:
+        print(f"Could not use the real board. {e}")
+        return None
+
+
 def make_server(app, port=8000, host="127.0.0.1"):
     return ThreadingHTTPServer((host, port), make_handler(app))
 
@@ -352,18 +391,22 @@ def main(argv=None):
     p.add_argument("--no-power-switch", action="store_true",
                    help="fake board cannot switch power")
     p.add_argument("--no-screen", action="store_true", help="fake board has no screen")
+    p.add_argument("--serial", metavar="PORT",
+                   help='use a real board on this port (COM3, /dev/ttyUSB0) or "auto"')
+    p.add_argument("--baud", type=int, default=DEFAULT_BAUD,
+                   help=f"serial speed for --serial (default {DEFAULT_BAUD})")
     args = p.parse_args(argv)
 
     if args.fresh and Path(args.history).exists():
         Path(args.history).unlink()
-    board = FakeBoard(args.lesson, args.scenario, rows=args.rows,
-                      has_current=not args.no_current,
-                      has_power_switch=not args.no_power_switch,
-                      has_screen=not args.no_screen)
+    board = open_board(args)
+    if board is None:
+        return 2
     app = App(board, lesson=args.lesson, history_path=args.history)
     server = make_server(app, args.port)
     caps = app.board.capabilities()
-    print(f"Tutor: {app.model_name}. Board: fake board, {caps['rows']} rows measured, "
+    where = f"real board on {board.port}" if args.serial else "fake board"
+    print(f"Tutor: {app.model_name}. Board: {where}, {caps['rows']} rows measured, "
           f"current sensor {'yes' if caps['has_current'] else 'no'}, "
           f"power switch {'yes' if caps['has_power_switch'] else 'no'}.")
     print(f"Open http://localhost:{args.port} in your browser. Press Ctrl+C to stop.")
