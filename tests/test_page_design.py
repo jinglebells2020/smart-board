@@ -226,6 +226,10 @@ PALETTE = {  # name in the page -> the colour the design rules give it
     "page": "#EEF3FA", "line": "#DCE4F0",
 }
 SHADOW = "0 2px 8px rgba(29,39,66,0.08)"
+# Real part colours, only for drawing the parts (resistor body and the
+# colour-code bands that the palette does not already have).
+PART_COLOURS = {"part-tan": "#E3C08F", "band-brown": "#8B5A2B", "band-orange": "#F28C28",
+                "band-violet": "#6B47B8", "band-grey": "#8C95A6"}
 
 
 def luminance(hex_colour):
@@ -260,7 +264,7 @@ class TestDesignRules(unittest.TestCase):
         self.assertIn(f"--shadow: {SHADOW}", self.css)
 
     def test_no_colour_outside_the_palette(self):
-        allowed = {c.upper() for c in PALETTE.values()}
+        allowed = {c.upper() for c in PALETTE.values()} | {c.upper() for c in PART_COLOURS.values()}
         used = {c.upper() for c in re.findall(r"#[0-9A-Fa-f]{6}\b", self.html)}
         self.assertEqual(used - allowed, set())
         self.assertNotRegex(self.html, r"#[0-9A-Fa-f]{3}\b(?![0-9A-Fa-f])")  # no short forms
@@ -268,6 +272,45 @@ class TestDesignRules(unittest.TestCase):
         for r, g, b in re.findall(r"rgba\((\d+),\s*(\d+),\s*(\d+),", self.html):
             self.assertIn((int(r), int(g), int(b)), rgb_allowed)
         self.assertNotIn("855CD6", self.html.upper())  # never Scratch's purple
+
+    def test_part_colours_only_in_the_drawing(self):
+        for name, colour in PART_COLOURS.items():
+            self.assertEqual(self.tokens.get(name, "").upper(), colour, name)
+        for selector, body in self.rules:
+            if any(f"var(--{name})" in body for name in PART_COLOURS):
+                for one in selector.split(","):
+                    self.assertRegex(one.strip(), r"^\.(bb-|band-)", selector)
+
+    def test_parts_in_their_real_colours(self):
+        css = self.css_code
+        self.assertRegex(css, r"\.bb-wire\.red \{ stroke: var\(--coral\); \}")      # #E5484D
+        self.assertRegex(css, r"\.bb-wire\.black \{ stroke: var\(--ink\); \}")     # #1D2742
+        self.assertRegex(css, r"\.bb-body\.resistor \{ fill: var\(--part-tan\); \}")
+        self.assertRegex(css, r"\.bb-led \{ fill: var\(--coral\);")
+        # The resistor colour code: 0 black, 1 brown, 2 red, 3 orange.
+        for digit, token in (("0", "ink"), ("1", "band-brown"), ("2", "coral"), ("3", "band-orange")):
+            self.assertRegex(css, rf"\.band-{digit} \{{ fill: var\(--{token}\); \}}")
+        self.assertIn("function resistorBands(part)", self.html)
+        self.assertIn('"band-" + digit', self.html)
+
+    def test_resistor_bands_match_the_value(self):
+        """Run the page's resistorBands with the same arithmetic in Python."""
+        body = re.search(r"function resistorBands\(part\) \{(.*?)\n  \}", self.html, re.S).group(1)
+        self.assertIn("Math.log10(ohms)", body)
+
+        def bands(part):  # the same steps as the page
+            m = re.search(r"(\d+(?:\.\d+)?)\s*([kM]?)", part)
+            ohms = float(m.group(1)) * {"k": 1e3, "M": 1e6}.get(m.group(2), 1)
+            import math
+            exp = math.floor(math.log10(ohms) + 1e-9)
+            return [math.floor(ohms / 10 ** exp + 1e-9),
+                    math.floor(ohms / 10 ** (exp - 1) + 1e-9) % 10, exp - 1]
+        self.assertEqual(bands("220 ohm resistor"), [2, 2, 1])    # red red brown
+        self.assertEqual(bands("Top 10k resistor"), [1, 0, 3])    # brown black orange
+        for lesson in LESSONS.values():
+            for part in lesson["layout"]:
+                if "resistor" in part["part"].lower():
+                    self.assertEqual(len(bands(part["part"])), 3, part["part"])
 
     def test_every_text_pair_has_4_5_to_1_contrast(self):
         listed = re.search(r"contrast-pairs:([^*]*)\*/", self.css).group(1)
@@ -342,17 +385,47 @@ class TestDesignRules(unittest.TestCase):
         self.assertIn(".zip { grid-column: 1; grid-row: 1; }", phone)
         self.assertIn(".stage { grid-column: 1; grid-row: 2; }", phone)
 
-    def test_mini_lesson_pops_up_over_the_stage(self):
-        self.assertRegex(self.css_code, r"\.mini \{[^}]*position: absolute")
-        self.assertRegex(self.css_code, r"\.mini-head \{[^}]*background: var\(--yellow\)")
+    def test_mini_lesson_opens_in_the_zip_panel_never_over_things(self):
         stage = re.search(r'<section class="zone stage".*?</section>', self.html, re.S).group(0)
-        self.assertIn('id="mini"', stage)
-        self.assertIn('id="mini-close"', stage)
+        zip_panel = re.search(r'<section class="zone zip".*?</section>', self.html, re.S).group(0)
+        self.assertNotIn('id="mini"', stage)
+        for needed in ('id="mini"', 'id="mini-close"', 'id="mini-open"', "Learn why:"):
+            self.assertIn(needed, zip_panel)
+        # The card comes right after Zip's picture and before the bubble; the
+        # "Learn why" tab comes after the bubble.
+        order = [zip_panel.index(x) for x in ('class="zip-top"', 'id="mini"', 'id="bubble"',
+                                               'id="mini-open"')]
+        self.assertEqual(order, sorted(order))
+        mini = re.search(r"\n  \.mini \{([^}]*)\}", self.css_code).group(1)
+        self.assertNotRegex(mini, r"position:\s*(absolute|fixed)")
+        self.assertNotRegex(self.css_code, r"\.mini \{[^}]*position:\s*(absolute|fixed)")
+        self.assertIn(".zip.learning .zip-top { display: none; }", self.css_code)
+        self.assertRegex(self.css_code, r"\.mini-head \{[^}]*background: var\(--yellow\)")
+        # The tab has a yellow book icon.
+        tab = re.search(r'<button[^>]*id="mini-open".*?</button>', self.html, re.S).group(0)
+        self.assertIn('fill="#FFC93C"', tab)
+        # Phone: below the bubble, in the normal flow.
+        phone = re.search(r"@media \(max-width: 999px\) \{(.*?)\n  \}", self.css, re.S).group(1)
+        self.assertIn(".mini { order: 3;", phone)
+        self.assertIn(".bubble { order: 1; }", phone)
 
-    def test_zip_bubble_holds_about_four_lines_then_scrolls(self):
-        self.assertRegex(self.css_code, r"\.hint \{[^}]*font-size: 28px[^}]*"
-                                        r"max-height: calc\(28px \* 1\.3 \* 4 \+ 32px\)"
-                                        r"[^}]*overflow-y: auto")
+    def test_zip_words_get_the_space_no_fade(self):
+        self.assertNotIn("mask-image", self.css_code)
+        self.assertNotIn("fadeIfMore", self.html)
+        hint = re.search(r"\n  \.hint \{([^}]*)\}", self.css_code).group(1)
+        self.assertNotIn("max-height", hint)
+        self.assertIn("overflow-y: auto", hint)          # scrolls only if still too long
+        self.assertIn("font-size: 28px", hint)
+        self.assertIn("clamp(64px, 15vh, 160px)", self.css_code)  # Zip about half size
+
+    def test_phone_pills_wrap(self):
+        phone = re.search(r"@media \(max-width: 999px\) \{(.*?)\n  \}", self.css, re.S).group(1)
+        self.assertRegex(phone, r"\.pill \{[^}]*white-space: normal; flex-wrap: wrap; max-width: 100%")
+
+    def test_board_fills_the_stage_and_stars_are_big(self):
+        self.assertIn("const oy = 0;", self.html)
+        self.assertIn('height: Math.max(H, bottom), rx: 16, class: "bb-board"', self.html)
+        self.assertIn(".stop .stars svg { width: 20px; height: 20px; }", self.css_code)
 
     def test_teacher_drawer_slides_over_the_zip_panel(self):
         self.assertRegex(self.css_code, r"\.zip \{ grid-column: 2; grid-row: 1; \}")

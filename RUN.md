@@ -227,7 +227,8 @@ The tests in Part B never use the key, even when it is set.
      voltage are small pills at the top. Under the drawing, the
      **Pretend board**: its little screen and its 4 buttons.
    - **Zip** (right): our robot spark guide, with the tutor's words in
-     a speech bubble (long replies scroll inside it). Zip has 4 faces:
+     a big speech bubble (it scrolls only if a reply is longer than the
+     space). Zip has 4 faces:
      **happy** (correct), **thinking** (while checking), **curious** (a
      hint or a question) and **careful** (danger or power off). Below:
      **Check my circuit** (blue), **I fixed it** (yellow) and a box to
@@ -244,8 +245,8 @@ The tests in Part B never use the key, even when it is set.
    | **3 · Next step** | The red wire is drawn strong with a dashed sky-blue outline, the other parts faint. Row 5's light turns **sky blue** (put a part here). Under the title: "Step 1 of 4: Red wire". Zip: "Put one end in the top + line (5 V) and the other end in row 5" |
    | **3 · Next step** three more times | Resistor (rows 5 and 10), LED ("long leg: row 10 / short leg: row 12"), black wire (row 12). Each time that part is outlined and its rows light sky blue |
    | **3 · Next step** once more | Lights off, all parts drawn. Screen: "All parts placed! / Press 1 to check." |
-   | Teacher → **LED backwards**, Close, then **1 · Check my circuit** | Zip looks **thinking**, then **curious**. The lights of rows 10 and 12 turn **red** and gently pulse (red means "look here"). Zip gives a hint. The **Mini-lesson** pops up over the drawing, with a yellow top strip: "LEDs are one-way doors", a question and 3 big answers. The red lights stay visible below it |
-   | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green: "Right!" and why. Click **✕** to close the mini-lesson; the yellow **Mini-lesson** pill at the top opens it again |
+   | Teacher → **LED backwards**, Close, then **1 · Check my circuit** | Zip looks **thinking**, then **curious**. The lights of rows 10 and 12 turn **red** and gently pulse (red means "look here"). Zip gives a hint. Under Zip's words a tab appears: **Learn why: LEDs are one-way doors** (yellow book). Click it: the mini-lesson opens in Zip's panel, in place of Zip's picture, with a yellow top strip, a question and 3 big answers. The breadboard and Zip's words stay in view (on a phone it opens below Zip's words) |
+   | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green: "Right!" and why. Click **✕** to close the mini-lesson and Zip comes back; the **Learn why** tab opens it again |
    | **2 · I need a hint** | Zip, still **curious**, gives the next level of help: the full explanation. Nothing is measured, power is not touched |
    | Teacher → **No resistor**, Close, then **1 · Check my circuit** | Zip looks **careful** (a friendly yellow sign, nothing scary). The power sign says **Power off**. Mini-lesson: "Resistors keep current small" |
    | **4 · Power off / on** (before fixing) | Power comes on, is measured at once and goes off again. Zip: "The power went off again right away, because the circuit is still not safe: 100 mA flowed…" |

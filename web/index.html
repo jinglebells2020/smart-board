@@ -22,6 +22,10 @@
     --white: #FFFFFF;   /* work surfaces */
     --page: #EEF3FA;    /* the page around them */
     --line: #DCE4F0;    /* thin lines */
+    /* Part colours, only for the drawing of the real parts: */
+    --part-tan: #E3C08F;      /* resistor body */
+    --band-brown: #8B5A2B; --band-orange: #F28C28; --band-violet: #6B47B8;
+    --band-grey: #8C95A6;
     --shadow: 0 2px 8px rgba(29,39,66,0.08);
     --font: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
   }
@@ -72,8 +76,8 @@
   .stop.current .dot { outline: 3px solid var(--yellow); outline-offset: 2px; }
   .stop.passed .dot { background: var(--green); color: var(--ink); }
   .stop .dot svg { width: 20px; height: 20px; }
-  .stop .stars { display: flex; height: 16px; }
-  .stop .stars svg { width: 16px; height: 16px; }
+  .stop .stars { display: flex; height: 20px; }
+  .stop .stars svg { width: 20px; height: 20px; }
   .star-off { fill: rgba(255,255,255,0.35); }
   .star-on { fill: var(--yellow); }
   .star-pop { animation: pop 0.7s ease-out; transform-origin: center; transform-box: fill-box; }
@@ -165,13 +169,23 @@
   .bb-part.later { opacity: 0.18; }
   .bb-outline { fill: none; stroke: none; }
   .bb-part.now .bb-outline { stroke: var(--sky); stroke-width: 3; stroke-dasharray: 6 6; }
-  .bb-wire { stroke: var(--ink); stroke-width: 6; stroke-linecap: round; fill: none; }
+  .bb-wire { stroke: var(--ink-2); stroke-width: 6; stroke-linecap: round; fill: none; }
+  .bb-wire.red { stroke: var(--coral); }
+  .bb-wire.black { stroke: var(--ink); }
+  .bb-end.red { fill: var(--coral); }
   .bb-leg { stroke: var(--ink-2); stroke-width: 3; stroke-linecap: round; fill: none; }
   .bb-end { fill: var(--ink); }
   .bb-body { fill: var(--white); stroke: var(--ink); stroke-width: 2; }
-  .bb-band-mark { fill: var(--ink); }
-  .bb-led { fill: var(--white); stroke: var(--ink); stroke-width: 2; transition: fill 0.3s; }
-  .bb-led.on { fill: var(--yellow); filter: drop-shadow(0 0 8px rgba(255,201,60,0.9)); }
+  .bb-body.resistor { fill: var(--part-tan); }
+  /* Resistor colour code: 0 black, 1 brown, 2 red, 3 orange, 4 yellow,
+     5 green, 6 blue, 7 violet, 8 grey, 9 white */
+  .band-0 { fill: var(--ink); } .band-1 { fill: var(--band-brown); } .band-2 { fill: var(--coral); }
+  .band-3 { fill: var(--band-orange); } .band-4 { fill: var(--yellow); } .band-5 { fill: var(--green); }
+  .band-6 { fill: var(--blue); } .band-7 { fill: var(--band-violet); } .band-8 { fill: var(--band-grey); }
+  .band-9 { fill: var(--white); }
+  .bb-led { fill: var(--coral); stroke: var(--ink); stroke-width: 2; opacity: 0.6;
+            transition: opacity 0.3s; }
+  .bb-led.on { opacity: 1; filter: drop-shadow(0 0 8px rgba(229,72,77,0.9)); }
   .bb-label { font-size: 16px; font-weight: 700; fill: var(--ink-2); }
   .bb-plus { font-size: 16px; font-weight: 700; fill: var(--ink); text-anchor: middle; }
 
@@ -195,27 +209,31 @@
     display: inline-grid; place-items: center; font-size: 16px;
   }
 
-  /* ---- The mini-lesson: a pop-up card over the stage ---- */
+  /* ---- The mini-lesson: opens in the Zip panel, in place of Zip's
+     picture. It never covers the breadboard, the numbers or Zip's words. ---- */
   .mini {
-    position: absolute; z-index: 10; top: 96px; left: 50%; transform: translateX(-50%);
-    width: min(720px, calc(100% - 48px)); max-height: calc(100% - 120px); overflow: auto;
-    background: var(--white); border-radius: 16px; box-shadow: var(--shadow);
+    flex: 1 1 0; min-height: 192px; overflow-y: auto;
+    background: var(--white); border: 1px solid var(--line); border-radius: 16px;
     animation: rise 0.25s ease-out;
   }
-  @keyframes rise { from { opacity: 0; transform: translate(-50%, 16px); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+  .zip.learning .zip-top { display: none; }  /* the card takes Zip's place */
+  .zip.learning .bubble::before { display: none; }
+  .learn { align-self: flex-start; margin-top: 16px; max-width: 100%; text-align: left; }
+  .learn span { overflow: hidden; text-overflow: ellipsis; }
   .mini-head {
     display: flex; align-items: center; gap: 16px; padding: 8px 8px 8px 24px;
     background: var(--yellow); color: var(--ink); border-radius: 16px 16px 0 0;
   }
   .mini-head h3 { margin: 0; flex: 1 1 auto; font-size: 28px; font-weight: 700; line-height: 1.2; }
   .mini-head .btn { background: transparent; color: var(--ink); }
-  .mini-body { padding: 24px; }
+  .mini-body { padding: 16px 24px 24px; }
   .mini .label { font-size: 16px; font-weight: 700; }
   .mini .idea { margin: 0 0 16px; }
   .mini .question { margin: 0 0 16px; font-weight: 700; }
-  .options { display: flex; gap: 8px; flex-wrap: wrap; }
+  .options { display: flex; flex-direction: column; gap: 8px; }
   .opt {
-    flex: 1 1 160px; min-height: 56px; padding: 8px 24px; border: 0; border-radius: 28px;
+    flex: none; min-height: 56px; padding: 8px 24px; border: 0; border-radius: 28px;
     background: var(--page); color: var(--ink); font-size: 20px; font-weight: 700; text-align: left;
     cursor: pointer; transition: transform 0.12s ease;
   }
@@ -229,14 +247,14 @@
   .result .verdict { font-weight: 700; }
 
   /* ---- Zip panel ---- */
-  .zip-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
-              justify-content: center; }
-  /* Zip takes the height that is free (up to 320 px), so the bubble and
-     the buttons always fit. */
-  .zip-top { flex: 1 1 0; min-height: 96px; max-height: 320px; display: flex;
+  .zip-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  /* Zip is small (up to 160 px); the bubble gets the rest of the space and
+     scrolls only when the words are longer than that. */
+  .zip-top { flex: none; height: clamp(64px, 15vh, 160px); display: flex;
              align-items: center; justify-content: center; }
   .guide { height: 100%; width: auto; max-width: 100%; overflow: visible; }
-  .bubble { flex: none; }
+  /* Short screens: a smaller Zip leaves more room for his words. */
+  @media (max-height: 820px) and (min-width: 1000px) { .zip-top { height: 64px; } }
   .guide .mood { display: none; }
   .guide[data-mood="happy"] .mood-happy,
   .guide[data-mood="thinking"] .mood-thinking,
@@ -254,7 +272,7 @@
                       70% { transform: translateY(-8px); } }
   .bubble {
     position: relative; margin-top: 16px; border: 1px solid var(--line); border-radius: 16px;
-    background: var(--white);
+    background: var(--white); flex: 0 1 auto; min-height: 96px; display: flex;
   }
   .bubble::before {  /* the tail, pointing up at Zip */
     content: ""; position: absolute; top: -9px; left: calc(50% - 8px); width: 16px; height: 16px;
@@ -262,12 +280,10 @@
     transform: rotate(45deg);
   }
   .hint {
-    font-size: 28px; font-weight: 700; line-height: 1.3; padding: 16px 24px;
-    max-height: calc(28px * 1.3 * 4 + 32px); overflow-y: auto; overflow-wrap: anywhere;
+    flex: 1 1 auto; min-height: 0; font-size: 28px; font-weight: 700; line-height: 1.3;
+    padding: 16px 24px; overflow-y: auto; overflow-wrap: anywhere;
   }
   .hint.thinking { color: var(--ink-2); font-weight: 400; }
-  .hint.more { -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent);
-               mask-image: linear-gradient(to bottom, black 70%, transparent); }
   .actions { margin-top: auto; padding-top: 24px; display: flex; flex-direction: column; gap: 16px; }
   .actions .row { display: flex; flex-wrap: wrap; gap: 16px; }
   .actions .row .btn { flex: 1 1 224px; white-space: nowrap; }
@@ -337,10 +353,18 @@
     .zip { grid-column: 1; grid-row: 1; }
     .stage { grid-column: 1; grid-row: 2; }
     .drawing { height: 320px; flex: none; }
-    .zip-top { flex: none; height: 160px; }
+    .zip-top { height: 80px; }
+    .bubble { min-height: 0; }
+    .hint { overflow: visible; }
+    .mini { order: 3; flex: none; min-height: 0; overflow: visible; margin-top: 16px; }
+    .zip.learning .zip-top { display: flex; }  /* on a phone Zip stays */
+    .learn { order: 2; }
+    .bubble { order: 1; }
+    .pills { width: 100%; }
+    .pill { white-space: normal; flex-wrap: wrap; max-width: 100%; padding: 8px 16px;
+            border-radius: 28px; }
     .stage-head { flex-direction: column; }
     .pills { justify-content: flex-start; }
-    .mini { position: fixed; top: 16px; max-height: calc(100vh - 32px); width: calc(100% - 32px); }
     .teacher { position: fixed; inset: 0; border-radius: 0; z-index: 40; }
     .actions .row { flex-direction: column; }
     .actions .row .btn { flex: none; }
@@ -398,11 +422,6 @@
             <span class="name">Power voltage</span>
             <span><span class="value" id="v-supply">&ndash;</span> <span class="unit">V</span></span>
           </div>
-          <button class="btn btn-yellow btn-small" type="button" id="mini-open" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4"
-                 stroke-linejoin="round"><path d="M4 5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4zM20 5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6z"/></svg>
-            Mini-lesson
-          </button>
         </div>
       </div>
 
@@ -420,22 +439,6 @@
         <div class="board-buttons" id="board-buttons"></div>
       </div>
 
-      <!-- The mini-lesson pops up over the stage -->
-      <div class="mini" id="mini" role="dialog" aria-labelledby="mini-title" hidden>
-        <div class="mini-head">
-          <h3><span class="label">Mini-lesson:</span> <span id="mini-title"></span></h3>
-          <button class="btn btn-round" type="button" id="mini-close" aria-label="Close the mini-lesson">
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.8"
-                 stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-          </button>
-        </div>
-        <div class="mini-body">
-          <p class="idea" id="mini-idea"></p>
-          <p class="question" id="mini-question"></p>
-          <div class="options" id="mini-options"></div>
-          <p class="result" id="mini-result" aria-live="polite"></p>
-        </div>
-      </div>
     </section>
 
     <!-- Zip panel -->
@@ -492,9 +495,31 @@
           <rect x="82" y="146" width="34" height="14" rx="7" fill="#FFC93C" stroke="#1D2742" stroke-width="3"/>
         </svg>
       </div>
+      <!-- The mini-lesson opens here, in place of Zip's picture (on a phone:
+           below the bubble). It never covers the breadboard or Zip's words. -->
+      <div class="mini" id="mini" role="region" aria-labelledby="mini-title" hidden>
+        <div class="mini-head">
+          <h3><span class="label">Learn why:</span> <span id="mini-title"></span></h3>
+          <button class="btn btn-round" type="button" id="mini-close" aria-label="Close the mini-lesson">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.8"
+                 stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="mini-body">
+          <p class="idea" id="mini-idea"></p>
+          <p class="question" id="mini-question"></p>
+          <div class="options" id="mini-options"></div>
+          <p class="result" id="mini-result" aria-live="polite"></p>
+        </div>
+      </div>
       <div class="bubble" id="bubble">
         <div class="hint" id="hint" aria-live="polite" tabindex="0">Build the circuit, then press "Check my circuit".</div>
       </div>
+      <button class="btn btn-soft btn-small learn" type="button" id="mini-open" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5C3 4.7 3.7 4 4.5 4H10a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4.5A1.5 1.5 0 0 1 3 16.5zM21 5.5c0-.8-.7-1.5-1.5-1.5H14a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h5.5a1.5 1.5 0 0 0 1.5-1.5z"
+              fill="#FFC93C" stroke="#1D2742" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <span>Learn why: <span id="learn-title"></span></span>
+      </button>
       </div>
 
       <form class="actions" id="say">
@@ -612,7 +637,7 @@
   let lastScenarioKey = "";
   let lastMiniKey = "";
   let miniCard = null;
-  let miniClosed = null;     // the card that was closed (it stays closed)
+  let miniOpen = null;       // the card opened with "Learn why" (its occurrence)
   let lastButtonsKey = "";
   let lastPathKey = "";
   let lastStars = null;      // stars per lesson, to make new ones pop
@@ -651,14 +676,6 @@
       hint.scrollTop = 0;  // long replies scroll inside the bubble
     }
     hint.classList.toggle("thinking", !!thinking);
-    fadeIfMore();
-  }
-
-  // A soft fade at the bottom of the bubble while there is more to read.
-  function fadeIfMore() {
-    const hint = $("hint");
-    const more = hint.scrollHeight - hint.scrollTop - hint.clientHeight > 4;
-    hint.classList.toggle("more", more);
   }
 
   function celebrate() {
@@ -919,6 +936,19 @@
     return m ? { half: m[1], n: Number(m[2]) } : null;
   }
 
+  // The three colour bands of a resistor, as colour-code digits, from its
+  // name: "220 ohm resistor" -> [2, 2, 1] (red red brown), "10k" -> [1, 0, 3].
+  function resistorBands(part) {
+    const m = /(\d+(?:\.\d+)?)\s*([kM]?)/.exec(part);
+    if (!m) return [];
+    const ohms = Number(m[1]) * ({ k: 1e3, M: 1e6 }[m[2]] || 1);
+    if (!(ohms >= 10)) return [];
+    const exp = Math.floor(Math.log10(ohms) + 1e-9);
+    const first = Math.floor(ohms / 10 ** exp + 1e-9);
+    const second = Math.floor(ohms / 10 ** (exp - 1) + 1e-9) % 10;
+    return [first, second, exp - 1];
+  }
+
   function shortName(part) {
     const n = part.toLowerCase();
     const ohms = /(\d+(\.\d+)?k?)\s*(ohm)?/.exec(part);
@@ -946,17 +976,14 @@
     const left = X0 + Math.max(0, (W - X0 - 16 - CW * cols) / 2);
     const x = (n) => left + (n - lo) * CW + CW / 2;
     const lr = Math.max(8, Math.min(20, CW * 0.26));   // light radius
-    // Heights in px. The parts get room above the holes (not so much that
-    // they float away); the holes grow to fill what is left, so the board
-    // fills the stage. Anything still left over centres the drawing.
-    const halves = usesBottom ? 2 : 1;
+    // Heights in px. The board fills its whole box (no empty band): the
+    // holes grow with the box, and the rest is room for the parts above them.
     const bottomBlock = lr * 2 + 64;                   // light, voltage, row number
-    const room = Math.max(80, Math.min(220, H * 0.36));
-    const spare = H - 64 - room - halves * bottomBlock - (usesBottom ? 48 : 0) - 24;
-    const hs = Math.max(16, Math.min(40, spare / (4 * halves)));  // hole spacing
+    const hs = Math.max(16, Math.min(40, H / 16));     // hole spacing
     const half = 4 * hs;
     const fixed = 64 + half + bottomBlock + (usesBottom ? half + bottomBlock + 48 : 0) + 24;
-    const oy = Math.max(0, Math.floor((H - fixed - room) / 2));
+    const room = Math.max(80, H - fixed);
+    const oy = 0;
     const Y = { plus: oy + 24, minus: oy + 48 };
     Y.top = [0, 1, 2, 3, 4].map((i) => oy + 48 + room + i * hs);
     Y.light = Y.top[4] + 16 + lr;
@@ -972,7 +999,7 @@
     const bottom = usesBottom ? Y.minusB + 16 : Y.num + 16;
     if (bottom > H) box.setAttribute("viewBox", `0 0 ${W} ${bottom}`);
 
-    svg("rect", { x: 0, y: oy, width: W, height: bottom - oy, rx: 16, class: "bb-board" }, box);
+    svg("rect", { x: 0, y: 0, width: W, height: Math.max(H, bottom), rx: 16, class: "bb-board" }, box);
     const lesson = new Set(L.rows || []);
     for (let n = lo; n <= hi; n++) {
       if (lesson.has("T" + n)) svg("rect", { x: x(n) - CW / 2 + 4, y: Y.top[0] - 16,
@@ -990,7 +1017,8 @@
     strip(Y.minus, "−");
     if (usesBottom) { strip(Y.plusB, "+"); strip(Y.minusB, "−"); }
 
-    const refs = { lights: {}, volts: {}, marks: {}, leds: [] };
+    // Narrow columns (a phone): voltages without the "V", so they never touch.
+    const refs = { lights: {}, volts: {}, marks: {}, leds: [], narrow: CW < 48 };
     for (let n = lo; n <= hi; n++) {
       Y.top.forEach((y) => svg("rect", { x: x(n) - 3, y: y - 3, width: 6, height: 6, rx: 2,
         class: "bb-hole" }, box));
@@ -1031,7 +1059,7 @@
       const y = { "PT+": Y.plus, "PT-": Y.minus, "PB+": Y.plusB, "PB-": Y.minusB }[leg.row] ?? Y.plus;
       return { x: ox - CW * 0.3, y };
     };
-    const lift = Math.min(room - 24, Math.max(40, room * 0.5));
+    const lift = Math.min(room - 24, 160, Math.max(40, room * 0.5));
     const step = b.step;  // 1-based step being built, or null
     layout.forEach((part, i) => {
       if (part.legs.length < 2) return;
@@ -1047,13 +1075,15 @@
         const up = Math.max(24, Math.abs(p2.x - p1.x) * 0.3);
         const d = `M${p1.x} ${p1.y} C${p1.x} ${p1.y - up}, ${p2.x} ${p2.y - up}, ${p2.x} ${p2.y}`;
         svg("path", { d, class: "bb-outline" }, g);
-        svg("path", { d, class: "bb-wire" }, g);
-        [p1, p2].forEach((p) => svg("circle", { cx: p.x, cy: p.y, r: 5, class: "bb-end" }, g));
+        // Wires in their real colours: the red wire red, the black wire black.
+        const colour = name.includes("red") ? " red" : name.includes("black") ? " black" : "";
+        svg("path", { d, class: "bb-wire" + colour }, g);
+        [p1, p2].forEach((p) => svg("circle", { cx: p.x, cy: p.y, r: 5, class: "bb-end" + colour }, g));
         // The name beside the wire, on the side with more room (left out
-        // when the columns are too narrow for words, like on a phone).
+        // when there is no room for words, like on a phone or a short screen).
         const rowEnd = splitRow(part.legs[0].row) ? p1 : p2;
         const right = rowEnd.x + 140 < W;
-        if (CW >= 44) svg("text", { x: rowEnd.x + (right ? 16 : -16), y: (Y.minus + Y.top[0]) / 2 + 8,
+        if (CW >= 44 && room >= 160) svg("text", { x: rowEnd.x + (right ? 16 : -16), y: (Y.minus + Y.top[0]) / 2 + 8,
           class: "bb-label", "text-anchor": right ? "start" : "end" }, g, shortName(part.part));
       } else if (name.includes("resistor")) {
         const top = Math.min(p1.y, p2.y) - lift * 0.6;
@@ -1062,9 +1092,11 @@
           class: "bb-leg" }, g);
         svg("rect", { x: mx - len / 2 - 8, y: top - 16, width: len + 16, height: 32, rx: 16,
           class: "bb-outline" }, g);
-        svg("rect", { x: mx - len / 2, y: top - 10, width: len, height: 20, rx: 10, class: "bb-body" }, g);
-        [0, 1, 2].forEach((k) => svg("rect", { x: mx - len / 2 + 10 + k * 8, y: top - 10,
-          width: 4, height: 20, class: "bb-band-mark" }, g));
+        svg("rect", { x: mx - len / 2, y: top - 10, width: len, height: 20, rx: 10,
+          class: "bb-body resistor" }, g);
+        // Colour bands for its value: 220 ohm red red brown, 10k brown black orange.
+        resistorBands(part.part).forEach((digit, k) => svg("rect", { x: mx - len / 2 + 10 + k * 10,
+          y: top - 10, width: 6, height: 20, class: "band-" + digit }, g));
         [p1, p2].forEach((p) => svg("circle", { cx: p.x, cy: p.y, r: 4, class: "bb-end" }, g));
         svg("text", { x: mx, y: top - 24, class: "bb-label", "text-anchor": "middle" }, g, shortName(part.part));
       } else if (name.includes("led")) {
@@ -1115,7 +1147,7 @@
       else if (!row.measured) { text = "–"; cls += " empty"; }
       else if (row.floating) { text = "empty"; cls += " empty"; }
       else {
-        text = fmt(row.volts, 2) + " V";
+        text = fmt(row.volts, 2) + (bbRefs.narrow ? "" : " V");
         const rng = ranges[row.name];
         if (rng && state.reading.power_on) {
           const ok = row.volts >= (rng.min ?? -Infinity) && row.volts <= (rng.max ?? Infinity);
@@ -1225,15 +1257,19 @@
   // It sits over the stage and never moves the layout. Closing it keeps it
   // closed for that mistake; the "Mini-lesson" pill opens it again.
   function renderMini(card) {
-    const key = JSON.stringify(card) + busy + miniClosed;
+    const key = JSON.stringify(card) + busy + miniOpen;
     if (key === lastMiniKey) return;
     lastMiniKey = key;
     miniCard = card;
-    const closed = card && miniClosed === card.occurrence;
-    $("mini").hidden = !card || busy || closed;
-    $("mini-open").hidden = !card || busy || !closed;
+    // After a mistake: a "Learn why" tab under the bubble. Clicking it opens
+    // the card in the Zip panel, in place of Zip's picture, until closed.
+    const open = !!card && !busy && miniOpen === card.occurrence;
+    $("mini").hidden = !open;
+    $("mini-open").hidden = !card || busy || open;
+    document.querySelector(".zip").classList.toggle("learning", open);
     if (!card) return;
 
+    $("learn-title").textContent = card.title;
     $("mini-title").textContent = card.title;
     $("mini-idea").textContent = card.idea;
     $("mini-question").textContent = card.question;
@@ -1288,13 +1324,13 @@
   }
 
   $("mini-close").addEventListener("click", () => {
-    if (miniCard) miniClosed = miniCard.occurrence;
+    miniOpen = null;
     lastMiniKey = "";
     renderMini(miniCard);
     $("mini-open").focus();
   });
   $("mini-open").addEventListener("click", () => {
-    miniClosed = null;
+    if (miniCard) miniOpen = miniCard.occurrence;
     lastMiniKey = "";
     renderMini(miniCard);
     $("mini-close").focus();
@@ -1379,7 +1415,6 @@
     resizeTimer = setTimeout(() => { if (lastState) renderBoard(lastState); }, 120);
   });
 
-  $("hint").addEventListener("scroll", fadeIfMore);
   $("check").addEventListener("click", () => askTutor("Check my circuit"));
   $("fixed").addEventListener("click", () => askTutor("I fixed it, check again"));
   $("say").addEventListener("submit", (e) => {
@@ -1394,7 +1429,7 @@
     await post("/api/reset");
     lastLogKey = lastHistoryKey = lastScenarioKey = lastMiniKey = lastButtonsKey = lastPathKey = "";
     lastStars = null;
-    miniClosed = null;
+    miniOpen = null;
   });
 
   poll();

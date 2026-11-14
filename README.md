@@ -153,8 +153,12 @@ Three zones fill the screen:
   lights in their colours (red ones gently pulse: "look here", not
   "you failed") and each row's voltage in small text. The current and
   the power voltage are small pills on top; the pretend board (screen
-  and 4 buttons) sits underneath. The **mini-lesson** pops up over the
-  stage like a friendly tutorial window and can be closed.
+  and 4 buttons) sits underneath. Parts are drawn in their real
+  colours (red wire, black wire, tan resistor with its colour bands,
+  red LED).
+- After a mistake, a **Learn why** tab appears under Zip's words; it
+  opens the mini-lesson in Zip's panel, in place of Zip's picture, so it
+  never covers the breadboard, the numbers or Zip's words.
 - **Zip**, our robot spark guide, says the tutor's words in a speech
   bubble. 4 faces: happy (correct), thinking (checking), curious (a
   hint or a question) and careful (danger or power off). Below Zip:
