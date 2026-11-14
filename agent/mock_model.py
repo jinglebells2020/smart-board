@@ -142,7 +142,9 @@ class ScriptedTutorModel(BaseChatModel):
                 if manual:
                     note = "DANGER!|Switch the power OFF|by hand now."
                 else:
-                    note = f"{logged['mini_lesson']['title']}|Red rows: look here."
+                    where = ("Yellow: look here." if check.get("light") == "yellow"
+                             else "Red rows: look here.")
+                    note = f"{logged['mini_lesson']['title']}|{where}"
                 return call("show_on_board", text=note)
             # The same mistake again: ask the lesson writer for a new mini-lesson.
             if logged.get("new_lesson_wanted") and "task" not in called:
@@ -172,7 +174,10 @@ class ScriptedTutorModel(BaseChatModel):
                     first = check["board_cut"]["say"].split(". ")[0] + "."
                     return reply(f"{first} {say}")
                 return reply(f"I cut the power to keep your parts safe. {say}")
-            return reply(f"{say} The red lights show where to look.")
+            color = check.get("light", "red")  # a loose leg is yellow: careful
+            many = len(check.get("rows") or []) != 1
+            return reply(f"{say} The {color} light{'s show' if many else ' shows'} "
+                         "where to look.")
 
         if status == "ok":
             if "clear_lights" not in called:

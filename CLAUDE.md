@@ -40,6 +40,12 @@ The software must work with any of those answers.
   notebook per student in notebooks/, the only place it may write.
   restore_power asks the student first (interrupt_on, human in the
   loop). agent/trace.py records each step for "How Zip worked".
+  agent/fallback.py: if Claude fails, takes more than 25 s or there is
+  no internet, the offline tutor answers that one message (the page
+  says "Zip is in offline mode for this answer"); the next message
+  tries Claude again. The server prints how long each Claude reply took.
+  python web/server.py --demo starts Maya at lesson 1, fresh; Teacher
+  view has "Restart demo".
 - web/index.html : one page UI, made for an 11-year-old (bright,
   friendly, never scary; our own guide "Zip" and colours, no other
   brand's look). Zip says the tutor's words (moods: happy, thinking,

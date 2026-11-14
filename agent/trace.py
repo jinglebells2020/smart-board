@@ -18,6 +18,8 @@ Teacher view.
 
 from langchain.agents.middleware import AgentMiddleware
 
+from agent.deadline import check_run
+
 from protocol import row_label
 
 
@@ -33,7 +35,12 @@ class TraceMiddleware(AgentMiddleware):
     def name(self):  # one per agent; subagents have their own stacks
         return f"TraceMiddleware[{self.who}]"
 
+    def wrap_model_call(self, request, handler):
+        check_run()  # a reply that was given up on stops here
+        return handler(request)
+
     def wrap_tool_call(self, request, handler):
+        check_run()  # a given-up reply never touches the board again
         call = request.tool_call
         self.session.trace.append({"who": self.who, "tool": call.get("name"),
                                    "args": dict(call.get("args") or {})})

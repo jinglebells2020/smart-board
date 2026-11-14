@@ -100,13 +100,17 @@ back. A yellow "new release of pip" notice is fine to ignore.
 python -m unittest -v
 ```
 
-Wait about 40 seconds. The last lines should be:
+Wait about 2 minutes. The last lines should be:
 
 ```
-Ran 184 tests in 30.4s
+Ran 380 tests in 80.0s
 
-OK
+OK (skipped=1)
 ```
+
+(The time is different on every computer. `skipped=1` is the page
+layout check that needs a browser tool most laptops do not have; it is
+fine. Plain `OK` is fine too.)
 
 If it says `FAILED`, copy the whole output and send it to your
 teammate or to Claude.
@@ -198,7 +202,12 @@ test without paying for Claude.
    (`--lesson 1` skips lesson 0; leave it out to start there.)
    A line now says `Model: anthropic:claude-opus-5-5` instead of
    "offline practice tutor". Use the same steps as Part C. Replies are
-   in Claude's own words now and take a few seconds.
+   in Claude's own words now and take a few seconds. After each one a
+   line says how long it took (`[14:05:12] Claude reply took 6.4 s`).
+   If Claude fails, takes more than 25 seconds or the internet is down,
+   the offline tutor answers that message and the tutor's reply is
+   followed by `(Zip is in offline mode for this answer.)`. The next
+   message tries Claude again.
 
 5. The line above it says where Maya's **notebook** is
    (`notebooks\maya.md`). Claude reads it at the start of every
@@ -228,6 +237,8 @@ The tests in Part B never use the key, even when it is set.
 
 2. Open Chrome or Edge and go to **http://localhost:8000**
 3. Press **F11** for full screen. Everything fits on one 1080p screen.
+   On a smaller laptop screen the page scrolls a little instead (scroll
+   down to see the pretend board); nothing is squeezed or covered.
 
    A new student starts at **lesson 0, How a breadboard connects**.
    There is nothing to build:
@@ -352,7 +363,8 @@ The tests in Part B never use the key, even when it is set.
 5. **New student** (in the Teacher drawer) forgets the history and the stars
    and starts again at lesson 0, with an empty notebook. (The old
    notebook is kept in the `notebooks` folder with the date in its
-   name.) Use it before each demo.
+   name.) **Restart demo**, next to it, starts the demo again: Maya at
+   lesson 1 with a fresh history and notebook (Part G).
 6. To see the student's notebook, open the Teacher drawer and click **Open
    the student's notebook** (or go to http://localhost:8000/api/notebook
    in a second tab), and press F5 to refresh it after a check. To give
@@ -361,7 +373,11 @@ The tests in Part B never use the key, even when it is set.
 7. To stop: click the Command Prompt window and press **Ctrl+C**.
 
 With `set ANTHROPIC_API_KEY=...` done first (Part D), the page uses
-Claude. The Teacher drawer says which tutor is running.
+Claude. The Teacher drawer says which tutor is running. If Claude fails,
+takes more than 25 seconds, or the internet is down, that one answer
+comes from the offline tutor and the page says **"Zip is in offline mode
+for this answer"** under Zip's words; the next message tries Claude
+again (Part G, step 5).
 
 If the page shows a yellow bar saying Zip cannot reach the tutor
 program, the server window was closed. Run step 1 again.
@@ -456,6 +472,65 @@ number, for example `--baud 57600`. Both sides must use the same speed.
 
 ---
 
+## Part G: the demo (one command, safe if the internet fails)
+
+Use this for judges or a class.
+
+1. Open Command Prompt in the project folder with `(.venv)` showing
+   (see "Every time after the first" below). For Claude's own words,
+   also run the `set ANTHROPIC_API_KEY=...` line from Part D. Without a
+   key the demo still works, with the offline tutor's fixed sentences.
+2. Start the demo:
+
+   ```
+   python web\server.py --demo
+   ```
+
+   This starts fresh: the student is **Maya**, at **lesson 1**, with an
+   empty mistake history and a new notebook (her old notebook is kept
+   in the `notebooks` folder with the date in its name). The window
+   prints:
+
+   ```
+   DEMO READY: student Maya, lesson 1, fresh start.
+   Demo URL: http://localhost:8000   (press F11 in the browser for full screen)
+   ```
+
+3. Open Chrome or Edge, go to **http://localhost:8000**, press **F11**.
+   Follow the demo script in the README ("Demo script" or "LangChain
+   demo (60 seconds)").
+4. **Leave the black window where you can see it.** With a key, every
+   Claude reply adds one line with how long it took, for example:
+
+   ```
+   [14:05:12] Claude reply took 6.4 s
+   ```
+
+5. **If the internet drops, or Claude takes more than 25 seconds**, the
+   demo keeps going: that one answer comes from the offline tutor, and
+   under Zip's words a small grey note says **"Zip is in offline mode
+   for this answer"**. The black window says why, for example:
+
+   ```
+   [14:06:40] Claude failed after 0.5 s (could not reach Claude: is the internet connected?). The offline tutor answered this message; the next one tries Claude again.
+   ```
+
+   Just keep going: the next message tries Claude again by itself. You
+   do not need to restart anything. Power cuts, "power on only when
+   you ask", measuring right after power comes on, and the hint button
+   never need Claude: they always work.
+6. **To start the demo over** (for the next judge): click **Teacher**
+   (top right) → **Restart demo** → **OK**. Maya is back at lesson 1
+   with a fresh history and notebook, the pretend board has a correct
+   circuit again, and the power is on. Then **Close**.
+7. To stop: click the black window and press **Ctrl+C**.
+
+`--demo` works with the other options too, for example
+`python web\server.py --demo --serial COM3` for a real board, or
+`--port 8001` if port 8000 is busy.
+
+---
+
 ## Every time after the first
 
 1. Press the Windows key, type `cmd`, press Enter.
@@ -476,7 +551,7 @@ number, for example `--baud 57600`. Both sides must use the same speed.
    ```
 
 4. If `requirements.txt` changed, run Step 6 again. Then run Part B,
-   C, D, E or F.
+   C, D, E, F or G.
 
 ---
 
@@ -490,6 +565,7 @@ number, for example `--baud 57600`. Both sides must use the same speed.
 | `'git' is not recognized`                       | Do Step 2, then close and reopen Command Prompt |
 | Error with `401` or `authentication` in Part D  | The key is wrong or has spaces. Run the `set` line again |
 | The tutor says `This is not a mistake I know yet` | Normal for the "Not on the list" circuits. Otherwise the fake board may show a circuit for another lesson: type `/list` and `/build` one of those |
+| "Zip is in offline mode for this answer" under Zip's words | Claude did not answer in time, or the internet is down. The black window says why. Keep going: the next message tries Claude again. If it says `did not accept the API key`, run the `set` line from Part D again and restart the server |
 | `OSError: ... address already in use` (Part E)  | The server is already running in another window. Use that one, or run `python web\server.py --port 8001` and open http://localhost:8001 |
 | `Cannot open COM3 ... Access is denied` (Part F) | Another program has the port: close the Arduino Serial Monitor, or the other server window (Ctrl+C), then try again |
 | `No serial ports found` (Part F)                | The board is not plugged in, the cable carries no data, or the driver is missing. See Part F, Step 1 |

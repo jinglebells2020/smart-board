@@ -177,6 +177,8 @@ class TestSafety(unittest.TestCase):
 class TestNextLesson(unittest.TestCase):
     def pass_lesson(self, session, lesson_id):
         session.board.board.set_scenario(lesson_id, "correct")  # the fake board
+        if session.is_explore(lesson_id):
+            session.record_quiz(lesson_id, "intro", 0, "intro")  # lesson 0: its question
         session.measure()
         return session.next_lesson()
 
@@ -212,14 +214,16 @@ class TestNextLesson(unittest.TestCase):
         self.pass_lesson(session, 1)
         session.log_mistake("bottom_1k")
         session.log_mistake("middle_floating")
-        result = self.pass_lesson(session, 2)
+        self.assertEqual(self.pass_lesson(session, 2)["lesson"], 0)  # skipped: comes now
+        result = self.pass_lesson(session, 0)
         self.assertEqual(result["lesson"], 2)
         self.assertIn("most mistakes", result["reason"])
 
     def test_all_passed_no_mistakes_is_done(self):
         session = Session(FakeBoard(1, "correct"), lesson=1)
         self.pass_lesson(session, 1)
-        self.assertIsNone(self.pass_lesson(session, 2)["lesson"])
+        self.assertEqual(self.pass_lesson(session, 2)["lesson"], 0)  # lesson 0 was skipped
+        self.assertIsNone(self.pass_lesson(session, 0)["lesson"])
 
     def test_agent_switches_lesson(self):
         board, session, agent = setup(1, "correct")

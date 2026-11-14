@@ -461,6 +461,11 @@ class TestTalksToYou(Case):
     def test_next_lesson_reason_when_everything_is_passed(self):
         self.check()                    # lesson 1, no mistakes
         out = self.check()              # lesson 2, no mistakes
+        # Started at lesson 1: lesson 0 was skipped, so it comes now.
+        self.assertIn("You skipped lesson 0", out["reply"])
+        self.assertNotIn("You passed every lesson", out["reply"])
+        self.app.quiz("intro", LESSONS[0]["intro_lesson"]["answer"])
+        out = self.check()              # lesson 0, its question answered
         self.assertIn("You passed every lesson", out["reply"])
 
     def test_no_reply_talks_about_the_student(self):

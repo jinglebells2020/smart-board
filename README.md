@@ -69,7 +69,9 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (354 tests). They never call Claude, so
+The last line should say `OK` (380 tests; it says `OK (skipped=1)` on a
+computer without Node.js and Playwright, which the page-layout browser
+check needs). They never call Claude, so
 they work without an API key.
 
 ## Run the projector page
@@ -79,6 +81,33 @@ python web/server.py --fresh
 ```
 
 Then open http://localhost:8000.
+
+## Start the demo (one command)
+
+```bash
+python web/server.py --demo
+```
+
+It starts fresh: student **Maya**, **lesson 1**, an empty mistake
+history and a new notebook, and prints the demo URL
+(http://localhost:8000). To start over for the next judge: **Teacher →
+Restart demo**. Step by step for Windows: RUN.md Part G.
+
+**Safe if the internet fails.** If a call to Claude fails, takes more
+than 25 seconds, or there is no internet, the offline tutor answers that
+one message and the page says **"Zip is in offline mode for this
+answer"** under Zip's words. The next message tries Claude again.
+Safety and hints never depend on Claude: power cuts, power only when
+the student asks, measuring right after power comes on, and the hint
+button are plain Python. A Claude reply that failed halfway is undone
+first (the teaching state, not the power), so nothing is counted twice
+(`agent/fallback.py`). The server window prints one line per Claude
+reply with how long it took:
+
+```
+[14:05:12] Claude reply took 6.4 s
+[14:06:40] Claude failed after 0.5 s (could not reach Claude: is the internet connected?). The offline tutor answered this message; the next one tries Claude again.
+```
 
 ## Use a real board
 
@@ -179,16 +208,22 @@ Three zones fill the screen:
 - A short **celebration** when a circuit is correct: the rows glow
   green, a little confetti, Zip bounces. No sound.
 - **Teacher drawer** (closed when the page opens, slides in over Zip):
-  practice mode, board status, New student, the notebook link, what the
+  practice mode, board status, New student, Restart demo, the notebook link, what the
   tutor did, and the mistake history.
 
-One HTML file, no internet, fits one 1920x1080 screen without
-scrolling, and has a phone layout.
+One HTML file, no internet. On a 1920x1080 screen everything fits without
+scrolling. On shorter laptop windows (from 1280x560) the page scrolls
+instead of squeezing: the breadboard drawing keeps at least 300 px of
+height, Zip's words show at least 4 lines, and nothing overlaps
+(checked in a real browser by `tests/test_page_layout.py`). It also has
+a phone layout.
 
 ## Demo script
 
-Works today with the fake board. Show it on the projector page
-(`python web/server.py --fresh`, clicks in RUN.md Part E). The
+Works today with the fake board. Start it with
+`python web/server.py --demo` (Maya at lesson 1; for step 0 use
+`python web/server.py --fresh`, which starts a new student at lesson 0).
+Clicks are in RUN.md Part E. The
 **pretend board** (under the drawing) has the board's screen and its 4
 buttons. Pick circuits in **Teacher → Practice mode**.
 
@@ -257,14 +292,17 @@ in their own context, so the tutor's conversation stays short. Tests:
 
 ## LangChain demo (60 seconds)
 
-Start the page with a named student, so the notebook is Maya's, at
-lesson 1 (a new student would start at lesson 0, which has no circuit):
+Start the demo: Maya at lesson 1 (lesson 0 has no circuit), with a
+fresh history and notebook:
 
 ```
-python web\server.py --fresh --student Maya --lesson 1
+python web\server.py --demo
 ```
 
-Open http://localhost:8000, press F11. To pick a circuit: **Teacher**
+Open http://localhost:8000, press F11. Keep the black window in view:
+each Claude reply prints how long it took. If one answer says "Zip is
+in offline mode for this answer", keep going (see "Start the demo"
+above). Between judges: **Teacher → Restart demo**. To pick a circuit: **Teacher**
 (top right) → **Practice mode** → the circuit → **Close**. To show what
 Zip did: **Teacher** → **How Zip worked**.
 

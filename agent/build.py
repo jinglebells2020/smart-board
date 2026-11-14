@@ -7,6 +7,8 @@ the offline ScriptedTutorModel is used, so everything still runs.
 import os
 import uuid
 
+from agent.deadline import run_with_timeout
+
 from deepagents import create_deep_agent
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
@@ -20,6 +22,7 @@ from agent.tools import make_tools
 from agent.trace import TraceMiddleware
 
 DEFAULT_MODEL = "claude-opus-5-5"
+CLAUDE_TIMEOUT = 25  # seconds: after this the offline tutor answers instead
 
 
 def make_model():
@@ -44,6 +47,11 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
     it on; answer_power() gives the student's yes or no."""
     if model is None:
         model, _ = make_model()
+    if isinstance(model, str):
+        # Claude: each call gives up after CLAUDE_TIMEOUT seconds (so the
+        # offline tutor can answer) and is tried at most twice.
+        from langchain.chat_models import init_chat_model
+        model = init_chat_model(model, timeout=CLAUDE_TIMEOUT, max_retries=1)
     # The detective subagent (task tool). Offline, it gets its own scripted
     # model; with Claude it uses the same model as the tutor.
     if detective_model is None and isinstance(model, ScriptedTutorModel):
@@ -79,6 +87,7 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
         **extra,
     )
     agent.smart_board_checkpointed = ask_before_power
+    agent.smart_board_offline = isinstance(model, ScriptedTutorModel)
     agent.smart_board_pending = None  # a reply waiting for the student's yes or no
     # ask() tells the session what the student said, so plain Python (not
     # the AI) decides whether this message may turn power on.
@@ -86,13 +95,16 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
     return agent
 
 
-def ask(agent, history, text):
+def ask(agent, history, text, timeout=None):
     """Send one student message. history is the list of past messages,
     updated in place. Returns the agent's reply text and the new messages.
 
     With ask_before_power, the reply can stop before the power comes back
     on: then the reply is POWER_QUESTION, agent.smart_board_pending is set,
-    and answer_power() finishes the reply."""
+    and answer_power() finishes the reply.
+
+    timeout: give up after this many seconds (ReplyTimeout); the history
+    is then left as it was."""
     session = getattr(agent, "smart_board_session", None)
     if session is not None:
         session.hear(text)
@@ -102,11 +114,12 @@ def ask(agent, history, text):
     # that is waiting for the student, and memory is read fresh every time.
     config = ({"configurable": {"thread_id": uuid.uuid4().hex}}
               if getattr(agent, "smart_board_checkpointed", False) else None)
-    result = agent.invoke({"messages": history + [{"role": "user", "content": text}]}, config)
+    messages = history + [{"role": "user", "content": text}]
+    result = run_with_timeout(lambda: agent.invoke({"messages": messages}, config), timeout)
     return _finish(agent, history, before, result, config)
 
 
-def answer_power(agent, history, yes):
+def answer_power(agent, history, yes, timeout=None):
     """The student's answer to "Turn the power back on?". Yes counts as the
     student asking for power; restore_power then runs, measures at once and
     cuts again if the circuit is still unsafe. No: the tool never runs."""
@@ -118,7 +131,9 @@ def answer_power(agent, history, yes):
     session.restore_allowed = bool(yes)  # pressing Yes is asking for power
     decision = ({"type": "approve"} if yes else
                 {"type": "reject", "message": "You said no: the power stays off."})
-    result = agent.invoke(Command(resume={"decisions": [decision]}), pending["config"])
+    result = run_with_timeout(
+        lambda: agent.invoke(Command(resume={"decisions": [decision]}), pending["config"]),
+        timeout)
     return _finish(agent, history, pending["before"], result, pending["config"])
 
 
