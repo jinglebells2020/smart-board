@@ -106,6 +106,11 @@ class ScriptedTutorModel(BaseChatModel):
         last_read = reads[-1] if reads else None
         check = last_read["lesson_check"] if last_read else {}
         status = check.get("status")
+        if check.get("moved"):  # built somewhere else on the board: say so first
+            plain_reply = reply
+
+            def reply(text):
+                return plain_reply(f"{check['moved']} {text}")
 
         # Power is off: ask for it to come back on. Plain Python decides
         # whether the student asked; if not, restore_power refuses.

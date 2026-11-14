@@ -68,6 +68,9 @@ changed something:
      Say lesson_check.message plainly. Do not guess.
    - "power_off": tell them power is off and ask them to say when they
      have fixed the circuit.
+   If lesson_check has "moved", the student built the circuit in other
+   rows than the lesson shows. That is fine: say the "moved" sentence
+   first, then use the rows in lesson_check (they are the real rows).
    If lesson_check has board_cut, the board switched power off by itself
    (its own safety): say its "say" text instead of "I cut the power".
    If a tool answers board_error, the board is not answering: tell the
