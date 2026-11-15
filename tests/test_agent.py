@@ -214,7 +214,8 @@ class TestNextLesson(unittest.TestCase):
         self.pass_lesson(session, 1)
         session.log_mistake("bottom_1k")
         session.log_mistake("middle_floating")
-        self.assertEqual(self.pass_lesson(session, 2)["lesson"], 0)  # skipped: comes now
+        self.assertEqual(self.pass_lesson(session, 2)["lesson"], 3)
+        self.assertEqual(self.pass_lesson(session, 3)["lesson"], 0)  # skipped: comes now
         result = self.pass_lesson(session, 0)
         self.assertEqual(result["lesson"], 2)
         self.assertIn("most mistakes", result["reason"])
@@ -222,7 +223,8 @@ class TestNextLesson(unittest.TestCase):
     def test_all_passed_no_mistakes_is_done(self):
         session = Session(FakeBoard(1, "correct"), lesson=1)
         self.pass_lesson(session, 1)
-        self.assertEqual(self.pass_lesson(session, 2)["lesson"], 0)  # lesson 0 was skipped
+        self.assertEqual(self.pass_lesson(session, 2)["lesson"], 3)
+        self.assertEqual(self.pass_lesson(session, 3)["lesson"], 0)  # lesson 0 was skipped
         self.assertIsNone(self.pass_lesson(session, 0)["lesson"])
 
     def test_agent_switches_lesson(self):

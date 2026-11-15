@@ -131,7 +131,7 @@
     },
     {
       "id": "led_backwards",
-      "description": "LED may be backwards, or its long leg may not be in the resistor's row",
+      "description": "LED may be backwards, in the wrong row, or missing (the board cannot tell which)",
       "rows": [
         "T10",
         "T12"
@@ -156,8 +156,8 @@
         }
       },
       "action": "hint",
-      "hint": "Almost no current is flowing, but the row before the LED still has the full 5 volts. So the current is stopped at the LED. Look at the LED's long leg, the one marked + in the drawing: notice which row it is in, and which way it faces.",
-      "explain": "Two things can cause this, and the board cannot tell which one: the LED may be in backwards, or its long leg may not be in the same row as the resistor. The long leg (+) should share a row with the resistor, and the short leg (-) should lead to ground.",
+      "hint": "Almost no current is flowing, but the row before the LED still has the full 5 volts. So the current is stopped at the LED: it may be backwards, in the wrong row, or missing, and the board cannot tell which. Look at the LED's long leg, the one marked + in the drawing: notice which row it is in, and which way it faces.",
+      "explain": "Three things can cause this, and the board cannot tell which one: the LED may be in backwards, it may be in the wrong row (its long leg not in the same row as the resistor), or it may be missing. The long leg (+) should share a row with the resistor, and the short leg (-) should lead to ground.",
       "mini_lesson": {
         "title": "LEDs are one-way doors",
         "idea": "An LED is like a one-way door. Current can only go through it in one direction, and only if the door is connected on both sides. If the door faces the wrong way or is not connected, the current stops.",

@@ -17,8 +17,8 @@ written at about a 6th grade reading level.
 
 | Part                     | Status                                        |
 |--------------------------|-----------------------------------------------|
-| `sim/fake_board.py`      | Done. Speaks serial protocol version 2. Simulates lessons 0, 1 and 2, every listed mistake (including a loose leg that flickers) and two unlisted ones. Starts with any rows, with or without a current sensor, power switch or screen |
-| `lessons/*.json`         | Done for lesson 0 (how a breadboard connects: tap holes, one question) and lessons 1 and 2: 12 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). Any other mistake gets a clue from the numbers |
+| `sim/fake_board.py`      | Done. Speaks serial protocol version 2. Simulates lessons 0 to 3, every listed mistake (including a loose leg that flickers), two unlisted ones, a part plugged into a row outside the plan (`stray_part`) and 1 to 3 copies of a circuit (`COPIES T0 T15 B0`). Starts with any rows, with or without a current sensor, power switch or screen |
+| `lessons/*.json`         | Done for lesson 0 (how a breadboard connects: tap holes, one question), lessons 1 and 2, and lesson 3 "More LEDs" (the LED circuit with a 330 ohm resistor, built 1 to 3 times anywhere; each copy is checked, and the total current must be 3 x 9.1 = 27.3 mA or less for three): 18 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). Any other mistake gets a clue from the numbers |
 | `docs/SERIAL_PROTOCOL.md`| Done, version 2: a voltage per row, empty rows, current (or null), row lights with colors, screen text, 4 buttons |
 | `protocol.py`            | Done. Row names, light colors, button meanings and screen size, in one place |
 | `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
@@ -70,7 +70,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (380 tests; it says `OK (skipped=1)` on a
+The last line should say `OK` (419 tests; it says `OK (skipped=1)` on a
 computer without Node.js and Playwright, which the page-layout browser
 check needs). They never call Claude, so
 they work without an API key.
