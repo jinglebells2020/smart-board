@@ -29,6 +29,8 @@ written at about a 6th grade reading level.
 | `agent/activity.py` | Done. Agent activity: a live panel for judges (closed for the student, opens with the Teacher view) listing the last 50 actions of Zip's agents, newest first, with who did it, the kind of action and the time, and counts per agent. Built from the same recorded steps as "How Zip worked", plus instant help and plain-Python safety cuts. It only reads: nothing about what Zip does changes. |
 | `sim/solver.py`, free build (phase 1) | Done. **Usable rows**: `--usable-rows "T3-T8,T20-T24,B40-B45"` (or the `SMART_BOARD_USABLE_ROWS` environment variable; default every row) for a board where only some rows work: the others are never measured, never called empty, never lit, and are grey in the drawing. **Circuit solver**: the fake board works out any circuit (wires, resistors, LEDs of 5 colours, push buttons) with nodal analysis, so a free build reads like a real board. **Random judge circuits** (`/api/random-circuit`), sometimes with a typical mistake (LED backwards, missing link, short, LED with no resistor: the safety cut still works). **Parts tray** ("What parts did you use?" and "What should it do?"). **Free build** (`--free-build`): after lesson 4 in the path, no plan, the check reports every measured row, the current and plain facts. The AI that works out what was built comes in phase 2. |
 | `agent/reader.py`, `agent/feedback.py`, free build (phase 2) | Done. In free build, every check reads ANY circuit: plain Python works out the facts, the **circuit reader** (a Claude subagent; offline, a plain-Python reader for one chain of parts) guesses which parts are on which rows, and a **physics check** in plain Python works the guess out with `sim/solver.py` and compares it with every measured row (within 0.3 V) and the current (within 20 % or 2 mA). If it does not match, the reader is told what did not match and tries once more; the best guess is kept. Then Zip gives feedback, hint first: is each LED on and why, shorts, parts doing nothing, open paths, the current, and whether the circuit does what the student wanted. Red, yellow and green lights only on usable rows. When the guess does not fit, Zip says honestly that it is not sure and asks about the parts tray. The page shows **"Zip thinks you built:"** with a check mark for each part the physics check confirmed. |
+| `agent/planner.py`, free build (several hypotheses) | Done. When no current flows, several circuits can read the same: the circuit reader gives up to 3; every one that matches every usable row is kept and ranked in Python (all rows with a voltage explained, tray parts used, a usual mistake before invisible wires). The planner simulates every allowed action on each with the solver and picks the one that tells them apart (preferring one that really fixes the most likely problem, never an unsafe one); after the student does it, the one that came true is kept and Zip names its problem, hint first. |
+| LangSmith tracing (optional) | Done. Off by default. Set `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY` and `LANGSMITH_PROJECT=genesis` (RUN.md Part H) and every run, tool and subagent shows on smith.langchain.com; the server prints "LangSmith tracing: on (project genesis)". No extra install: `langsmith` comes with LangChain. |
 | `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`) |
 | `tools/check_board.py`   | Done. Checks a board's firmware against the protocol and prints PASS or FAIL per rule. How the hardware teammate tests the firmware (docs/FIRMWARE_GUIDE.md) |
 | `firmware/`              | Not written yet. docs/FIRMWARE_GUIDE.md says what it must do |
@@ -355,24 +357,98 @@ buttons. Pick circuits in **Teacher → Practice mode**.
 
 ## How we use deepagents
 
-The tutor is one `create_deep_agent` (agent/build.py) with our board
-tools. These deepagents features do real teaching work. Real Claude is
-not needed to see them: offline, scripted models run the same
-deepagents loop, so every test exercises the real machinery.
+**AI decides, physics verifies, Python guards.**
 
-| Feature | deepagents part | File | Why it helps a student |
-|---|---|---|---|
-| **The detective** | A subagent (`subagents=[...]`), called through the built-in `task` tool, only when a mistake is not on the lesson's list. Structured answer (`response_format`) | `agent/detective.py` | The lesson file cannot list every mistake. The detective puts the row voltages next to the lesson layout and answers with at most two likely causes, as **questions** ("Is the LED's long leg pushed all the way into row 10?"). Python rejects more than two, anything that is not a question, or sure-sounding words, so the student is never told a guess as if it were true. |
-| **Student notebook** | Memory (`memory=[...]`) on a `FilesystemBackend`, plus `permissions` | `agent/notebook.py` | One file per student, loaded at the start of every reply, so Zip remembers you between days ("Your notebook says this happened before"). After each check Zip adds one line with its own `edit_file` tool. Permissions let it write this one file and nothing else. |
-| **Ask before power comes back on** | Human in the loop: `interrupt_on={"restore_power": ...}` with a checkpointer (`InMemorySaver`) | `agent/build.py` (`ask`, `answer_power`), `web/server.py` | Before Zip switches the power on, the run pauses and Zip asks "Turn the power back on?" with **Yes** / **No** (board button 4 = Yes). The student stays in charge of the power. Yes still measures at once and cuts again if the circuit is unsafe (plain Python); No means the tool never runs. |
-| **Lesson writer with a grader** | A subagent (`task` tool) whose agent runs `RubricMiddleware`: a grader agent checks the new lesson against a rubric and sends it back for revision | `agent/lesson_writer.py` | When the same mistake comes back, or the quiz was answered wrong, the old explanation did not stick. The lesson writer writes a new mini-lesson with a **different everyday comparison** (a bike tire valve instead of a one-way door). The grader checks: at most 3 short sentences, 6th grade words, never says what to change on the board, exactly 3 options with 1 right. Then plain Python checks it again; only then is it shown, tagged **Written by Zip for you**. Otherwise the built-in card stays. The notebook notes which comparison was used, so it is never repeated. |
-| **"How Zip worked"** | A middleware (`wrap_tool_call`) on the tutor and on each subagent, the memory backend, and the grader's `on_evaluation` | `agent/trace.py` | In Teacher view, every reply is listed step by step in plain words, built from what really ran, never guessed. Subagent steps carry a badge (detective, lesson writer, grader). Teachers and judges see the agent think. |
+Genesis is built for the LangChain "Best use of deepagents" track. The
+tutor, Zip, is one `create_deep_agent`. Around it, plain Python measures
+the board and keeps it safe, more agents (some called by Zip, some
+called by Python on every check) do the reasoning, and plain Python
+checks every AI answer before a student sees it. Real Claude is not
+needed to see the machinery: offline, scripted models run the same
+deepagents loop, so the 640 tests exercise the real thing.
+
+```mermaid
+flowchart TD
+  B["Breadboard: row voltages, current, 4 buttons"] --> PY
+  subgraph PY["Step 1: Python first, no AI"]
+    S["Safety cut above 30 mA (Session.measure)"]
+    PL["Placement: built in other rows (agent/placement.py)"]
+    PF["Physics facts (agent/physics.py)"]
+    CD["Change detector, instant help (agent/live.py)"]
+  end
+  PY -- "every check" --> ORCH
+  subgraph ORCH["Step 2: run by Python"]
+    DG["diagnoser, create_agent: Diagnosis (agent/diagnoser.py)"]
+    CR["circuit_reader, create_agent, free build: CircuitReading (agent/reader.py)"]
+  end
+  ORCH --> V
+  subgraph V["Step 3: Python validators"]
+    V1["Grounded causes: validate_diagnosis"]
+    V2["Solver check: physics_check + sim/solver.py"]
+    V3["Experiment check: validate_instruction"]
+    V4["Power approval: interrupt_on + request_power_on"]
+  end
+  V -- "lesson_check: facts, diagnosis, circuit guess, feedback" --> Z
+  Z["Step 4: Zip tutor, create_deep_agent (agent/build.py). Its tools (read_rows, light_row, cut_power, run_experiment ...) run steps 1 to 3"]
+  Z -- "task, only when Zip decides" --> SUB
+  subgraph SUB["Subagents chosen by Zip"]
+    DET["detective: DetectiveAnswer, checked by careful_question (agent/detective.py)"]
+    LW["lesson_writer + RubricMiddleware grader: GraderResponse, checked by validate_lesson (agent/lesson_writer.py)"]
+  end
+  Z --> OUT["Step 5: board lights, screen, power; page: Zip's words, mini-lesson, How Zip worked"]
+```
+
+### Every deepagents / LangChain feature we use
+
+| Feature | Where | What it does in Genesis |
+|---|---|---|
+| `create_deep_agent` | `agent/build.py` (`build_agent`) | Zip, the tutor: system prompt, the board tools, two subagents, the student's notebook as memory, our middleware and the power approval, in one agent. |
+| Subagents through the `task` tool | `agent/detective.py` (`detective_spec`, a SubAgent), `agent/lesson_writer.py` (`lesson_writer_spec`, a CompiledSubAgent) | Zip calls them only when needed: the detective for a mistake no lesson lists, the lesson writer when the same mistake comes back or a quiz was answered wrong. Each runs in its own context with one read-only tool, so Zip's conversation stays short. |
+| `create_agent` | `agent/diagnoser.py` (`make_diagnoser`), `agent/reader.py` (`make_reader`), `agent/lesson_writer.py` | The diagnoser and the circuit reader, built from SubAgent-shaped specs and run by Python on every check; and the lesson writer's own agent, which carries the grader. |
+| Structured output (`response_format`, plain pydantic schemas, not ToolStrategy) | `DetectiveAnswer` (`agent/detective.py`), `Diagnosis` (`agent/diagnoser.py`), `CircuitReading` (`agent/reader.py`), `GraderResponse` (RubricMiddleware's grader) | Every AI answer comes back as fields Python can check: at most two causes as questions, causes that cite fact ids, up to 3 circuits with parts on rows, a grade per rubric rule. |
+| Memory (`memory=[...]`) | `agent/build.py`, `agent/notebook.py` | One notebook per student, loaded at the start of every reply, so Zip remembers a student between days. Zip adds one line after each check with its own `edit_file` tool. |
+| `CompositeBackend`, `FilesystemBackend`, `StateBackend`, `FilesystemPermission` | `agent/notebook.py` (`notebook_tools_backend`) | Files under `/notebook/` are real files in `notebooks/` (FilesystemBackend); everything else lives only in the agent's state (StateBackend). Permissions let Zip read and write this student's notebook and write nothing else. |
+| `interrupt_on` + `InMemorySaver` (human in the loop) | `agent/build.py` (`ask`, `answer_power`, `answer_experiment`), `agent/tools.py` (`run_experiment`) | Before `restore_power` the run pauses and the page asks **"Turn the power back on?"**. Experiments pause the same way with LangGraph's `interrupt()` inside the tool ("Turn around the LED in row 45 ..." with **Done** / **I can't**). Both resume with `Command(resume=...)` on the same checkpointer. |
+| `RubricMiddleware` | `agent/lesson_writer.py` | A grader agent checks each new mini-lesson against a rubric (3 short sentences, 6th grade words, never the fix, 3 options with 1 right) and sends it back for another try (at most 2 rounds). `on_evaluation` records each grade. |
+| Custom `AgentMiddleware` | `agent/trace.py` (`TraceMiddleware`, `DetectiveGuard`) | `TraceMiddleware.wrap_tool_call` records every tool call of Zip and of each subagent for "How Zip worked" and the Agent activity panel; its `wrap_model_call` stops a reply that was given up on (too slow). `DetectiveGuard` answers a `task` call to the detective in Python when the diagnosis already explains the check (saves a slow call). |
+| `init_chat_model` | `agent/build.py`, `tools/eval_free_build.py` | Claude from `ANTHROPIC_API_KEY`, with a timeout per call and one retry. If Claude fails or is slow, the offline tutor answers that one message (`agent/fallback.py`). |
+| LangSmith tracing (optional) | environment variables only (RUN.md Part H) | `LANGSMITH_TRACING=true` shows every run, tool and subagent on smith.langchain.com. Off by default. |
+
+### Who decides when an agent runs
+
+- **The diagnoser and the circuit reader are run by Python on every
+  check**, not offered to Zip as tools. They are the core of every check,
+  so they must never be skipped or asked twice. They also run *after* the
+  safety cut, so a slow answer never delays it. Their answers are
+  grounded before anyone sees them: every cause must cite real fact ids
+  (`validate_diagnosis`), and every circuit guess is worked out with a
+  circuit solver and compared with every usable row and the current
+  (`physics_check`). A guess that leaves a row with a voltage unexplained
+  is never used.
+- **The detective and the lesson writer are chosen by Zip**, through the
+  `task` tool, because they are needed only sometimes and the right
+  moment depends on the conversation: a mistake no lesson lists, or a
+  student who still does not get it (plain Python flags
+  `new_lesson_wanted`; Zip decides to call). Their answers are checked
+  too: at most two careful questions (`careful_question`), and a new
+  mini-lesson must pass both the grader and `validate_lesson`.
+- **Python guards** what must never depend on an AI: power cuts above
+  30 mA, power on only when the student asks (`interrupt_on` and
+  `request_power_on`), the hint button, PASS, which experiments may be
+  asked for (`validate_instruction`), and which rows may light up.
+
+### What judges can watch
+
+| Feature | Where | What it shows |
+|---|---|---|
+| **"How Zip worked"** | `agent/trace.py`, Teacher view | Every step of the latest reply in plain words, built from what really ran (TraceMiddleware, the memory backend, the grader's `on_evaluation`), never guessed. Subagent steps carry a badge. |
 | **Agent activity panel** | Reads the same recorded steps, live, plus instant help and plain-Python safety cuts | `agent/activity.py`, `web/server.py` (`activity` in `/api/state`) | Under the plan, a button **"Zip's agents: 37 actions"** opens a live list: the last 50 things the agents did, newest first, each with who did it (Zip (tutor), Diagnoser, Detective, Lesson writer, Grader, Build guide, Instant help, Python safety), what kind of action it was, and the time. Coloured chips count each agent, plus replies, experiments, lights set and power cuts. "Python safety" is plain Python with no AI (the physics facts, safety cuts), so judges see what the AI does and what plain Python does. One diagnosis shows as the facts (Python safety), then 3 diagnoser steps: asked, its answer, its causes checked against the facts. Zip's steps in an automatic check stay "Zip (tutor)" with a small **instant** tag; "Instant help" is only the change detector's own lines ("That fixed it."). Every agent has its own palette colour, never grey. Closed for the student; it opens with the Teacher view. Nothing changes what happens. |
 
-The subagents see only what they need (one read-only tool each) and run
-in their own context, so the tutor's conversation stays short. Tests:
-`tests/test_deepagents_features.py`, `tests/test_how_zip_worked.py`,
-`tests/test_ask_before_power.py`, `tests/test_lesson_writer.py`.
+Tests for these features: `tests/test_deepagents_features.py`,
+`tests/test_how_zip_worked.py`, `tests/test_ask_before_power.py`,
+`tests/test_lesson_writer.py`, `tests/test_diagnoser.py`,
+`tests/test_reader.py`, `tests/test_hypotheses.py`,
+`tests/test_zip_acts.py`, `tests/test_agent_activity.py`.
 
 ## LangChain demo (60 seconds)
 

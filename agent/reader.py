@@ -5,8 +5,8 @@ the measurements, and plain Python checks the answer against physics.
    the usable rows, every row's voltage (floating rows are left out: no
    path), the current, the supply, the parts tray and goal, and the plain
    facts. It answers with a CircuitGuess: the parts it thinks are there,
-   on which rows. A plain pydantic schema (response_format=CircuitGuess),
-   not ToolStrategy, like the diagnoser.
+   on which rows: up to 3 hypotheses, as a plain pydantic schema
+   (response_format=CircuitReading), not ToolStrategy, like the diagnoser.
 2. Plain Python checks the guess (physics_check): sim/solver.py works out
    what the guessed circuit WOULD read, and every row (and the current) is
    compared with what the board DID read: within 0.3 V, and the current

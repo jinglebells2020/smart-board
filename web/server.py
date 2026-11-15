@@ -1071,6 +1071,24 @@ def open_board(args):
         return None
 
 
+def tracing_line(environ=None):
+    """One line for the start-up message when LangSmith tracing is asked for
+    (LANGSMITH_TRACING=true), else None. LangChain reads the variables by
+    itself: this only says so. Never stops the server."""
+    environ = os.environ if environ is None else environ
+    if str(environ.get("LANGSMITH_TRACING", "")).strip().lower() not in ("true", "1", "yes"):
+        return None
+    try:
+        import langsmith  # noqa: F401  (comes with langchain)
+    except ImportError:
+        return ("LangSmith tracing was asked for, but the langsmith library is not installed. "
+                "Run  pip install langsmith  to use it. Zip works the same without it.")
+    line = f"LangSmith tracing: on (project {environ.get('LANGSMITH_PROJECT') or 'default'})"
+    if not environ.get("LANGSMITH_API_KEY"):
+        line += ". LANGSMITH_API_KEY is not set, so nothing can be sent."
+    return line
+
+
 def usable_rows_setting(flag, environ=None):
     """The usable rows: --usable-rows if given, else SMART_BOARD_USABLE_ROWS,
     else None (every row)."""
@@ -1154,6 +1172,8 @@ def main(argv=None):
     where = f"real board on {board.port}" if args.serial else "fake board"
     if app.board.usable is not None:
         print(f"Usable rows: {args.usable_rows} ({len(app.board.usable_rows)} rows).")
+    if tracing_line():
+        print(tracing_line())
     print(f"Tutor: {app.model_name}. Board: {where}, {caps['rows']} rows measured, "
           f"current sensor {'yes' if caps['has_current'] else 'no'}, "
           f"power switch {'yes' if caps['has_power_switch'] else 'no'}.")

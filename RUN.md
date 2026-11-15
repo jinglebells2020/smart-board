@@ -538,6 +538,56 @@ Use this for judges or a class.
 
 ---
 
+## Part H: see every step in LangSmith (optional, off by default)
+
+LangSmith is LangChain's website for looking at what an agent did: every
+call to Claude, every tool, every subagent, in order, with how long each
+took. Genesis needs no code for it: LangChain turns it on by itself when
+three settings are there. It is off unless you set them. (The
+`langsmith` library comes with LangChain, so nothing new to install.)
+
+**Privacy first:** the traces go to LangSmith's servers and include what
+the student typed, their notebook and the measurements. Use it with the
+demo student (Maya), not with real students' names.
+
+1. Make a free account at https://smith.langchain.com and create an API
+   key (Settings → API Keys). It starts with `lsv2_`. Never put it in a
+   file in this folder.
+2. In the Command Prompt window (with `(.venv)` showing), before
+   starting the server:
+
+   ```
+   set LANGSMITH_TRACING=true
+   ```
+
+   ```
+   set LANGSMITH_API_KEY=lsv2_PASTE-YOUR-KEY-HERE
+   ```
+
+   ```
+   set LANGSMITH_PROJECT=genesis
+   ```
+
+3. Start the page as usual (`python web\server.py --demo`). The black
+   window now prints:
+
+   ```
+   LangSmith tracing: on (project genesis)
+   ```
+
+4. Use the page, then open https://smith.langchain.com, click
+   **Projects** → **genesis**. Each reply of Zip is one run: open it to
+   see the tutor, its tools (read_rows, light_row, ...), the detective,
+   the lesson writer and its grader, the diagnoser and the circuit
+   reader, step by step.
+5. To turn it off: close the window, or run `set LANGSMITH_TRACING=` (empty).
+
+If the window says the key is not set, step 2 was skipped or typed in a
+different window: the `set` lines only last for that one window. The
+offline tutor (no Claude key) is traced too, so you can try it free.
+
+---
+
 ## Every time after the first
 
 1. Press the Windows key, type `cmd`, press Enter.
