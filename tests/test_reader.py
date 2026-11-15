@@ -42,7 +42,7 @@ def guess(*parts, sure=True):
 
 
 class FakeReader(BaseChatModel):
-    """Answers CircuitGuess from a script (the last answer repeats), and
+    """Answers CircuitReading from a script (the last answer repeats), and
     keeps every input it was given."""
     script: list = Field(default_factory=list)
     seen: list = Field(default_factory=list)
@@ -61,7 +61,10 @@ class FakeReader(BaseChatModel):
         if self.fail:
             raise RuntimeError("no answer")
         answer = self.script[min(len(self.seen) - 1, len(self.script) - 1)]
-        msg = AIMessage(content="", tool_calls=[{"name": "CircuitGuess", "args": answer, "id": "g"}])
+        if "parts" in answer:  # one guess: the reader's answer holds a list of them
+            answer = {"hypotheses": [answer]}
+        msg = AIMessage(content="", tool_calls=[{"name": "CircuitReading", "args": answer,
+                                                 "id": "g"}])
         return ChatResult(generations=[ChatGeneration(message=msg)])
 
 
@@ -172,7 +175,7 @@ class TestFeedback(unittest.TestCase):
         self.assertEqual(result["guess_score"], 1.0)
         main = result["main_problem"]
         self.assertEqual((main["kind"], main["light"]), ("led_backwards", "red"))
-        self.assertIn("long leg (+)", main["text"])
+        self.assertIn("is blocking the current: which way does its long leg go?", main["text"])
         self.assertIn("row 10", main["text"])  # names the rows, hint first
 
     def test_short(self):

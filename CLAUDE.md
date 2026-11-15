@@ -84,6 +84,11 @@ The software must work with any of those answers.
   runs facts -> circuit_reader subagent (CircuitGuess) -> physics check
   (sim/solver.py, max 2 tries, best kept) -> feedback list (hint first,
   usable rows only). tools/eval_free_build.py measures accuracy.
+  The reader gives up to 3 hypotheses (CircuitReading); Python keeps all
+  that pass and ranks them (tray parts used, usual mistakes when no
+  current flows). agent/planner.py picks the experiment that tells them
+  apart (tool plan_experiment); after it, the hypothesis that came true is
+  kept (result["hypothesis_kept"]). U1..U9 = rows the board cannot see.
 - agent/serial_board.py : SerialBoard, a real board on a USB serial
   port (pyserial), same methods as the fake board. Server and
   python -m agent take --serial <port|auto> and --baud.

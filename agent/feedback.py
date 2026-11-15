@@ -65,9 +65,37 @@ def _name(part):
     return "a part"
 
 
-def feedback_items(reading, measured, usable, tray=None):
+def _place(place):
+    if place in ("PT+", "PB+"):
+        return "the + line"
+    if place in ("PT-", "PB-"):
+        return "the - line"
+    if place in solver.UNSEEN:
+        return "a row I cannot measure"
+    return row_label(place).replace(" (lower half)", "")
+
+
+def problem_text(problem, parts):
+    """A usual mistake in a hypothesis (agent/reader.problems_of), hint
+    first: where to look and a question, never the whole fix."""
+    p = parts[problem["part"]]
+    a, b = sorted(p["rows"], key=lambda r: not is_row(r))  # the row first, then the line
+    if problem["kind"] == "led_backwards":
+        return (f"{_cap(_name(p))} between {_place(a)} and {_place(b)} is blocking the "
+                "current: which way does its long leg go?")
+    if problem["kind"] == "missing_link":
+        return (f"{_cap(_name(p))} in {_place(problem.get('row') or a)} may have a leg in a row "
+                "I cannot measure, so no current flows: is its other leg in the row you think?")
+    if problem["kind"] == "button_open":
+        return (f"The push button between {_place(a)} and {_place(b)} is not pressed, so no "
+                "current flows: press it and keep it pressed, then press Check.")
+    return ""
+
+
+def feedback_items(reading, measured, usable, tray=None, plan=None):
     """reading: read_and_check's answer (or None: no reader). measured: what
-    the board measured (agent/reader.measured_of). usable: usable rows."""
+    the board measured (agent/reader.measured_of). usable: usable rows.
+    plan: the experiment that tells the matching hypotheses apart (or None)."""
     usable = set(usable)
     items = []
 
@@ -101,7 +129,11 @@ def feedback_items(reading, measured, usable, tray=None):
     guess = (reading or {}).get("guess")
     score = (reading or {}).get("score", 0.0)
     if not guess or not guess.get("parts") or score < LOW_SCORE:
-        if driven:
+        tray_button = any(p.get("name") == "push button" for p in (tray or {}).get("parts", []))
+        if not driven and tray_button:
+            add("not_sure", "maybe", "Nothing I can measure has power yet. If the push button "
+                "is in the path, press it and keep it pressed, then press Check.")
+        elif driven:
             ask = ("Tap the parts you used in \"What parts did you use?\" and press Check again."
                    if not (tray and tray.get("parts")) else
                    "Is every part in the rows you think? Press Check again after you look.")
@@ -114,6 +146,23 @@ def feedback_items(reading, measured, usable, tray=None):
     total_flows = (current > FLOWS_MA) if sensor else (pred.get("current_ma", 0) > FLOWS_MA)
     floating = {r for r, v in measured["rows"].items() if v is None}
     said_open = set()
+
+    # The usual mistakes in the most likely hypothesis come first (hint first).
+    told = set()
+    for problem in (reading or {}).get("problems") or []:
+        p = parts[problem["part"]]
+        level, light = ("problem", "red") if problem["kind"] == "led_backwards" else ("maybe", "yellow")
+        add(problem["kind"], level, problem_text(problem, parts), p["rows"], light)
+        told.add(problem["part"])
+    # Other hypotheses that fit just as well, and the experiment that tells them apart.
+    for other in ((reading or {}).get("hypotheses") or [])[1:]:
+        other_parts = other["guess"]["parts"]
+        for problem in other.get("problems") or []:
+            add("could_be", "info", "It could also be this: " +
+                problem_text(problem, other_parts)[0].lower() + problem_text(problem, other_parts)[1:])
+            break
+    if plan:
+        add("experiment", "info", f"To find out which, try this: {plan['instruction']}")
 
     # Shorts: a wire across the two legs of another part.
     shorted = set()
@@ -129,7 +178,7 @@ def feedback_items(reading, measured, usable, tray=None):
                     f"{_name(p)}, so the current goes around it (a short).", p["rows"], "red")
 
     for i, p in enumerate(parts):
-        if i in shorted or p["kind"] in ("wire", "unknown"):
+        if i in shorted or i in told or p["kind"] in ("wire", "unknown"):
             continue
         a, b = p["rows"]
         va, vb = _volts(a, measured, supply), _volts(b, measured, supply)

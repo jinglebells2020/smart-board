@@ -13,13 +13,19 @@ MAX_GOAL = 200
 def clean_tray(parts, goal=""):
     """{"parts": [{"name", "count"}...], "other": text, "goal": text}, or
     ValueError. parts: [{"name": "220 ohm resistor", "count": 2},
-    {"name": "other", "text": "a buzzer"}, ...]."""
+    {"name": "other", "text": "a buzzer"}, ...], or plain names
+    ["push button", "330 ohm resistor", "green LED"] (one each; a name
+    that is not a tray part counts as "other"). Both kinds can be mixed."""
     if not isinstance(parts, list):
         raise ValueError("parts must be a list")
     counts, other = {}, []
     for p in parts:
+        if isinstance(p, str):
+            text = " ".join(p.split())
+            match = next((n for n in TRAY_PARTS if n.lower() == text.lower()), None)
+            p = {"name": match, "count": 1} if match else {"name": "other", "text": text}
         if not isinstance(p, dict):
-            raise ValueError("each part must be an object")
+            raise ValueError("each part must be a name or an object")
         name = str(p.get("name", "")).strip()
         if name == "other":
             text = " ".join(str(p.get("text", "")).split())[:MAX_OTHER]

@@ -16,6 +16,9 @@ import json
 
 from langgraph.types import interrupt
 
+from agent.planner import which_hypothesis
+from agent.reader import measured_of
+
 from agent.experiments import (MAX_EXPERIMENTS, diff_facts, facts_of, label, placed_parts,
                                validate_instruction)
 from agent.lessons import summarize
@@ -40,6 +43,32 @@ def _board_errors_in_words(tool):
                                "say": "The board is not answering. Check that its USB "
                                       "cable is plugged in."})
     return wrapper
+
+
+def _same_text(a, b):
+    return " ".join(str(a).lower().split()).rstrip(".") == " ".join(str(b).lower().split()).rstrip(".")
+
+
+def keep_hypothesis(session, plan, summary, result):
+    """After the planned experiment: compare the new readings with each
+    hypothesis' prediction and keep the one that came true. Adds
+    "hypothesis_kept" to result (and a "found" feedback item first)."""
+    kept = which_hypothesis(plan, measured_of(summary))
+    pred = plan["predictions"][kept["index"]]
+    found = {"index": kept["index"], "came_true": kept["all_matched"],
+             "matched": f"{kept['matched']} of {kept['total']}",
+             "circuit": pred.get("circuit"), "problem": pred.get("problem")}
+    session.trace.append({"who": "physics_check", "tool": "compare",
+                          "args": {"index": kept["index"], "came_true": kept["all_matched"]}})
+    result["hypothesis_kept"] = found
+    if found["problem"] and kept["all_matched"]:
+        item = {"kind": "found", "level": "problem", "rows": [], "light": None,
+                "text": "The experiment showed it: " + found["problem"][0].lower()
+                        + found["problem"][1:]}
+        result["feedback"] = [item] + list(result.get("feedback") or [])
+        result["main_problem"] = item
+    session.experiment_plan = None
+    return found
 
 
 def make_tools(session, can_pause=False):
@@ -215,8 +244,12 @@ def make_tools(session, can_pause=False):
             if session.last_check is None:
                 session.measure()
             summary, result = session.last_check
+            plan = session.experiment_plan
             pending = {"instruction": instruction, "parsed": parsed,
-                       "before": facts_of(session, summary, result)}
+                       "before": facts_of(session, summary, result),
+                       # Free build: the planned experiment, if this is it.
+                       "plan": plan if plan and _same_text(plan["instruction"], instruction)
+                       else None}
             session.experiment = pending  # kept while the run waits for the student
         answer = interrupt({"type": "experiment", "instruction": instruction.strip(),
                             "done_label": label(done_label, "Done"),
@@ -234,12 +267,36 @@ def make_tools(session, can_pause=False):
         changed, words = diff_facts(pending["before"], after)
         session.trace.append({"who": "tutor", "tool": "experiment_result",
                               "args": {"done": True, "changed": words}})
-        return json.dumps({"done": True, "before_facts": pending["before"],
-                           "after_facts": after, "changed": changed, "changed_words": words,
-                           "lesson_check": result})
+        out = {"done": True, "before_facts": pending["before"], "after_facts": after,
+               "changed": changed, "changed_words": words}
+        if pending.get("plan"):
+            # Free build: which hypothesis came true? (plain Python)
+            kept = keep_hypothesis(session, pending["plan"], summary, result)
+            out["hypothesis_kept"] = kept
+        out["lesson_check"] = result
+        return json.dumps(out)
+
+    def plan_experiment() -> str:
+        """Free build only: when more than one circuit fits the measurements
+        (lesson_check "hypotheses"), plain Python simulates every allowed
+        action on every hypothesis and returns the one that tells them
+        apart best: {"instruction", "action", "part", "rows", "predictions"
+        (what the board would read after it, for each hypothesis)}. Then
+        call run_experiment with exactly that instruction: after "done",
+        "hypothesis_kept" says which hypothesis came true."""
+        last = (session.last_check or ({}, {}))[1] or {}
+        plan = last.get("experiment_plan")
+        if not session.is_free():
+            return json.dumps({"plan": None, "why": "only in free build"})
+        if not plan:
+            return json.dumps({"plan": None,
+                               "why": "only one circuit fits, or no safe action tells them apart"})
+        session.experiment_plan = plan
+        return json.dumps({"plan": plan})
 
     tools = [read_rows, read_current, cut_power, restore_power, get_hint, light_row,
-             clear_lights, show_on_board, log_mistake, next_lesson, guide_next_part]
+             clear_lights, show_on_board, log_mistake, next_lesson, guide_next_part,
+             plan_experiment]
     if can_pause:
         tools.append(run_experiment)
     return [_board_errors_in_words(t) for t in tools]

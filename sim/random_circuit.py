@@ -55,8 +55,7 @@ def _part(rng, kind, a, b, led_chain):
         part["ohms"] = rng.choice(LED_RESISTORS if led_chain else RESISTORS)
     elif kind == "led":
         part["color"] = rng.choice(COLORS)
-    elif kind == "button":
-        part["closed"] = rng.random() < 0.7
+    # A push button has no "closed": it follows HOLD on / off, like a finger.
     return part
 
 
@@ -102,14 +101,11 @@ def random_circuit(seed=None, parts=3, usable_rows=None, mistake="random"):
         if mistake == "no_resistor":
             # Exactly one LED, straight between the + and - lines (wires and
             # maybe a button around it): far too much current flows.
-            kinds = ["wire" if k in ("resistor", "led") else k for k in kinds]
+            # (no button: the danger must not wait for a press)
+            kinds = ["wire" if k in ("resistor", "led", "button") else k for k in kinds]
             kinds[-1 if kinds[-1] != "wire" or len(kinds) < 3 else -2] = "led"
         rows = sorted(rng.sample(free, n - 1))
         netlist = _chain(rng, kinds, half, rows)
-        if mistake == "no_resistor":
-            for p in netlist:
-                if p["kind"] == "button":
-                    p["closed"] = True  # so the current really flows
     used = {r for p in netlist for r in p["rows"]}
     leds = [p for p in netlist if p["kind"] == "led"]
     if mistake == "led_backwards" and leds:
@@ -137,12 +133,18 @@ def random_circuit(seed=None, parts=3, usable_rows=None, mistake="random"):
     return {"seed": seed, "parts": solver.clean(netlist), "mistake": mistake}
 
 
+def pressed(netlist):
+    """The circuit with every push button held down (the worst case for
+    safety, and how a correct circuit is meant to work)."""
+    return [dict(p, closed=True) if p["kind"] == "button" else p for p in netlist]
+
+
 def _lights_work(netlist):
     """A circuit with no mistake lights every LED: two LEDs in a row whose
     voltages add up to the whole supply (blue + yellow) would both stay
     dark, so recolour them red until every LED is on."""
     for _ in range(5):
-        on = solver.solve(netlist)["leds_on"]
+        on = solver.solve(pressed(netlist))["leds_on"]
         dark = [i for i, lit in on.items() if not lit]
         if not dark:
             return
@@ -154,7 +156,7 @@ def _make_safe(netlist):
     """A circuit with no mistake must not trip the safety cut: raise the
     smallest resistor until the current is below SAFE_MA."""
     for _ in range(10):
-        if solver.solve(netlist)["current_ma"] < SAFE_MA:
+        if solver.solve(pressed(netlist))["current_ma"] < SAFE_MA:
             return
         rs = [p for p in netlist if p["kind"] == "resistor"]
         if not rs:

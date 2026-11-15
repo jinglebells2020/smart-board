@@ -109,10 +109,19 @@ def describe_step(step, student="the student"):
         return ("Asked the circuit reader what you built" if (args.get("try") or 1) == 1
                 else "Asked the circuit reader again, with what did not match")
     if who == "reader" and tool == "answer":
-        n, sure = args.get("parts", 0), args.get("sure", 0)
-        return f"The circuit reader guessed {n} part{'s' if n != 1 else ''} ({sure} sure)"
+        n, sure, k = args.get("parts", 0), args.get("sure", 0), args.get("hypotheses", 1) or 1
+        first = f"The circuit reader guessed {n} part{'s' if n != 1 else ''} ({sure} sure)"
+        return first if k == 1 else (f"The circuit reader gave {k} possible circuits "
+                                     f"(the first has {n} part{'s' if n != 1 else ''})")
     if who == "reader" and tool == "error":
         return "The circuit reader could not answer"
+    if who == "physics_check" and tool == "compare":
+        return (f"Compared the new readings with each possible circuit: number "
+                f"{args.get('index', 0) + 1} came true" if args.get("came_true") else
+                "Compared the new readings with each possible circuit: none came fully true")
+    if who == "physics_check" and (args.get("hypotheses") or 1) > 1:
+        return (f"Checked {args['hypotheses']} possible circuits with a circuit solver: "
+                f"{args.get('passing', 0)} match")
     if who == "physics_check":
         m, t = args.get("matched", 0), args.get("total", 0)
         return ("Checked the guess with a circuit solver: everything matches" if m == t and t
@@ -169,6 +178,8 @@ def describe_step(step, student="the student"):
         changed = args.get("changed") or []
         return ("Measured again: " + "; ".join(changed[:2])) if changed else \
             "Measured again: nothing changed"
+    if tool == "plan_experiment":
+        return "Planned an experiment that tells the possible circuits apart"
     if tool == "guide_next_part":
         return "Looked at which parts are in"
     if tool == "light_row":

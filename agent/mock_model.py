@@ -203,6 +203,8 @@ class ScriptedTutorModel(BaseChatModel):
                 main = next((i for i in items if i["level"] in ("problem", "maybe")), None)
                 good = [i["text"] for i in items if i["level"] == "good"]
                 info = [i["text"] for i in items if i["level"] == "info"]
+                plan = [i["text"] for i in items if i["kind"] == "experiment"]
+                info = plan + [t for t in info if t not in plan]  # the experiment to try first
                 if main:
                     text = main["text"]  # the hint: where to look, not the whole fix
                     if main["kind"] != "not_sure" and good:

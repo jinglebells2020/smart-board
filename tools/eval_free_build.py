@@ -96,6 +96,7 @@ def evaluate(n=20, seed=0, usable="T3-T8,T20-T24,B40-B45", tray=False, model=Non
         session.reader = make_reader(session, model)
         made = random_circuit(seed + i, 2 + i % 4, link.usable_rows)
         board.set_netlist(made["parts"])
+        board.send("HOLD on")  # push buttons follow HOLD: the student holds them pressed
         if tray:
             session.tray = tray_of(made["parts"])
         _, result, cut = session.measure()

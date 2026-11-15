@@ -44,8 +44,13 @@ class NetlistError(ValueError):
     pass
 
 
+UNSEEN = tuple(f"U{i}" for i in range(1, 10))  # rows the board does not measure
+
+
 def _is_place(name):
-    if name in PLUS or name in MINUS:
+    """A + or - line, a row T1..T63 / B1..B63, or U1..U9: a row the board
+    does not measure (a leg in it touches only what else is in that row)."""
+    if name in PLUS or name in MINUS or name in UNSEEN:
         return True
     return (len(name) > 1 and name[0] in "TB" and name[1:].isdigit()
             and 1 <= int(name[1:]) <= 63)
