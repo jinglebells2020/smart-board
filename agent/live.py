@@ -119,12 +119,51 @@ class ChangeDetector:
         return new
 
 
-def parts_in(lesson, driven):
-    """(parts whose rows all have something connected, all parts)."""
+WIRE_DROP_V = 0.5  # a wire never has more than this across it
+
+
+def _volts(row, summary):
+    if row in ("PT+", "PB+"):
+        return summary.get("supply_v") or 5.0
+    if row in ("PT-", "PB-"):
+        return 0.0
+    if row in summary.get("floating", []) or row not in summary.get("rows", {}):
+        return None
+    return summary["rows"][row]
+
+
+def parts_in(lesson, summary):
+    """(parts that are in, all parts). A part is in when every row it uses
+    has something connected, and nothing shows it cannot be there: a wire
+    never has more than WIRE_DROP_V across it (with the LED joined across by
+    mistake, row 12 reads 5 V, but that does not mean the black wire to the
+    - line is in)."""
     layout = lesson.get("layout", [])
-    done = sum(all(leg["row"] in driven for leg in part["legs"] if is_row(leg["row"]))
-               for part in layout)
+    done = 0
+    for part in layout:
+        volts = [_volts(leg["row"], summary) for leg in part["legs"]]
+        if any(v is None for v in volts):
+            continue
+        if "wire" in part["part"].lower() and len(volts) == 2 and \
+                abs(volts[0] - volts[1]) > WIRE_DROP_V:
+            continue  # impossible for a wire: it is not in yet
+        done += 1
     return done, len(layout)
+
+
+def wrong_side(lesson, summary):
+    """Plan rows that read the opposite end of the supply from the plan (a
+    row that should be near 0 V at 5 V, or the other way round)."""
+    supply = summary.get("supply_v") or 5.0
+    out = []
+    for row, e in lesson.get("expected", {}).get("rows", {}).items():
+        m = _volts(row, summary)
+        if m is None or row not in lesson.get("rows", []):
+            continue
+        if (e <= WIRE_DROP_V and m >= supply - WIRE_DROP_V) or \
+                (e >= supply - WIRE_DROP_V and m <= WIRE_DROP_V):
+            out.append(row)
+    return out
 
 
 MISTAKE_NOW = ("extra_rows", "flicker")
@@ -133,15 +172,18 @@ MISTAKE_NOW = ("extra_rows", "flicker")
 def classify(result, summary, facts, lesson):
     """What instant help should do with one check (see the module docstring).
     Returns {"kind": "building" | "mistake" | "complete", "rows", "text",
-    "parts_in", "parts"}."""
+    "fact" (the kind of fact that showed the mistake), "parts_in", "parts",
+    "empty" (plan rows with nothing connected), "any_driven" (is anything
+    plugged in at all)}."""
     plan = list(lesson.get("rows", []))
     floating = set(summary.get("floating", []))
     empty = [r for r in plan if r in floating or r not in summary.get("rows", {})]
     current = summary.get("current_ma")
     flows = current is not None and current > CURRENT_FLOWS_MA
-    driven = {r for r in summary.get("rows", {}) if r not in floating}
-    done, total = parts_in(lesson, driven)
-    out = {"parts_in": done, "parts": total, "rows": [], "text": ""}
+    done, total = parts_in(lesson, summary)
+    extra = any(f["kind"] == "extra_rows" for f in facts)
+    out = {"parts_in": done, "parts": total, "rows": [], "text": "", "fact": None,
+           "empty": empty, "any_driven": len(empty) < len(plan) or extra}
 
     now = []
     for f in facts:
@@ -154,17 +196,21 @@ def classify(result, summary, facts, lesson):
             now.append(f)
         elif k == "current_vs_expected" and (v.get("percent") or 0) >= FAR_ABOVE:
             now.append(f)
-    if not now and not empty and result.get("status") == "mistake":
+    # Every plan row is in, but nothing flows and a row reads the wrong end of
+    # the supply: a part is still missing (the build is not complete).
+    unfinished = bool(empty) or (not flows and bool(wrong_side(lesson, summary)))
+    if not now and not unfinished and result.get("status") == "mistake":
         rule_rows = set(result.get("rows") or [])
         now = [f for f in facts if rule_rows & set(f["rows"]) and f["kind"] in
                ("led_state", "same_voltage", "plan_row_floating", "part_drop", "row_voltage")]
         now = sorted(now, key=lambda f: ["led_state", "same_voltage", "plan_row_floating",
                                          "part_drop", "row_voltage"].index(f["kind"]))[:1] or \
-            [{"rows": sorted(rule_rows), "text": "Something is not right with the circuit."}]
+            [{"kind": "rule", "rows": sorted(rule_rows),
+              "text": "Something is not right with the circuit."}]
     if now:
         rows = sorted({r for f in now for r in f["rows"] if is_row(r)}, key=_row_order)
-        return dict(out, kind="mistake", rows=rows, text=now[0]["text"])
-    if empty:
+        return dict(out, kind="mistake", rows=rows, text=now[0]["text"], fact=now[0].get("kind"))
+    if unfinished:
         return dict(out, kind="building")
     return dict(out, kind="complete")
 

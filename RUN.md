@@ -103,7 +103,7 @@ python -m unittest -v
 Wait about 2 minutes. The last lines should be:
 
 ```
-Ran 515 tests in 80.0s
+Ran 525 tests in 80.0s
 
 OK (skipped=1)
 ```
@@ -298,6 +298,13 @@ The tests in Part B never use the key, even when it is set.
    | **4 · Power off / on** (before fixing) | Power comes on, is measured at once and goes off again. Zip: "The power went off again right away, because the circuit is still not safe: 100 mA flowed…" |
    | Teacher → **Correct circuit**, Close, then **I fixed it**, then **Yes** | Zip first asks **"Turn the power back on?"** with **Yes** and **No** (board button 4 also means Yes; No keeps the power off). After Yes, Zip turns **happy** and bounces, the lesson's rows glow green for a moment, a short burst of confetti falls (no sound), the LED in the drawing glows red, and lesson 1 on the path gets a green tick with its stars. Zip: "…This is the next lesson you have not passed yet." The page moves to lesson 2 |
    | **4 · Power off / on** (twice) | Power off (Zip careful), then on again (Zip happy) |
+
+   **Instant help** (on by default; the "Instant help" switch under the
+   buttons turns it off) makes Zip react as soon as the board changes,
+   without Check. After a lesson is passed, the pretend board starts
+   **empty** for the next lesson, like a student clearing the board, and
+   nothing is checked until the board changes. To put a whole circuit in,
+   pick it under **Practice mode** (for example **Correct circuit**).
 
    **The stars** (under each lesson on the path) come from what the
    student already did: 1 star for passing the lesson, a 2nd if no

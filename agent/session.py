@@ -103,6 +103,9 @@ class Session:
         # The AI diagnoser for this reply: a function payload -> Diagnosis,
         # set by agent/build.py when the tutor is Claude; None offline.
         self.diagnoser = None
+        # Instant help's automatic check (web/server.py): the fact that set it
+        # off, and how far the build is. None for every other check.
+        self.instant_context = None
 
     # --- Lessons -------------------------------------------------------
     @property
@@ -303,6 +306,10 @@ class Session:
             # Claude is available: physics facts + the diagnoser. Only after
             # the safety cut above, so a slow answer never delays it.
             result = self._diagnose(data, summary, result, copies, safety_cut)
+        if self.instant_context:  # an automatic check: what set it off, and the build
+            result["instant_trigger"] = self.instant_context.get("trigger")
+            if self.instant_context.get("building"):
+                result["building"] = self.instant_context["building"]
         if safety_cut:
             summary["power_on"] = False  # it is off now
         self.last_check = (summary, result)
@@ -370,6 +377,26 @@ class Session:
             self.trace.append({"who": "diagnoser", "tool": "compare",
                                "args": {"rule": result.get("mistake_id") or result["status"]}})
         return result
+
+    def empty_plan_rows(self):
+        """Plan rows with nothing connected in the latest check."""
+        if self.last_check is None:
+            return list((self.instant_context or {}).get("empty_rows", []))
+        summary = self.last_check[0]
+        return [r for r in self.lesson.get("rows", [])
+                if r in summary.get("floating", []) or r not in summary.get("rows", {})]
+
+    def lights_allowed(self, rows, color):
+        """An automatic check while the student is still building: no light
+        on a plan row that is simply empty (a part not added yet is not a
+        mistake), except the rows of the fact that set the check off. Blue
+        ("put a part here") is always fine."""
+        ctx = self.instant_context
+        if not ctx or not ctx.get("building") or str(color).lower() in ("blue", "off"):
+            return list(rows)
+        keep = set((ctx.get("trigger") or {}).get("rows") or [])
+        empty = set(self.empty_plan_rows())
+        return [r for r in rows if r in keep or r not in empty]
 
     def _check_copies(self, readings, lesson, places):
         """Check every copy of a lesson with "copies" (lesson 3).
