@@ -36,6 +36,7 @@ class TestSkippedLessons(unittest.TestCase):
         s = Session(FakeBoard(1), lesson=1, history_path=self.path)
         self.assertEqual(self.pass_lesson(s)["lesson"], 2)
         self.assertEqual(self.pass_lesson(s)["lesson"], 3)
+        self.assertEqual(self.pass_lesson(s)["lesson"], 4)
         out = self.pass_lesson(s)
         self.assertEqual(out["lesson"], 0)
         self.assertIn("You skipped lesson 0, How a breadboard connects", out["reason"])
@@ -47,6 +48,7 @@ class TestSkippedLessons(unittest.TestCase):
         s = Session(FakeBoard(2), lesson=2, history_path=self.path)
         self.assertEqual(self.pass_lesson(s)["lesson"], 1)  # a building lesson first
         self.assertEqual(self.pass_lesson(s)["lesson"], 3)
+        self.assertEqual(self.pass_lesson(s)["lesson"], 4)
         self.assertEqual(self.pass_lesson(s)["lesson"], 0)
         out = self.pass_lesson(s)
         self.assertIsNone(out["lesson"])
@@ -71,13 +73,17 @@ class TestSkippedLessons(unittest.TestCase):
         app = App(board, lesson=1, history_path=self.path, model=ScriptedTutorModel())
         app.ask("Check my circuit")                   # lesson 1
         app.ask("Check my circuit")                   # lesson 2
-        reply = app.ask("Check my circuit")["reply"]  # lesson 3, the last one
+        app.ask("Check my circuit")                   # lesson 3
+        app.hold(True)                                # lesson 4: hold the button,
+        app.ask("Check my circuit")
+        app.hold(False)                               # then let go: the last one
+        reply = app.ask("Check my circuit")["reply"]
         self.assertIn("You skipped lesson 0", reply)
         self.assertNotIn("every lesson", reply)
         self.assertEqual(app.state()["lesson"]["id"], 0)
         self.assertEqual(board.lesson, 0)  # the pretend board shows lesson 0
         path = {p["id"]: p["passed"] for p in app.state()["path"]}
-        self.assertEqual(path, {0: False, 1: True, 2: True, 3: True})
+        self.assertEqual(path, {0: False, 1: True, 2: True, 3: True, 4: True})
         app.quiz("intro", LESSONS[0]["intro_lesson"]["answer"])
         reply = app.ask("Check my circuit")["reply"]
         self.assertIn("You passed every lesson", reply)
@@ -92,6 +98,7 @@ class TestSkippedLessons(unittest.TestCase):
         self.assertEqual(s.lesson_id, 1)
         self.assertEqual(self.pass_lesson(s)["lesson"], 2)
         self.assertEqual(self.pass_lesson(s)["lesson"], 3)
+        self.assertEqual(self.pass_lesson(s)["lesson"], 4)
         self.assertIn("every lesson", self.pass_lesson(s)["reason"])
 
 

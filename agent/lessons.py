@@ -123,7 +123,7 @@ def summarize(readings, lesson):
 def matches(summary, rule):
     """Does a summary fit a rule? A rule can have "rows" (name -> range),
     "floating" and "driven" (lists of names), "current_ma" and "supply_v"
-    (ranges). Anything the board did not measure never matches."""
+    (ranges), and "any" (a list of smaller rules: at least one must fit). Anything the board did not measure never matches."""
     for name, rng in rule.get("rows", {}).items():
         if name not in summary["rows"] or name in summary["floating"]:
             return False
@@ -142,6 +142,8 @@ def matches(summary, rule):
         return False
     if rule.get("any_flickering") and not summary.get("flickering"):
         return False  # a loose leg: some row switched between connected and empty
+    if "any" in rule and not any(matches(summary, sub) for sub in rule["any"]):
+        return False  # at least one of these smaller rules must fit
     return True
 
 
@@ -166,7 +168,13 @@ def check(summary, lesson):
                            f"{lesson['id']} needs {'it' if len(summary['missing_rows']) == 1 else 'them'}. "
                            "I cannot check this lesson on this board."}
     not_checked = []
+    # A lesson with steps (lesson 4: "pressed", then "released"): only that
+    # step's mistakes count. The lesson file's own accept rules are its
+    # first step's; agent/session.py passes "check_step" for the others.
+    step = lesson.get("check_step") or next(iter(lesson.get("states") or {}), None)
     for m in lesson["mistakes"]:
+        if step and m.get("step") and m["step"] != step:
+            continue
         if m.get("needs_current_sensor") and summary.get("current_source") != "measured":
             not_checked.append(m["id"])
             continue

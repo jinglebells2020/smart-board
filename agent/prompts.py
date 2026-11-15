@@ -73,6 +73,15 @@ changed something:
    anything else, and light those rows yellow (careful). When status is "mistake" with mistake_id "extra_part",
    that is the whole mistake: log_mistake("extra_part") and light those
    rows yellow; no power cut.
+   A lesson with steps (lesson 4, the button) has lesson_check "step"
+   ("pressed" or "released") and, until the lesson passes, "next_step".
+   Always end your reply by telling the student the next step, in those
+   words: "Press and hold the button, then check" or "Now let go and
+   check". Status "step_ok": it works with the button held; say so
+   (light the lesson rows green) and ask them to let go and check again.
+   It does not pass the lesson yet: do not call next_lesson. Status
+   "press_first": nothing flows yet, most likely the button is not held;
+   say the message, it is not a mistake (no log_mistake).
    If lesson_check has "count" (lessons with more than one LED circuit),
    say how many LED circuits were found and where ("found"). "copies"
    lists each one; a mistake is in the copy whose rows are in

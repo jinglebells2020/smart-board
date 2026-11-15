@@ -282,6 +282,26 @@ ALT_LESSONS = {
         "options": ["A leg is loose", "The resistor is cold", "The board is new"], "answer": 0,
         "why": "A leg that wobbles keeps losing touch with the clip inside the hole.",
         "comparison": "a wiggly phone charger"},
+    "button_always_on": {
+        "title": "A button is like a door that is stuck open",
+        "idea": "A button is like a door that should close when you let go. If the door is stuck "
+                "open, anyone can walk through at any time. Current does the same when the button "
+                "sides stay joined.",
+        "question": "Why does the LED stay on after you let go of the button?",
+        "options": ["The sides of the button stay joined", "The LED likes the button",
+                    "The wires are too short"], "answer": 0,
+        "why": "When the two sides stay joined, the path is never broken, so current keeps flowing.",
+        "comparison": "a door stuck open"},
+    "button_not_connecting": {
+        "title": "A button is like a light switch with no wire behind it",
+        "idea": "A light switch only works if it joins two wires behind the wall. If it joins "
+                "nothing, you can click it all day and the lamp stays dark. A button that does not "
+                "join its sides is the same.",
+        "question": "You hold the button down, but no current flows. What is the likely reason?",
+        "options": ["The button does not join its two sides", "The LED is too new",
+                    "The power is too strong"], "answer": 0,
+        "why": "If pressing does not join the two sides, the path still has a gap.",
+        "comparison": "a light switch with no wire"},
 }
 
 # What the scripted writer writes in "bad" mode: it breaks two rules.

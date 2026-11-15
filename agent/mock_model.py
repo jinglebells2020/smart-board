@@ -123,6 +123,14 @@ class ScriptedTutorModel(BaseChatModel):
                     return said_reply(" ".join(t for t in (text, found) if t))
                 return said_reply(" ".join(t for t in (extra_first, found, text) if t))
 
+        if check.get("next_step") and status not in ("step_ok", "press_first"):
+            # A lesson with steps (lesson 4): always end with the next step.
+            stepped_reply = reply
+
+            def reply(text):
+                step = check["next_step"]
+                return stepped_reply(text if step in text else f"{text} {step}")
+
         # Power is off: ask for it to come back on. Plain Python decides
         # whether the student asked; if not, restore_power refuses.
         if (status == "power_off" and "restore_power" not in called
@@ -225,6 +233,21 @@ class ScriptedTutorModel(BaseChatModel):
                 return reply(f"{praise} {nxt['reason']}{note}")
             return reply(f"{praise} Next: lesson {nxt['lesson']}, "
                          f"{nxt['title']} ({nxt['circuit']}). {nxt['reason']}{note}")
+
+        if status == "step_ok":  # lesson 4: it works with the button held
+            if "clear_lights" not in called:
+                return call("clear_lights")
+            if "light_row" not in called and last_read["lesson"]["rows"]:
+                return call("light_row", rows=last_read["lesson"]["rows"], color="green")
+            if "show_on_board" not in called:
+                return call("show_on_board", text="Works when held!|Now let go, then|press 1.")
+            return reply("It works while you hold the button: current flows and the LED "
+                         f"lights up. {check['next_step']}")
+
+        if status == "press_first":  # lesson 4: nothing flows yet, hold the button
+            if "show_on_board" not in called:
+                return call("show_on_board", text="Hold the button down|and press 1 again.")
+            return reply(check["message"])
 
         if status == "power_off":
             if check.get("board_cut"):

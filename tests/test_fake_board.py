@@ -179,6 +179,8 @@ class TestAgainstTheLessonFiles(unittest.TestCase):
 
     def test_every_circuit_with_noise_and_both_sensor_options(self):
         for lid, scenarios in SCENARIOS.items():
+            if LESSONS[lid].get("states"):
+                continue  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             for scenario in scenarios:
                 for has_current in (True, False):
                     for seed in range(8):

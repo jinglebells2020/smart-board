@@ -17,6 +17,7 @@ server sits in between. It uses only Python's built-in http.server.
     POST /api/reset   start again with a new student (a fresh notebook)
     POST /api/restart-demo  start the demo again: Maya, lesson 1, fresh history and notebook
     POST /api/power-answer {"yes": true|false} -> answer "Turn the power back on?"
+    POST /api/hold    {"on": true|false}   -> fake board only: hold the breadboard's push button (lesson 4)
     GET  /api/notebook the student's notebook, as plain text
 """
 
@@ -218,7 +219,8 @@ class App:
         circuit) the lesson's own "Which holes are joined?" card."""
         if self.card:
             return self.card
-        if self.session.is_explore():
+        if self.session.is_explore() or "intro_lesson" in self.session.lesson:
+            # Lesson 0's "Which holes are joined?", lesson 4's drawbridge.
             return {"lesson": self.session.lesson_id, "mistake": "intro",
                     "occurrence": "intro", "intro": True}
         return None
@@ -345,7 +347,8 @@ class App:
             return "careful"
         if status == "ok":
             return "happy"
-        if status in ("mistake", "unknown", "missing_rows", "quiz_first") or "get_hint" in tools \
+        if status in ("mistake", "unknown", "missing_rows", "quiz_first", "press_first") \
+                or "get_hint" in tools \
                 or "task" in tools:
             return "curious"
         return "happy"
@@ -392,6 +395,8 @@ class App:
         self.pump_events()  # a real board's buttons arrive with the readings
         s = self.session
         lesson = s.lesson
+        if s.button_step:  # lesson 4: the rules and numbers of the current step
+            lesson = s._step_lesson(lesson)
         reading_ok = True
         try:
             reading = self.board.read()
@@ -416,7 +421,9 @@ class App:
         return {
             "lesson": {k: lesson.get(k) for k in
                        ("id", "title", "circuit", "rows", "expected", "accept", "layout",
-                        "kind", "explore", "copies")},
+                        "kind", "explore", "copies", "states")},
+            # Lesson 4 (the button): which step, and the rules of that step.
+            "button_step": s.button_step,
             # Lessons with copies: how many LED circuits the latest check found.
             "copies_found": ((s.last_check or ({}, {}))[1] or {}).get("count")
                             if s.lesson.get("copies") else None,
@@ -439,6 +446,7 @@ class App:
                           if self.is_sim else []),
             "scenario": self.raw_board.scenario if self.is_sim else None,
             "place": list(getattr(self.raw_board, "place", ("T", 0))) if self.is_sim else None,
+            "held": bool(getattr(self.raw_board, "held", False)) if self.is_sim else None,
             "busy": self.agent_lock.locked(),
             # Zip is asking "Turn the power back on?" (Yes / No on the page).
             "asks_power": self.waiting_for_power_answer(),
@@ -520,6 +528,13 @@ class App:
             self.board.send(f"SCENARIO {self.session.lesson_id} correct")
         return {"reply": reply, "tools": tools, "offline": offline}
 
+    def hold(self, on):
+        """Fake board only: hold (or let go of) the push button on the
+        breadboard, like the student's finger (lesson 4)."""
+        if not self.is_sim:
+            return {"error": "only the fake board has a pretend button to hold"}
+        return self.board.send(f"HOLD {'on' if on else 'off'}")
+
     def build(self, scenario, place=None, copies=None, rows=None):
         """Fake board only: change the circuit. place, like "T 15" or "B 0",
         builds it somewhere else on the board (None: leave it where it is).
@@ -596,6 +611,10 @@ def make_handler(app):
                                          body.get("written_by_zip", False)))
             elif self.path == "/api/reset":
                 self._send(200, app.reset())
+            elif self.path == "/api/hold":
+                if not isinstance(body, dict):
+                    return self._send(400, {"error": "bad request"})
+                self._send(200, app.hold(bool(body.get("on"))))
             elif self.path == "/api/restart-demo":
                 self._send(200, app.restart_demo())
             else:

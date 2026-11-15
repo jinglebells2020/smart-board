@@ -226,7 +226,8 @@ class TestDetection(unittest.TestCase):
 class TestRowsTheBoardDoesNotMeasure(unittest.TestCase):
     def test_a_16_row_board_can_check_both_lessons(self):
         board = parse_rows("T1-T16")
-        for lid in [lid for lid, l in LESSONS.items() if l.get("kind") != "explore"]:  # lesson 0 has no circuit
+        for lid in [lid for lid, l in LESSONS.items() if l.get("kind") != "explore"  # lesson 0 has no circuit
+                    and not l.get("states")]:  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             for with_sensor in (True, False):
                 s = measure(lid, "correct", with_sensor, board_rows=board)
                 self.assertEqual(s["missing_rows"], [])
@@ -271,6 +272,8 @@ class TestRowClue(unittest.TestCase):
     def test_clue_text_is_plain_and_never_a_fix(self):
         texts = set()
         for lid, lesson in LESSONS.items():
+            if lesson.get("states"):
+                continue  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             names = lesson["rows"]
             for v in (0.0, 0.1, 1.0, 2.0, 3.5, 4.95):
                 for name in names:
