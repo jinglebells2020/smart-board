@@ -173,10 +173,17 @@ class Checker:
         self.rule(hello.get("protocol") == P.PROTOCOL_VERSION,
                   f'"protocol" is {P.PROTOCOL_VERSION}.', f"it is {hello.get('protocol')!r}")
         rows = hello.get("rows")
-        ok = isinstance(rows, list) and len(rows) > 0
-        self.rule(ok, '"rows" is a list with at least one name.', f"it is {rows!r}"[:120])
+        ok = isinstance(rows, list)
+        self.rule(ok, '"rows" is a list of names.', f"it is {rows!r}"[:120])
         if not ok:
             return False
+        if not rows:
+            # A station whose row map is not flashed yet knows no row names.
+            # That is a correct hello, but Genesis cannot check lessons on it.
+            self.rule(None, '"rows" is empty: this board measures no rows yet.',
+                      "Fine for a smart breadboard station before its row map is "
+                      "flashed. Run the mux test, then make_fw_maps.py, then flash "
+                      "the firmware again. Genesis cannot check lessons until then.")
         bad = [r for r in rows if not (isinstance(r, str) and P.is_node(r))]
         self.rule(not bad, "Every name in \"rows\" is T1..T63, B1..B63, PT+, PT-, PB+ or PB-.",
                   f"not names: {bad[:8]}" if bad else "")
