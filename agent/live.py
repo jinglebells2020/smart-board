@@ -190,8 +190,8 @@ def classify(result, summary, facts, lesson):
         k, v = f["kind"], f.get("values", {})
         if k in MISTAKE_NOW:
             now.append(f)
-        elif k == "same_voltage" and flows:
-            now.append(f)  # joined rows; with no current, the same voltage is normal mid-build
+        elif k == "same_voltage" and v.get("joined"):
+            now.append(f)  # joined rows (only said when current flows: agent/physics.py)
         elif k == "led_state" and v.get("state") == "shorted":
             now.append(f)
         elif k == "current_vs_expected" and (v.get("percent") or 0) >= FAR_ABOVE:
