@@ -138,12 +138,29 @@ def _on_driven(part, measured):
                for r in part["rows"])
 
 
-def _problems(parts):
-    """The usual mistakes in a hypothesis, worked out with the solver."""
+def _state(parts):
+    """A hypothesis worked out with the solver: (its usual mistakes, as a
+    set of (kind, part kind, rows) that survives parts moving in the list,
+    the current, and whether every LED in it is on)."""
     sparts, index = _reader_solver_parts(parts)
     sol = solver.solve(sparts) if sparts else {"rows": {}, "leds_on": {}, "current_ma": 0.0}
-    predicted = {"rows": sol["rows"], "leds_on": {index[i]: on for i, on in sol["leds_on"].items()}}
-    return problems_of(parts, predicted), sol["current_ma"]
+    leds_on = {index[i]: on for i, on in sol["leds_on"].items()}
+    predicted = {"rows": sol["rows"], "leds_on": leds_on}
+    problems = {(pr["kind"], parts[pr["part"]]["kind"], tuple(sorted(parts[pr["part"]]["rows"])))
+                for pr in problems_of(parts, predicted)}
+    all_on = all(leds_on.get(i, False) for i, p in enumerate(parts) if p["kind"] == "led")
+    return problems, sol["current_ma"], all_on
+
+
+def fixes_top(before, after):
+    """Does the action FIX the most likely hypothesis? Only if, after it,
+    current flows, every LED is on, and its problems are a smaller part of
+    the ones before (one fixed, none new). An action that only hides the
+    problems (no current after, so nothing shows) is never a fix."""
+    problems_before, _current, _on = before
+    problems_after, current_after, all_on = after
+    return (current_after > CHANGED_MA and all_on
+            and problems_after < problems_before)
 
 
 def candidate_actions(hypotheses, usable, measured=None):
@@ -190,7 +207,7 @@ def plan_experiment(hypotheses, measured, usable, about=None):
         return None
     sensor = measured.get("current_source") == "measured"
     best, best_key = None, None
-    top_problems, top_current = _problems(hypotheses[0])
+    top = _state(hypotheses[0])
     for action in candidate_actions(hypotheses, usable, measured):
         text = _instruction(action)
         ok, _error, _parsed = validate_instruction(text, FREE_LESSON)
@@ -212,12 +229,10 @@ def plan_experiment(hypotheses, measured, usable, about=None):
         if told == 0:
             continue
         # Equally good at telling them apart? Then the action that would FIX
-        # the problem in the most likely hypothesis (it has fewer problems
-        # after, or current starts to flow), then one on a part in a row with
-        # a voltage, then the one with the most differences, then the simplest.
-        after_problems, after_current = _problems(after[0])
-        fixes = len(after_problems) < len(top_problems) or \
-            (top_current <= CHANGED_MA < after_current)
+        # the problem in the most likely hypothesis (fixes_top), then one on a
+        # part in a row with a voltage, then the one with the most
+        # differences, then the simplest.
+        fixes = fixes_top(top, _state(after[0]))
         key = (told, fixes, _on_driven(action["part"], measured), sum(diffs),
                -VERBS.index(action["verb"]))
         if best_key is None or key > best_key:

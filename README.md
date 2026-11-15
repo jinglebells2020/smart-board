@@ -76,7 +76,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (637 tests; it says `OK (skipped=1)` on a
+The last line should say `OK` (640 tests; it says `OK (skipped=1)` on a
 computer without Node.js and Playwright, which the page-layout browser
 check needs). They never call Claude, so
 they work without an API key.

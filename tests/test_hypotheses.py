@@ -394,3 +394,54 @@ class TestRowsThatReadEmpty(unittest.TestCase):
         self.assertEqual(main["text"], "The experiment showed it: the green LED between row 41 "
                                        "and the - line is blocking the current: which way does "
                                        "its long leg go?")
+
+
+class TestWhatCountsAsAFix(unittest.TestCase):
+    """After PR #29: moving the button cut the power to the LED, so no
+    problem could be seen any more, and that counted as a "fix"."""
+
+    def setUp(self):
+        self.usable = P.parse_usable(USABLE)
+        self.measured = {"rows": {r: None for r in self.usable}, "current_ma": 0.0,
+                         "current_source": "measured", "supply_v": 5.0}
+        self.measured["rows"].update({"B40": 5.0, "B41": 5.0})
+        self.backwards = clean_guess({"parts": [
+            {"kind": "button", "rows": ["PB+", "B40"], "closed": True},
+            {"kind": "resistor", "rows": ["B40", "B41"], "ohms": 220},
+            {"kind": "led", "rows": ["PB-", "B41"], "color": "red"}]}, self.usable)["parts"]
+        self.two_wires = clean_guess({"parts": [{"kind": "wire", "rows": ["PB+", "B40"]},
+                                                {"kind": "wire", "rows": ["PB+", "B41"]}]},
+                                     self.usable)["parts"]
+
+    def test_seed4_turns_the_led_around(self):
+        plan = plan_experiment([self.backwards, self.two_wires], self.measured, self.usable)
+        self.assertEqual(plan["instruction"], "Turn around the LED in row 41 and the bottom - line.")
+        self.assertTrue(plan["fixes"])
+        lit = plan["predictions"][0]
+        self.assertGreater(lit["current_ma"], 10)  # 13.2 mA, the LED on: the real fix
+
+    def test_hiding_the_problem_is_not_a_fix(self):
+        from agent.planner import _state, apply, fixes_top
+        button = self.backwards[0]
+        move = {"verb": "move", "part": button, "from": "B40", "to": "B42"}
+        turn = {"verb": "turn around", "part": self.backwards[2]}
+        before = _state(self.backwards)
+        moved = _state(apply(move, self.backwards))
+        self.assertEqual(moved[0], set())   # no problem shows any more...
+        self.assertLess(moved[1], 0.5)      # ...because no current flows
+        self.assertFalse(fixes_top(before, moved))
+        self.assertTrue(fixes_top(before, _state(apply(turn, self.backwards))))
+
+    def test_no_action_fixes_then_the_most_informative_wins(self):
+        """The most likely hypothesis has its LED leg in a row the board cannot
+        see: no planned action can fix that (nothing is planned on a leg in
+        an unseen row). Turning the other hypothesis' LED around is the only
+        action whose results differ, so it wins, but it is not a fix."""
+        missing = clean_guess({"parts": [
+            {"kind": "button", "rows": ["PB+", "B40"], "closed": True},
+            {"kind": "resistor", "rows": ["B40", "B41"], "ohms": 220},
+            {"kind": "led", "rows": ["B41", "U1"], "color": "red"}]}, self.usable)["parts"]
+        plan = plan_experiment([missing, self.backwards], self.measured, self.usable)
+        self.assertFalse(plan["fixes"])
+        self.assertEqual(plan["instruction"], "Turn around the LED in row 41 and the bottom - line.")
+        self.assertEqual(plan["separates"], 1)
