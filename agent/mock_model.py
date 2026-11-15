@@ -93,6 +93,25 @@ class ScriptedTutorModel(BaseChatModel):
             return reply("Let's read the mini-lesson again together, slowly. Look at the "
                          "picture in your head first, then try the question again.")
 
+        # Instant help's guide turn: show where the next part goes (lights
+        # and the board screen only; the offline tutor never runs experiments).
+        if "next part goes" in asked:
+            if not results:
+                return call("guide_next_part")
+            guide = result_of("guide_next_part")
+            nxt = next((p for p in guide.get("parts", []) if not p["placed"]), None)
+            if nxt is None:
+                return reply("Every part is in. Press Check when you are ready.")
+            if "clear_lights" not in called:
+                return call("clear_lights")
+            if "light_row" not in called and nxt["rows"]:
+                return call("light_row", rows=nxt["rows"], color="blue")
+            if "show_on_board" not in called:
+                legs = "|".join(f"{leg['leg'].split(' (')[0]}: {leg['row'].lstrip('T')}"
+                                for leg in nxt["legs"] if leg["row"][0] in "TB")
+                return call("show_on_board", text=f"Next: {nxt['part']}|{legs}")
+            return reply(f"Next: the {nxt['part']}.")
+
         if not results:
             return call("read_rows")
 

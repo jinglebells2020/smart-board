@@ -23,7 +23,7 @@ took, so we can see the timing.
 import copy
 import time
 
-from agent.build import CLAUDE_TIMEOUT, answer_power, ask, build_agent
+from agent.build import CLAUDE_TIMEOUT, answer_experiment, answer_power, ask, build_agent
 from agent.mock_model import ScriptedTutorModel
 from agent.serial_board import BoardError
 
@@ -77,6 +77,32 @@ class SafeReplies:
             if a is not None and getattr(a, "smart_board_pending", None) is not None:
                 return a
         return None
+
+    def pending(self, agent):
+        """What a paused reply waits for: {"kind": "power" | "experiment", ...}."""
+        waiting = self.paused(agent)
+        return getattr(waiting, "smart_board_pending", None) if waiting is not None else None
+
+    def answer_experiment(self, agent, history, done):
+        """The student's "done" or "can't" for an experiment card (only Claude
+        asks for experiments). If Claude fails now, the offline tutor checks
+        the circuit instead."""
+        waiting = self.paused(agent)
+        if waiting is None:
+            raise ValueError("nothing is waiting for an answer")
+        self.offline = False
+        saved = self._save()
+        start = time.monotonic()
+        try:
+            reply, new = answer_experiment(waiting, history, done, timeout=self.timeout)
+        except BoardError:
+            raise
+        except Exception as e:
+            self._failed(waiting, saved, start, e)
+            return ask(self.offline_agent(), history, "Check my circuit")
+        if not getattr(waiting, "smart_board_offline", True):
+            self._took(start, "after the experiment")
+        return reply, new
 
     def forget_pause(self, agent):
         for a in (agent, self._offline):

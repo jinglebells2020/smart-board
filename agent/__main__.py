@@ -132,8 +132,18 @@ def main(argv=None):
         lesson_before = session.lesson_id
         try:
             reply, _ = replies.ask(agent, history, text)
-            while replies.paused(agent) is not None:  # Zip asks before power on
+            while replies.paused(agent) is not None:  # Zip asks before power on,
+                pending = replies.pending(agent)    # or asks for an experiment
                 print(f"tutor> {reply}")
+                if pending.get("kind") == "experiment":
+                    exp = pending["experiment"]
+                    try:
+                        done = input(f"you ({exp['done_label']} / {exp['cant_label']})> ")
+                    except (EOFError, KeyboardInterrupt):
+                        done = ""
+                    done = done.strip().lower().startswith(exp["done_label"][:1].lower() or "d")
+                    reply, _ = replies.answer_experiment(agent, history, done)
+                    continue
                 try:
                     yes = input("you (yes/no)> ").strip().lower().startswith("y")
                 except (EOFError, KeyboardInterrupt):

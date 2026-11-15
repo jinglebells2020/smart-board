@@ -137,7 +137,8 @@ class TestBuilding(InstantApp):
         self.step("BUILD 2")
         self.step("BUILD 3")  # the LED goes in, both legs joined, but the black wire
         self.assertEqual(self.app.log, [])  # is not: 0 mA, so its 0 V says nothing
-        self.assertEqual(self.board.lights, {})
+        # Only the guide's blue "put a part here" lights: no red or yellow.
+        self.assertEqual(set(self.board.lights.values()) - {"blue"}, set())
         self.assertEqual(self.app.building, {"parts_in": 3, "parts": 4})
         self.step("BUILD 4")  # now current flows around the LED
         first = self.said()[0]

@@ -42,8 +42,10 @@ class TraceMiddleware(AgentMiddleware):
     def wrap_tool_call(self, request, handler):
         check_run()  # a given-up reply never touches the board again
         call = request.tool_call
-        self.session.trace.append({"who": self.who, "tool": call.get("name"),
-                                   "args": dict(call.get("args") or {})})
+        step = {"who": self.who, "tool": call.get("name"), "args": dict(call.get("args") or {})}
+        if not (self.session.trace and self.session.trace[-1] == step
+                and step["tool"] == "run_experiment"):  # (it runs again when the student answers)
+            self.session.trace.append(step)
         return handler(request)
 
 
@@ -135,8 +137,21 @@ def describe_step(step, student="the student"):
         "skip_detective": "Did not ask the detective: the diagnosis already explains it",
         "get_lesson_facts": "Read the old mini-lesson and the comparisons already used",
     }
+    if tool == "cut_power" and args.get("reason"):
+        return f"Cut the power: {args['reason']}"
     if tool in words:
         return words[tool]
+    if tool == "run_experiment":
+        what = str(args.get("instruction", "")).strip().rstrip(".")
+        return f"Asked you to {what[:1].lower() + what[1:]}" if what else "Asked you to try something"
+    if tool == "experiment_result":
+        if not args.get("done"):
+            return "You could not do it"
+        changed = args.get("changed") or []
+        return ("Measured again: " + "; ".join(changed[:2])) if changed else \
+            "Measured again: nothing changed"
+    if tool == "guide_next_part":
+        return "Looked at which parts are in"
     if tool == "light_row":
         return f"Lit {_rows(args.get('rows'))} {args.get('color', '')}".strip()
     if tool == "show_on_board":

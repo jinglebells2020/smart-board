@@ -20,6 +20,7 @@ server sits in between. It uses only Python's built-in http.server.
     POST /api/power-answer {"yes": true|false} -> answer "Turn the power back on?"
     POST /api/hold    {"on": true|false}   -> fake board only: hold the breadboard's push button (lesson 4)
     POST /api/instant {"on": true|false}   -> instant help: react when the board changes, without Check
+    POST /api/experiment {"done": true|false} -> answer Zip's experiment card ("done" or "can't")
     GET  /api/notebook the student's notebook, as plain text
 """
 
@@ -77,6 +78,8 @@ class App:
         self._changes = 0          # steady board changes handled so far
         self._passed_at = None     # _changes when an automatic check last passed a lesson
         self._auto_context = None  # what the next automatic check is about (the trigger)
+        self._auto_kind = "check"  # the next automatic turn: "check" or a silent "guide"
+        self._auto_current = None  # the kind of the automatic turn running now
         self.raw_board = board
         # One shared handle (with a lock) for the page, the tutor and buttons.
         self.board = BoardLink(board)
@@ -482,11 +485,31 @@ class App:
             "building": self.building,
             # Zip is asking "Turn the power back on?" (Yes / No on the page).
             "asks_power": self.waiting_for_power_answer(),
+            # Zip asks the student to do one thing, then measures again.
+            "experiment": self.waiting_for_experiment(),
         }
 
     def waiting_for_power_answer(self):
         """Is a reply paused on "Turn the power back on?"?"""
-        return self.replies.paused(self.agent) is not None
+        pending = self.replies.pending(self.agent)
+        return pending is not None and pending.get("kind") != "experiment"
+
+    def waiting_for_experiment(self):
+        """The experiment card Zip is waiting on ("done" or "can't"), or None."""
+        pending = self.replies.pending(self.agent)
+        return pending.get("experiment") if pending and pending.get("kind") == "experiment" \
+            else None
+
+    def answer_experiment(self, done):
+        """The student did the experiment ("done") or could not ("can't")."""
+        with self.agent_lock:
+            exp = self.waiting_for_experiment()
+            if exp is None:
+                return {"error": "Zip is not waiting for an experiment right now"}
+            return self._turn(exp["done_label"] if done else exp["cant_label"],
+                              lambda: self.replies.answer_experiment(self.agent, self.chat,
+                                                                     bool(done)),
+                              resume=True)
 
     # --- Instant help (agent/live.py) ------------------------------------------
     CHECK_TEXT = "Check my circuit"
@@ -532,7 +555,7 @@ class App:
         """One steady change: a quick check in plain Python (no AI, the
         lesson's state is put back after), then decide what to say."""
         self._changes += 1
-        if self.waiting_for_power_answer() or not self.agent_lock.acquire(blocking=False):
+        if self.replies.paused(self.agent) is not None or not self.agent_lock.acquire(blocking=False):
             with self._auto_guard:  # a check is running: it sees the board anyway,
                 if self._auto_running:  # and an automatic one runs once more after
                     self._auto_again = True
@@ -557,6 +580,7 @@ class App:
         self._act(result, cut, found, event)
 
     def _act(self, result, cut, found, event):
+        before = (self.building or {}).get("parts_in", 0)
         self.building = {"parts_in": found["parts_in"], "parts": found["parts"]}
         if not found["any_driven"] and not cut:
             # An empty board (cleared): nothing to say, start again from here.
@@ -599,15 +623,23 @@ class App:
         if found["kind"] == "complete":
             self._auto_context = None
             self.trigger_auto()  # every part is in: a normal check decides
+        elif found["kind"] == "building" and found["parts_in"] > before:
+            self.trigger_auto("guide")  # a part went in: Zip shows where the next one goes
 
     def _say(self, text, mood):
         self.log.append({"who": "tutor", "text": text, "time": time.time(), "instant": True,
                          "steps": [], "tools": [], "mood": mood, "celebrate": False})
 
-    def trigger_auto(self):
-        """The AI layer: the same path as the Check button, in a worker thread.
-        One at a time; a change while it runs makes it run once more after."""
+    GUIDE_TEXT = "Show me where the next part goes."
+
+    def trigger_auto(self, kind="check"):
+        """The AI layer: the same path as the Check button (or a short silent
+        "guide" turn while building), in a worker thread. One at a time; a
+        change while it runs makes it run once more after (a check wins over
+        a guide)."""
         with self._auto_guard:
+            if kind == "check" or not self._auto_running:
+                self._auto_kind = kind
             if self._auto_running:
                 self._auto_again = True
                 return
@@ -621,18 +653,25 @@ class App:
     def _auto_loop(self):
         try:
             while True:
-                if self._passed_at is not None and self._passed_at == self._changes:
+                with self._auto_guard:
+                    kind, self._auto_kind = self._auto_kind, "guide"
+                text = self.GUIDE_TEXT if kind == "guide" else self.CHECK_TEXT
+                if kind == "check" and self._passed_at is not None \
+                        and self._passed_at == self._changes:
                     pass  # an automatic check passed a lesson and the board has not
                     # changed since: never pass the next lesson on the same board
-                elif not self.waiting_for_power_answer() and self.agent_lock.acquire(blocking=False):
+                elif self.replies.paused(self.agent) is None and \
+                        self.agent_lock.acquire(blocking=False):
                     lesson = self.session.lesson_id
                     self.session.instant_context = self._auto_context
+                    self._auto_current = kind
                     try:
-                        self._auto_last = self._turn(
-                            self.CHECK_TEXT,
-                            lambda: self.replies.ask(self.agent, self.chat, self.CHECK_TEXT),
-                            auto=True)
+                        out = self._turn(text, lambda: self.replies.ask(self.agent, self.chat, text),
+                                         auto=True, silent=kind == "guide")
+                        if kind == "check":
+                            self._auto_last = out
                     finally:
+                        self._auto_current = None
                         self.session.instant_context = None
                         self.agent_lock.release()
                     if self.session.lesson_id != lesson:
@@ -661,15 +700,21 @@ class App:
         if not text:
             return {"error": "empty message"}
         if self.is_check(text) and not self._auto_done.is_set():
-            # An automatic check of this same board is running: its answer is
-            # this check's answer (no second reply).
+            # An automatic turn is running. If it is a check of this same board,
+            # its answer is this check's answer (no second reply).
+            merge = self._auto_current == "check"
             self._auto_done.wait(60)
-            if self._auto_last is not None:
+            if merge and self._auto_last is not None:
                 return dict(self._auto_last, merged=True)
         with self.agent_lock:
             if self.waiting_for_power_answer():
                 # A new message instead of Yes or No: that is a no.
                 self._turn("No", lambda: self.replies.answer_power(self.agent, self.chat, False),
+                           resume=True)
+            elif self.waiting_for_experiment():
+                # A new message instead of "done": the student could not do it.
+                self._turn(self.waiting_for_experiment()["cant_label"],
+                           lambda: self.replies.answer_experiment(self.agent, self.chat, False),
                            resume=True)
             return self._turn(text, lambda: self.replies.ask(self.agent, self.chat, text))
 
@@ -682,10 +727,12 @@ class App:
                               lambda: self.replies.answer_power(self.agent, self.chat, bool(yes)),
                               resume=True)
 
-    def _turn(self, text, run, resume=False, auto=False):
+    def _turn(self, text, run, resume=False, auto=False, silent=False):
         """Run one tutor reply (or the rest of a paused one) and log it.
-        auto: an automatic check started by instant help (tagged on the page)."""
-        self.log.append({"who": "student", "text": text, "time": time.time(), "auto": auto})
+        auto: an automatic check started by instant help (tagged on the page).
+        silent: a guide turn (lights and the board screen only, no chat)."""
+        if not silent:
+            self.log.append({"who": "student", "text": text, "time": time.time(), "auto": auto})
         if not resume:
             self._turn_start = (self.session.lesson_id, self.session.last_check)
             self.session.last_logged = None
@@ -699,6 +746,16 @@ class App:
         offline = self.replies.offline
         tools = [c["name"] for m in new for c in (getattr(m, "tool_calls", None) or [])]
         steps = describe_steps(self.session.trace, self.student_name())
+        experiment = self.waiting_for_experiment()
+        if experiment is not None:
+            # Paused: Zip asks the student to do one thing (the experiment card).
+            self.log.append({"who": "tutor", "text": reply, "time": time.time(), "steps": steps,
+                             "tools": tools, "mood": "curious", "experiment": experiment,
+                             "celebrate": False, "offline": offline, "auto": auto})
+            return {"reply": reply, "tools": tools, "pending": True, "experiment": experiment,
+                    "offline": offline}
+        if silent and not self.waiting_for_power_answer():
+            return {"reply": reply, "tools": tools, "silent": True}
         if self.waiting_for_power_answer():
             # Paused: Zip asks before the power comes back on.
             self.log.append({"who": "tutor", "text": reply, "time": time.time(), "steps": steps,
@@ -831,6 +888,10 @@ def make_handler(app):
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})
                 self._send(200, app.set_instant(bool(body.get("on"))))
+            elif self.path == "/api/experiment":
+                if not isinstance(body, dict):
+                    return self._send(400, {"error": "bad request"})
+                self._send(200, app.answer_experiment(bool(body.get("done"))))
             elif self.path == "/api/hold":
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})
