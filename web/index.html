@@ -451,9 +451,15 @@
     .brand { flex: 1 1 auto; order: 0; }
     #teacher-toggle { order: 1; }
     .path, .power { order: 2; }
+    /* The lesson path never makes the page scroll sideways: it stays inside
+       the screen and, with many lessons, scrolls inside its own box. The
+       8 px padding keeps the yellow ring round the current lesson visible. */
+    .path { min-width: 0; max-width: 100%; overflow-x: auto; padding: 8px; }
   }
   @media (max-width: 599px) {
     #teacher-toggle { padding: 0; width: 56px; }
+    .path { gap: 0; }  /* 5 lessons fit in 390 px with no scrolling */
+    .road { width: 8px; }
     #teacher-toggle .word { position: absolute; width: 1px; height: 1px; overflow: hidden;
                             clip: rect(0 0 0 0); white-space: nowrap; }
   }

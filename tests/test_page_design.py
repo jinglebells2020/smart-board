@@ -423,6 +423,35 @@ class TestDesignRules(unittest.TestCase):
         phone = re.search(r"@media \(max-width: 999px\) \{(.*?)\n  \}", self.css, re.S).group(1)
         self.assertRegex(phone, r"\.pill \{[^}]*white-space: normal; flex-wrap: wrap; max-width: 100%")
 
+    def test_phone_lesson_path_stays_inside_the_screen(self):
+        """At 390 px (a phone) the lesson path must not make the page scroll
+        sideways: it is held inside the screen, and every lesson fits."""
+        code = self.css_code
+        narrow = re.search(r"@media \(max-width: 999px\) \{(.*?)\n  \}", code, re.S).group(1)
+        phone = re.search(r"@media \(max-width: 599px\) \{(.*?)\n  \}", code, re.S).group(1)
+        path_rule = re.search(r"\.path \{([^}]*)\}", narrow)
+        self.assertIsNotNone(path_rule, "the phone CSS needs its own .path rule")
+        path_rule = path_rule.group(1)
+        for needed in ("min-width: 0", "max-width: 100%", "overflow-x: auto"):
+            self.assertIn(needed, path_rule)   # never wider than the top bar
+
+        def px(pattern, text):
+            found = re.search(pattern + r"(\d+)(?:px)?\b", text)  # "0" or "8px"
+            self.assertIsNotNone(found, pattern)
+            return int(found.group(1))
+
+        star = px(r"\.stop \.stars svg \{ width: ", code)
+        dot = px(r"\.stop \.dot \{[^}]*width: ", code)
+        stop = max(3 * star, dot)                      # 3 stars under each lesson dot
+        road = px(r"\.road \{ width: ", phone)
+        gap = px(r"\.path \{ gap: ", phone)
+        pad = px(r"padding: ", path_rule)
+        bar_pad = px(r"\.topbar \{[^}]*padding: ", narrow)
+        n = len(LESSONS)
+        width = n * stop + (n - 1) * road + 2 * (n - 1) * gap + 2 * pad
+        self.assertLessEqual(width, 390 - 2 * bar_pad,
+                             f"{n} lessons need {width} px on a 390 px phone")
+
     def test_board_fills_the_stage_and_stars_are_big(self):
         self.assertIn("const oy = 0;", self.html)
         self.assertIn('height: Math.max(H, bottom), rx: 16, class: "bb-board"', self.html)
