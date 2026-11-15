@@ -20,7 +20,7 @@ from agent.mock_model import ScriptedTutorModel
 from agent.notebook import notebook_tools_backend
 from agent.prompts import SYSTEM_PROMPT
 from agent.tools import make_tools
-from agent.trace import TraceMiddleware
+from agent.trace import DetectiveGuard, TraceMiddleware
 
 DEFAULT_MODEL = "claude-opus-5-5"
 # Seconds for a whole reply; after this the offline tutor answers instead.
@@ -70,7 +70,8 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
     extra = {"subagents": [detective_spec(session, detective_model,
                                           middleware=[TraceMiddleware(session, "detective")]),
                            lesson_writer_spec(session, writer_model, grader_model)],
-             "middleware": [TraceMiddleware(session, "tutor")]}
+             # The guard is outermost: a skipped detective call never runs at all.
+             "middleware": [DetectiveGuard(session), TraceMiddleware(session, "tutor")]}
     # The student's notebook: loaded as memory at the start of every turn,
     # on disk, and the only place the agent may write.
     if session.notebook is not None:
