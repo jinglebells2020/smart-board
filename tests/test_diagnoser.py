@@ -315,8 +315,11 @@ class TestInTheCheck(unittest.TestCase):
         steps = describe_steps(session.trace)
         self.assertEqual([s["text"] for s in steps],
                          [f"Worked out {len(result['facts'])} facts from the measurements",
-                          "Asked the diagnoser", "Checked every cause against the facts"])
+                          "Asked the diagnoser",
+                          "The diagnoser answered: a mistake, 1 possible cause",
+                          "Checked every cause against the facts"])
         self.assertEqual(steps[1]["who"], "diagnoser")
+        self.assertEqual(steps[2]["who"], "diagnoser")
 
     def test_safety_comes_first_and_does_not_wait(self):
         session, result, cut, board, model = checked(1, "no_resistor")

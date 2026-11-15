@@ -8,9 +8,12 @@ outside a reply (instant help noticing a change, the safety cut). Each item:
     {"time", "agent", "action", "kind"}
 
 agent: one of AGENTS. "Python safety" is everything plain Python decides
-(physics facts, the diagnoser's answer checked against the facts, safety
-cuts), so the split between AI and plain Python is easy to see.
+(physics facts from the measurements, safety cuts), so the split between
+AI and plain Python is easy to see. The diagnoser's own steps (asked, its
+answer, its causes checked against the facts) are listed as "Diagnoser".
 kind: one of KINDS.
+tag: "instant" for the steps of an automatic check (instant help started
+it; Zip and its helpers still do the work), else None.
 """
 
 import threading
@@ -34,14 +37,18 @@ TOOL_KIND = {
     "log_mistake": "memory", "edit_file": "memory", "write_file": "memory",
     "read_file": "memory", "memory": "memory", "get_lesson_facts": "memory",
     "get_hint": "think", "next_lesson": "think", "write_todos": "think", "task": "think",
-    "DetectiveAnswer": "think", "Diagnosis": "think", "diagnose": "think",
+    "DetectiveAnswer": "think", "Diagnosis": "think", "diagnose": "think", "answer": "think",
+    "validate": "check", "grade": "check",
 }
 HELPERS = {"detective": "Detective", "lesson writer": "Lesson writer",
            "lesson_writer": "Lesson writer", "grader": "Grader", "diagnoser": "Diagnoser"}
 # Steps plain Python takes (no AI), whoever's reply they are in.
-PYTHON = {("physics", "facts"): "check", ("diagnoser", "validate"): "check",
-          ("diagnoser", "compare"): "check", ("tutor", "skip_detective"): "check"}
-MODE_AGENT = {"reply": "Zip (tutor)", "check": "Instant help", "guide": "Build guide"}
+PYTHON = {("physics", "facts"): "check", ("diagnoser", "compare"): "check",
+          ("tutor", "skip_detective"): "check"}
+# Whose turn it is: the student's message and an automatic check are both
+# Zip (tutor); a short build-guide turn is the Build guide.
+MODE_AGENT = {"reply": "Zip (tutor)", "check": "Zip (tutor)", "guide": "Build guide"}
+MODE_TAG = {"check": "instant"}
 
 
 def classify(step, mode="reply"):
@@ -76,13 +83,13 @@ class Activity:
         self._trace = None  # the trace list being read, and how far
         self._seen = 0
 
-    def add(self, agent, action, kind, tool=None, when=None):
+    def add(self, agent, action, kind, tool=None, when=None, tag=None):
         with self.lock:
-            self._add(agent, action, kind, tool, when)
+            self._add(agent, action, kind, tool, when, tag)
 
-    def _add(self, agent, action, kind, tool=None, when=None):
+    def _add(self, agent, action, kind, tool=None, when=None, tag=None):
         self.items.appendleft({"time": when if when is not None else self.clock(),
-                               "agent": agent, "action": action, "kind": kind})
+                               "agent": agent, "action": action, "kind": kind, "tag": tag})
         self.total += 1
         self.by_agent[agent] += 1
         if tool == "run_experiment":
@@ -108,7 +115,8 @@ class Activity:
             self._seen += len(steps)
             for step in steps:
                 agent, kind = classify(step, mode)
-                self._add(agent, describe_step(step, student), kind, step.get("tool"))
+                self._add(agent, describe_step(step, student), kind, step.get("tool"),
+                          tag=MODE_TAG.get(mode))
 
     def view(self):
         with self.lock:
