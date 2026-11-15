@@ -126,7 +126,21 @@ class TwoAnswers(FakeSerialPort):
         return n
 
 
+class AnswersEmptyLines(FakeSerialPort):
+    """Answers an empty line (the laptop's keep-alive) with an error."""
+    def write(self, data):
+        n = super().write(data)
+        if not bytes(data).decode().strip():
+            self._line({"type": "error", "cmd": "", "msg": "unknown command: "})
+        return n
+
+
 class TestBrokenBoards(unittest.TestCase):
+    def test_an_empty_line_must_get_no_answer(self):
+        board = FakeBoard(rows="T1-T4", seed=1)
+        self.assertFailsOn("An empty line (the laptop's keep-alive) gets no answer",
+                           board=board, port=AnswersEmptyLines(board))
+
     def assertFailsOn(self, words, **kw):
         ok, results, text = run(**kw)
         self.assertFalse(ok)

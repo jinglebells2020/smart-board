@@ -365,11 +365,14 @@ The tests in Part B never use the key, even when it is set.
    power switch no". Both lessons still work. The current pill says
    "worked out from the rows". Pick **No resistor**, then
    yellow **Check my circuit**: Zip says "Switch the power off by hand
-   right now: pull the red wire out of the + line", and the board screen
-   says "DANGER! / Pull the red wire / out of the + line / right now!".
+   right now: pull every wire out of the + line", and the board screen
+   says "DANGER! / Pull every wire / out of the + line / right now!".
    The red **Power off / on** says the board has no power switch, and how
-   to do it by hand (pull the red wire out of the + line; push it back in
-   to switch on).
+   to do it by hand (pull every wire out of the + line; push them back in
+   to switch on). Pick **LED backwards**: with no current sensor Zip starts
+   with "First look at the LED. If it is very bright or feels warm, pull
+   every wire out of the + line right now: the resistor may be missing",
+   because an LED with no resistor reads the same on such a board.
    With `--no-current`, **Resistor too big (1k)** looks correct, and the
    tutor says plainly that this board cannot measure current, so it could
    not check for it.
@@ -428,12 +431,26 @@ in Step 2 below still passes, but Genesis says it cannot check a lesson.
 
 - Its breadboard runs on **3.3 V** (not 5 V). Every lesson is written for
   3.3 V: lesson 1's LED takes about 5.9 mA, lesson 2's middle row reads
-  1.65 V. Use **red, yellow or green** LEDs: blue and white ones barely
-  light at 3.3 V.
-- It has **no power switch**. When a circuit is dangerous, or the red
-  button is pressed, Zip and the station's screen say **"pull the red
-  wire out of the + line"**. Push it back in to turn the power on again.
-  Unplugging the USB cable switches the whole station off.
+  1.65 V. Use **red, yellow or yellow-green** LEDs: blue, white and bright
+  "pure green" ones (about 3 V) barely light at 3.3 V.
+- It has **no power switch**. When the board sees a dangerous circuit
+  (the + line pulled down), or the red button is pressed, Zip and the
+  station's screen say **"pull every wire out of the + line"**. When the
+  student does, Zip says "Good, the power is off. Now fix the circuit,
+  then push the wires back into the + line." Unplugging the USB cable
+  switches the whole station off.
+- It has **no current sensor**, so it cannot see every danger: an LED
+  with no resistor usually does not pull the + line down (the station's
+  regulator holds 3.3 V), and its rows read like a backwards LED. So for
+  those mistakes Zip starts with a check the student can see: "First
+  look at the LED. If it is very bright or feels warm, pull every wire
+  out of the + line right now."
+- **If the row lights freeze, or anything on the breadboard gets warm:
+  pull the USB cable first**, then look for the fault. A wire from +
+  straight to - resets the station again and again and its regulator
+  gets hot; the laptop loses the board and Zip says: "The board stopped.
+  If you just added a wire or part, + may be joined straight to -: unplug
+  the USB cable now, then find that wire."
 - Its buttons have colours: **yellow** = check my circuit, **white** = I
   need a hint, **blue** = next step, **red** = power off / on. The orange
   key on the little screen also means "check".
@@ -509,7 +526,11 @@ Open http://localhost:8000 in Chrome or Edge. With a real board:
 - Practice mode and the pretend board's buttons are gone. The student
   uses the real board's buttons.
 
-The terminal tutor works the same way:
+The terminal tutor works with the real board too, buttons included: while
+it waits at `you>` for typing, a background thread asks the board for
+button presses about 4 times a second and handles each one like `/press`
+does (the result is printed, then `you>` again). `/press` and `/build`
+are only for the fake board.
 
 ```
 python -m agent --fresh --serial COM3

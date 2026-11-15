@@ -8,9 +8,15 @@ be tested with no hardware. It can also misbehave on purpose:
     port.junk = [b"garbage", b'{"half": ']                  # junk lines
     port.unplug(); port.plug_in()                           # the cable
     port.silent = True                                      # board stops talking
+    port = FakeSerialPort(FakeBoard(), chunk=4095)          # a Linux tty: at most
+    port.backlog(20)                                        # 4 KB per read, and 20
+                                                            # readings nobody read yet
 
-Each read with nothing waiting makes the board send its next reading,
-like a board that keeps streaming.
+The board keeps streaming, like a real one: when the laptop looks again
+after it has emptied the port, the next reading has arrived. (The first
+look right after emptying it finds nothing, as on a real port, so a
+laptop that takes in "everything waiting" stops there.) Empty lines the
+laptop sends (keep-alives) get no answer, like on the station.
 """
 
 import json
@@ -22,8 +28,11 @@ from sim.fake_board import FakeBoard
 
 class FakeSerialPort:
     def __init__(self, board=None, send_hello=True, junk=(), answer_commands=True,
-                 hello_on_request=True):
+                 hello_on_request=True, chunk=None):
         self.board = board if board is not None else FakeBoard()
+        # At most this many bytes per in_waiting / read (None: all of them),
+        # like a Linux tty that hands over about 4 KB at a time.
+        self.chunk = chunk
         self.send_hello = send_hello            # say hello when opened
         self.hello_on_request = hello_on_request  # answer the HELLO command
         self.answer_commands = answer_commands
@@ -32,7 +41,9 @@ class FakeSerialPort:
         self.plugged = True
         self.is_open = False
         self.written = []                       # every command line the laptop sent
+        self.keep_alives = 0                    # empty lines the laptop sent
         self._out = bytearray()
+        self._looked = False                    # looked once since the port was emptied
         self.open()
 
     # --- The cable ------------------------------------------------------
@@ -73,22 +84,46 @@ class FakeSerialPort:
         for ev in self.board.events():
             self._line(ev)
 
+    def backlog(self, n):
+        """n readings (and any button lines) that arrived while the laptop
+        was not reading."""
+        for _ in range(n):
+            self._line(self.board.read())
+            for ev in self.board.events():
+                self._line(ev)
+
+    def _limit(self, n):
+        return min(n, self.chunk) if self.chunk else n
+
     @property
     def in_waiting(self):
         self._check()
-        self._stream()
-        return len(self._out)
+        if not self._out and not self.silent:
+            for ev in self.board.events():  # a button line goes out the moment it happens
+                self._line(ev)
+        if not self._out:
+            if self._looked:  # the laptop looks again: the next reading is there
+                self._stream()
+                self._looked = False
+            else:
+                self._looked = True
+        return self._limit(len(self._out))
 
     def read(self, size=1):
         self._check()
         self._stream()
-        data = bytes(self._out[:size])
-        del self._out[:size]
+        data = bytes(self._out[:self._limit(size)])
+        del self._out[:len(data)]
+        if data:
+            self._looked = False  # the laptop got something: its next look is a new one
         return data
 
     def write(self, data):
         self._check()
-        for line in bytes(data).decode("utf-8", "replace").splitlines():
+        text = bytes(data).decode("utf-8", "replace")
+        if not text.strip():
+            self.keep_alives += text.count("\n")
+        for line in text.splitlines():
             line = line.strip()
             if not line:
                 continue

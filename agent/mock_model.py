@@ -119,6 +119,8 @@ class ScriptedTutorModel(BaseChatModel):
 
         broken = next((d for n, d in results if "board_error" in d), None)
         if broken is not None:
+            if broken["board_error"].startswith("The board stopped."):  # already says it all
+                return reply(broken["say"])
             return reply(f"{broken['say']} ({broken['board_error']})")
 
         # restore_power also measures, so its answer counts as a reading.
@@ -152,6 +154,10 @@ class ScriptedTutorModel(BaseChatModel):
                 step = check["next_step"]
                 return stepped_reply(text if step in text else f"{text} {step}")
 
+        # The student switched the power off by hand (no power switch): say
+        # so, never ask for the power back before the circuit is fixed.
+        if status == "power_off" and check.get("by_hand"):
+            return reply(check.get("message") or "The power is off.")
         # Power is off: ask for it to come back on. Plain Python decides
         # whether the student asked; if not, restore_power refuses.
         if (status == "power_off" and "restore_power" not in called
@@ -242,6 +248,8 @@ class ScriptedTutorModel(BaseChatModel):
             if "show_on_board" not in called:
                 if manual:
                     note = MANUAL_OFF_SCREEN
+                elif logged.get("screen"):  # no current sensor: look at the LED first
+                    note = logged["screen"]
                 else:
                     where = ("Yellow: look here." if check.get("light") == "yellow"
                              else "Red rows: look here.")
@@ -335,8 +343,8 @@ class ScriptedTutorModel(BaseChatModel):
 
         if status == "missing_rows":
             if "show_on_board" not in called:
-                return call("show_on_board", text="Cannot check:|this board does not|"
-                                                  "measure every row.")
+                return call("show_on_board", text=check.get("screen") or
+                            "Cannot check:|this board does not|measure every row.")
             return reply(check["message"])
 
         # Unknown mistake: light the rows the clue is about yellow (careful),

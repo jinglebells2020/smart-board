@@ -6,6 +6,8 @@ The board's firmware does not live here. The real board is the station
 repository. It starts in **Genesis mode**: it speaks docs/SERIAL_PROTOCOL.md
 (version 2, the same protocol sim/fake_board.py uses), adds
 `"supply_v": 3.3` to its hello line, and must pass `tools/check_board.py`.
+Like sim/fake_board.py it never answers an empty line: that is Genesis's
+keep-alive, sent about every 2 seconds (docs/SERIAL_PROTOCOL.md).
 
 Order for the first time: the mux test (`tools/mux_test` there) saves
 `as_built_map.json`, `tools/make_fw_maps.py` turns it into the row map,

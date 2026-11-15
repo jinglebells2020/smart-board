@@ -6,6 +6,9 @@
     python -m agent --supply 5             # fake board on another supply (default 3.3 V)
 
 Type what a student would say ("check my circuit", "I fixed it").
+With --serial, the real board's buttons work too, even while the terminal
+waits for you to type (a background thread asks the board for button
+presses about 4 times a second).
 Commands for testing with the fake board:
     /build <circuit>    pretend the student built this circuit
     /list               show the circuits for the current lesson
@@ -18,6 +21,7 @@ Commands for testing with the fake board:
 """
 
 import argparse
+import threading
 from pathlib import Path
 
 from agent.build import build_agent, make_model
@@ -25,12 +29,54 @@ from agent.fallback import OFFLINE_NOTE, SafeReplies
 from agent.buttons import handle_button
 from agent.notebook import Notebook, safe_name
 from agent.serial_board import BoardError, SerialBoard, choose_port
-from agent.session import Session
+from agent.session import UNMAPPED_SAY, Session
 from protocol import BUTTON_LABELS, DEFAULT_BAUD, SUPPLY_V
 from sim.fake_board import SCENARIOS, FakeBoard
 
 DEFAULT_HISTORY = Path(__file__).resolve().parent / "student_history.json"
 NOTEBOOKS = Path(__file__).resolve().parent.parent / "notebooks"
+
+
+class ButtonPoller:
+    """The real board's buttons, while the terminal waits for typing.
+
+    A background thread asks session.board.events() about every `every`
+    seconds and hands each button press to on_button (the same handler as
+    /press). `lock` is held while a press is handled, and the main loop
+    holds it while it handles a typed line, so two tutor turns never run at
+    once (a press during a reply waits, then runs)."""
+
+    def __init__(self, session, on_button, lock, every=0.25):
+        self.session = session
+        self.on_button = on_button
+        self.lock = lock
+        self.every = every
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(timeout=2)
+
+    def _run(self):
+        while not self._stop.wait(self.every):
+            self.poll_once()
+
+    def poll_once(self):
+        """Handle the presses waiting now. Returns their button ids."""
+        with self.lock:
+            try:
+                events = self.session.board.events()  # never raises
+            except BoardError:
+                return []
+            ids = [ev["id"] for ev in events if ev.get("type", "button") == "button"]
+            for button_id in ids:
+                self.on_button(button_id)
+            return ids
 
 
 def show_board(session):
@@ -108,6 +154,8 @@ def main(argv=None):
           f"{'yes' if caps['has_current'] else 'no'}, power switch "
           f"{'yes' if caps['has_power_switch'] else 'no'}, screen "
           f"{'yes' if caps['has_screen'] else 'no'}, supply {caps['supply_v']:g} V")
+    if session.board.unmapped:
+        print(UNMAPPED_SAY)
     print(f"Notebook for {args.student}: {notebook.path}")
     if is_real:
         print(f"Model: {model}")
@@ -134,28 +182,45 @@ def main(argv=None):
             print("learn> Type /answer 1, 2 or 3.\n")
 
     show_question()
+    # One tutor turn at a time: typed lines and button presses take turns.
+    turn = threading.RLock()
 
-    def tutor(text):
+    def answer_pause(text):
+        """Zip is paused (asks before power on, or asks for an experiment):
+        `text` is the student's answer. Returns Zip's next reply."""
+        pending = replies.pending(agent)
+        if pending.get("kind") == "experiment":
+            exp = pending["experiment"]
+            done = text.strip().lower().startswith(exp["done_label"][:1].lower() or "d")
+            return replies.answer_experiment(agent, history, done)[0]
+        return replies.answer_power(agent, history, text.strip().lower().startswith("y"))[0]
+
+    def pause_choices():
+        """What Zip is waiting for: "yes/no", or the experiment's two labels."""
+        pending = replies.pending(agent)
+        if pending.get("kind") == "experiment":
+            exp = pending["experiment"]
+            return f"{exp['done_label']} / {exp['cant_label']}"
+        return "yes/no"
+
+    def tutor(text, from_button=False, answer=None):
+        """One tutor turn. While Zip is paused for an answer, it is read
+        here (typing), or, for a turn a board button started (the main
+        loop is waiting at you>), left for the next typed line."""
         lesson_before = session.lesson_id
         try:
-            reply, _ = replies.ask(agent, history, text)
-            while replies.paused(agent) is not None:  # Zip asks before power on,
-                pending = replies.pending(agent)    # or asks for an experiment
+            reply = answer_pause(answer) if answer is not None else \
+                replies.ask(agent, history, text)[0]
+            while replies.paused(agent) is not None:
                 print(f"tutor> {reply}")
-                if pending.get("kind") == "experiment":
-                    exp = pending["experiment"]
-                    try:
-                        done = input(f"you ({exp['done_label']} / {exp['cant_label']})> ")
-                    except (EOFError, KeyboardInterrupt):
-                        done = ""
-                    done = done.strip().lower().startswith(exp["done_label"][:1].lower() or "d")
-                    reply, _ = replies.answer_experiment(agent, history, done)
-                    continue
+                if from_button:
+                    print(f"(type your answer at you>: {pause_choices()})")
+                    return reply
                 try:
-                    yes = input("you (yes/no)> ").strip().lower().startswith("y")
+                    typed = input(f"you ({pause_choices()})> ")
                 except (EOFError, KeyboardInterrupt):
-                    yes = False
-                reply, _ = replies.answer_power(agent, history, yes)
+                    typed = ""
+                reply = answer_pause(typed)
         except BoardError as e:
             print(f"board> {e}")
             return str(e)
@@ -170,6 +235,54 @@ def main(argv=None):
         show_question()
         return reply
 
+    def on_button(button_id, prompt=False):
+        """One button press, from /press or from the real board: the same
+        handling either way."""
+        if prompt:
+            print()  # off the "you> " line
+        print(f"(button {button_id}: {BUTTON_LABELS.get(button_id, '?')})")
+        try:
+            result = handle_button(button_id, session,
+                                   lambda text: tutor(text, from_button=prompt))
+        except BoardError as e:
+            print(f"board> {e}")
+            result = {}
+        if result.get("action") == "next_step" and not result.get("done"):
+            legs = ", ".join(f"{l['leg']} in {l['row']}" for l in result["legs"])
+            print(f"step> {result['step']} of {result['of']}: {result['part']} ({legs})")
+        elif "say" in result:
+            print(f"board> {result['say']}")
+        show_board(session)
+        print()
+        if prompt:
+            print("you> ", end="", flush=True)  # still waiting for typing
+        return result
+
+    def paused_answer(text):
+        """A typed line while Zip waits for an answer (a board button's
+        turn paused): it is that answer. Returns True when it was used."""
+        if replies.paused(agent) is None:
+            return False
+        tutor(None, answer=text)
+        show_board(session)
+        print()
+        return True
+
+    poller = None
+    if not fake:
+        # The real board's buttons: handled while the terminal waits for typing.
+        poller = ButtonPoller(session, lambda b: on_button(b, prompt=True), turn).start()
+    try:
+        return _loop(session, board, fake, notebook, turn,
+                     lambda text: paused_answer(text) or
+                     _command(text, session, board, fake, notebook, tutor, on_button))
+    finally:
+        if poller is not None:
+            poller.stop()
+
+
+def _loop(session, board, fake, notebook, turn, handle):
+    """Read typed lines until /quit. Each line is handled holding `turn`."""
     while True:
         try:
             text = input("you> ").strip()
@@ -180,67 +293,69 @@ def main(argv=None):
             continue
         if text in ("/quit", "/exit"):
             break
-        if text == "/help":
-            print(__doc__)
-            continue
-        if text == "/list":
-            print(", ".join(SCENARIOS[session.lesson_id]))
-            continue
-        if text == "/notebook":
-            print(notebook.text())
-            continue
-        if text == "/board":
-            show_board(session)
-            continue
-        if text.startswith("/answer"):
-            parts = text.split()
-            if not session.is_explore():
-                print("learn> /answer is for lesson 0's question. Quiz questions after "
-                      "a mistake are on the web page.")
-                continue
-            if len(parts) != 2 or not parts[1].isdigit():
-                print("usage: /answer <1-3>")
-                continue
-            out = session.record_quiz(session.lesson_id, "intro", int(parts[1]) - 1, "intro")
-            if "error" in out:
-                print("learn> Type /answer 1, 2 or 3.")
-                continue
-            print(f"learn> {'Right!' if out['correct'] else 'Not quite.'} {out['why']}")
-            print("learn> Now type: check my circuit\n")
-            continue
-        if (text.startswith("/build") or text.startswith("/press")) and not fake:
-            print("board> /build and /press are for the fake board. Use the real "
-                  "board's buttons.")
-            continue
-        if text.startswith("/build"):
-            parts = text.split()
-            if len(parts) != 2:
-                print("usage: /build <circuit>   (see /list)")
-                continue
-            print("board>", board.send(f"SCENARIO {session.lesson_id} {parts[1]}"))
-            continue
-        if text.startswith("/press"):
-            parts = text.split()
-            answer = board.send(f"PRESS {parts[1] if len(parts) == 2 else ''}".strip())
-            if answer.get("type") == "error":
-                print("board>", answer["msg"])
-                continue
-            for ev in session.board.events():
-                print(f"(button {ev['id']}: {BUTTON_LABELS.get(ev['id'], '?')})")
-                result = handle_button(ev["id"], session, tutor)
-                if result.get("action") == "next_step" and not result.get("done"):
-                    legs = ", ".join(f"{l['leg']} in {l['row']}" for l in result["legs"])
-                    print(f"step> {result['step']} of {result['of']}: {result['part']} ({legs})")
-                elif "say" in result:
-                    print(f"board> {result['say']}")
+        with turn:
+            handle(text)
+    return 0
+
+
+def _command(text, session, board, fake, notebook, tutor, on_button):
+    """One typed line: a /command, or what the student says to the tutor."""
+    if text == "/help":
+        print(__doc__)
+        return
+    if text == "/list":
+        print(", ".join(SCENARIOS[session.lesson_id]))
+        return
+    if text == "/notebook":
+        print(notebook.text())
+        return
+    if text == "/board":
+        show_board(session)
+        return
+    if text.startswith("/answer"):
+        parts = text.split()
+        if not session.is_explore():
+            print("learn> /answer is for lesson 0's question. Quiz questions after "
+                  "a mistake are on the web page.")
+            return
+        if len(parts) != 2 or not parts[1].isdigit():
+            print("usage: /answer <1-3>")
+            return
+        out = session.record_quiz(session.lesson_id, "intro", int(parts[1]) - 1, "intro")
+        if "error" in out:
+            print("learn> Type /answer 1, 2 or 3.")
+            return
+        print(f"learn> {'Right!' if out['correct'] else 'Not quite.'} {out['why']}")
+        print("learn> Now type: check my circuit\n")
+        return
+    if (text.startswith("/build") or text.startswith("/press")) and not fake:
+        print("board> /build and /press are for the fake board. On the real board, "
+              "press its buttons: they work while this terminal waits for you.")
+        return
+    if text.startswith("/build"):
+        parts = text.split()
+        if len(parts) != 2:
+            print("usage: /build <circuit>   (see /list)")
+            return
+        print("board>", board.send(f"SCENARIO {session.lesson_id} {parts[1]}"))
+        return
+    if text.startswith("/press"):
+        parts = text.split()
+        answer = board.send(f"PRESS {parts[1] if len(parts) == 2 else ''}".strip())
+        if answer.get("type") == "error":
+            print("board>", answer["msg"])
+            return
+        presses = session.board.events()
+        for ev in presses:
+            on_button(ev["id"])
+        if not presses:
             show_board(session)
             print()
-            continue
+        return
 
-        tutor(text)
-        show_board(session)
-        print()
-    return 0
+    tutor(text)
+    show_board(session)
+    print()
 
 
 if __name__ == "__main__":

@@ -606,7 +606,8 @@
         <h3>What parts did you use?</h3>
         <p class="small muted">Tap a part once for each one you used.</p>
         <p class="small muted" id="tray-leds">This board runs on 3.3 volts. Red, yellow and
-          green LEDs light up well; a blue one only glows a little.</p>
+          yellow-green LEDs light up well. A blue one, or a bright "pure green" one, needs
+          about 3 volts, so it only glows a little.</p>
         <div class="tray-chips" id="tray-chips"></div>
         <input type="text" id="tray-other" maxlength="80" aria-label="Other parts"
                placeholder="Other parts, for example a buzzer">
@@ -1890,10 +1891,14 @@
       });
     }
     const missing = $("rows-note");
-    missing.hidden = !b.missing_rows.length || noBoard;
-    missing.textContent = b.missing_rows.length
-      ? `This board does not measure ${b.missing_rows.join(", ")}, so this lesson cannot be checked.`
-      : "";
+    missing.hidden = !(b.missing_rows.length || b.unmapped) || noBoard;
+    // A station before its row map is flashed measures no rows: say what to
+    // do, not a list of row names.
+    missing.textContent = b.unmapped
+      ? "The station's row map is not flashed yet: run the mux test, then make_fw_maps.py, then flash the firmware again."
+      : b.missing_rows.length
+        ? `This board does not measure ${b.missing_rows.join(", ")}, so this lesson cannot be checked.`
+        : "";
   }
 
   // The pretend board (b.pretend): its little screen and its 4 buttons, in

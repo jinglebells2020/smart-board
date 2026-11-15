@@ -26,7 +26,7 @@ from agent.lessons import summarize
 from agent.serial_board import BoardError
 from protocol import COLORS, MANUAL_OFF_SCREEN, MANUAL_OFF_WORDS, MANUAL_ON_WORDS
 
-# The station has no power switch: by hand means the red wire to the + line.
+# The station has no power switch: by hand means every wire out of the + line.
 MANUAL_OFF = ("This board has no power switch. Tell the student to switch the "
               f"power off by hand right now: {MANUAL_OFF_WORDS}. The board screen "
               "already says so.")
@@ -34,16 +34,27 @@ MANUAL_ON = ("This board has no power switch. Tell the student to switch the "
              f"power back on by hand after fixing the circuit: {MANUAL_ON_WORDS}.")
 
 
-def _board_errors_in_words(tool):
-    """A board that stops answering gives the AI a plain message, not a crash."""
+NOT_ANSWERING_SAY = "The board is not answering. Check that its USB cable is plugged in."
+# The station (no power switch) stops all at once most often because + is
+# joined straight to -: its regulator gets hot until the cable is pulled.
+STATION_NOT_ANSWERING_SAY = ("The board is not answering. If you just added a wire or part, + "
+                             "may be joined straight to -: unplug the USB cable now, then find "
+                             "that wire.")
+
+
+def _board_errors_in_words(tool, board=None):
+    """A board that stops answering gives the AI a plain message, not a crash.
+    On a board with no power switch (the station) the message says to pull
+    the USB cable first: a sudden stop there most often means a short."""
     @functools.wraps(tool)
     def wrapper(*args, **kwargs):
         try:
             return tool(*args, **kwargs)
         except BoardError as e:
+            station = board is not None and not board.has_power_switch
             return json.dumps({"type": "error", "board_error": str(e),
-                               "say": "The board is not answering. Check that its USB "
-                                      "cable is plugged in."})
+                               "say": STATION_NOT_ANSWERING_SAY if station
+                               else NOT_ANSWERING_SAY})
     return wrapper
 
 
@@ -131,7 +142,7 @@ def make_tools(session, can_pause=False):
         limit. Give the reason in a few words, and tell the student why in
         your reply. Only the student can turn power back on (restore_power
         asks them first). If the board has no power switch, this tells you
-        to have the student switch it off by hand (pull the red wire out of
+        to have the student switch it off by hand (pull every wire out of
         the + line)."""
         if reason:
             session.power_log.append({"cut": str(reason)[:200]})
@@ -302,4 +313,4 @@ def make_tools(session, can_pause=False):
              plan_experiment]
     if can_pause:
         tools.append(run_experiment)
-    return [_board_errors_in_words(t) for t in tools]
+    return [_board_errors_in_words(t, board) for t in tools]

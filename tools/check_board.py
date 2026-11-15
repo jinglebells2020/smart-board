@@ -343,6 +343,15 @@ class Checker:
                   "HELLO is answered with the same hello line as before.",
                   "" if answer == self.hello else f"answered {json.dumps(answer)[:150]}")
         self.expect("FLY AWAY", "error", "An unknown command (FLY AWAY) gives an error.")
+        # Genesis sends an empty line about every 2 s (a keep-alive, so the
+        # station knows the laptop is there). It must get no answer: an answer
+        # could be taken for the answer to the next command.
+        self.drain()
+        self.io.write("")
+        got = self.wait_for(("ack", "error", "hello"), min(0.5, self.answer_wait))
+        self.rule(got is None, "An empty line (the laptop's keep-alive) gets no answer.",
+                  "" if got is None else f"it answered {json.dumps(got)[:150]}. Skip empty "
+                  "lines: see docs/FIRMWARE_GUIDE.md part 2.")
         after = self.fresh_readings(3)
         self.rule(len(after) == 3, "Readings keep coming after the commands.")
         self.drain(0.3)

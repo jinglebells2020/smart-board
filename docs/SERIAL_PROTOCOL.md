@@ -27,7 +27,16 @@ every row once the row map from the mux test is flashed (`[]` before),
   any time between them.
 - The reading rate is **not fixed**. Each reading has `t_ms`
   (milliseconds since the board started). The laptop uses `t_ms`, never
-  an assumed rate.
+  an assumed rate. It reads everything waiting before it judges, so it
+  always uses the newest reading, never one from seconds ago.
+- **An empty line from the laptop is a keep-alive.** Genesis sends one
+  about every 2 seconds while it is using the board, so the station knows
+  the laptop is still there. The board must not answer it (an answer could
+  be taken for the answer to the next command); `tools/check_board.py`
+  checks this.
+- **When the laptop connects** it reads the hello line (or asks with
+  `HELLO`), then sends `LED CLEAR` once: a board that kept running while
+  the laptop restarted might still show old lights.
 
 ## Names
 
@@ -81,7 +90,7 @@ the `HELLO` command.
 |---|---|---|
 | `t_ms` | integer | Milliseconds since the board started |
 | `power_on` | true/false | Is breadboard power on? Always `true` without a power switch |
-| `supply_v` | number | Voltage of the breadboard supply. The station sends its + line when that is below the top of its meter, else 3.3 |
+| `supply_v` | number | Voltage of the breadboard supply. The station sends its + line when that is below the top of its meter, `0` when its + tap floats (every wire pulled out of the + line: the power is off by hand), else 3.3 |
 | `current_ma` | number or `null` | Supply current in mA. **`null` when there is no current sensor** |
 | `rows` | object | Name → volts, **only for measured names** (the `rows` in `hello`). A board whose meter tops out below its supply (the station: about 2.9-3.1 V) sends a row at or above that top as the supply voltage ("at the supply") |
 | `floating` | list | Measured names that nothing is driving (an empty row). Their volts mean nothing |
@@ -133,6 +142,11 @@ Every command gets exactly one answer line:
 {"type": "error", "cmd": "CUT", "msg": "no power switch"}
 ```
 
+`cmd` starts with the command's first word. The laptop only takes an
+answer for the command it belongs to (a late answer to an earlier
+command is skipped), and it only changes its picture of the lights and
+the screen when the board answers `ack`.
+
 ## Laptop → board: commands
 
 Plain text, one command per line.
@@ -145,6 +159,7 @@ Plain text, one command per line.
 | `CUT` | Switch breadboard power off |
 | `RESTORE` | Switch breadboard power back on |
 | `HELLO` | Send the `hello` line again |
+| an empty line | Nothing: the laptop's keep-alive (about every 2 s). **No answer** |
 
 **Light colors.** Each color always means the same thing:
 
@@ -162,8 +177,11 @@ Plain text, one command per line.
   `{"type": "error", "cmd": "CUT", "msg": "no power switch"}`.
   The laptop then tells the student to switch the power off by hand,
   on the laptop and on the board screen. On the station that means
-  "pull the red wire out of the + line" (`MANUAL_OFF_WORDS` in
-  `protocol.py`).
+  "pull every wire out of the + line" (`MANUAL_OFF_WORDS` in
+  `protocol.py`). When the student does, the station's readings show it
+  (`supply_v` 0 and its + taps in `floating`, or the plan's + row empty):
+  the laptop says "Good, the power is off" and waits for the fix, and it
+  never takes `supply_v` 0 with floating + taps for a short.
 - `SHOW` on a board with no screen: `"msg": "no screen"`.
 - `SHOW` with more lines or longer lines than the screen holds:
   `"msg": "too long"`. The laptop never sends that: it fits the text

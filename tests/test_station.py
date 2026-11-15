@@ -6,17 +6,24 @@ sensor, no power switch, and buttons with colours instead of numbers.
 
 import json
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
 import protocol as P
 from agent.boardlink import BoardLink
+from agent.build import ask, build_agent
 from agent.lessons import check, free_check, load_lessons, summarize
+from agent.mock_model import ScriptedTutorModel
+from agent.physics import observations, power_fact
+from agent.reader import physics_check
 from agent.serial_board import STATION_VID, BoardError, choose_port
-from agent.session import NO_SWITCH_SAY, Session
+from agent.session import NO_SWITCH_SAY, UNMAPPED_SCREEN, Session
 from sim.fake_board import FakeBoard
 from sim.random_circuit import BRIGHT_AT_3V3, random_circuit
+from tests.test_instant import Clock, InstantApp
 from tests.test_rows_checking import CIRCUITS, FLOAT, UNLISTED, reading
+from web.server import App
 
 ROOT = Path(__file__).resolve().parent.parent
 LESSONS = load_lessons()
@@ -24,11 +31,15 @@ V = P.SUPPLY_V
 
 # Lesson 4, the button: true row voltages per step (no current sensor).
 BUTTON = {
-    ("pressed", "correct"): {"T5": V, "T8": V, "T13": 2.0, "T15": 0},
-    ("pressed", "led_backwards"): {"T5": V, "T8": V, "T13": V, "T15": 0},
-    ("released", "correct"): {"T5": V, "T8": FLOAT, "T13": FLOAT, "T15": 0},
-    ("released", "button_always_on"): {"T5": V, "T8": V, "T13": 2.0, "T15": 0},
+    ("pressed", "correct"): {"T2": V, "T5": V, "T10": 2.0, "T12": 0},
+    ("pressed", "led_backwards"): {"T2": V, "T5": V, "T10": V, "T12": 0},
+    ("pressed", "open_circuit"): {"T2": V, "T5": V, "T10": FLOAT, "T12": 0},
+    ("released", "correct"): {"T2": V, "T5": FLOAT, "T10": FLOAT, "T12": 0},
+    ("released", "button_always_on"): {"T2": V, "T5": V, "T10": 2.0, "T12": 0},
 }
+# The station's meter top (its clip point: the rail tap's saturated reading
+# minus 100 mV, 2850 mV with no calibration): about 2.8 to 3.1 V.
+TOPS = (2.8, 2.85, 2.9, 3.0, 3.1)
 
 
 def station(rows, offset, top):
@@ -118,7 +129,7 @@ class TestLessonsOnTheStationMeter(unittest.TestCase):
         for lid, circuits in CIRCUITS.items():
             for circuit, (rows, _current, supply) in circuits.items():
                 for offset in (-0.1, 0.0, 0.1):
-                    for top in (2.9, 3.0, 3.1):
+                    for top in TOPS:
                         with self.subTest(lesson=lid, circuit=circuit, offset=offset, top=top):
                             s = station_summary(LESSONS[lid], rows, supply, offset, top)
                             middle = rows.get("T10")
@@ -137,7 +148,7 @@ class TestLessonsOnTheStationMeter(unittest.TestCase):
             rules = dict(lesson, accept=st["accept"], expected=st["expected"], check_step=step,
                          mistakes=[m for m in lesson["mistakes"] if m.get("step") in (None, step)])
             for offset in (-0.1, 0.0, 0.1):
-                for top in (2.9, 3.1):
+                for top in TOPS:
                     with self.subTest(step=step, circuit=circuit, offset=offset, top=top):
                         s = station_summary(rules, rows, V, offset, top)
                         self.assertEqual(outcome(check(s, rules)),
@@ -193,18 +204,20 @@ class TestNoPowerSwitch(unittest.TestCase):
     """The station: pull the red wire out of the + line."""
 
     def test_screens_fit_without_cutting(self):
-        for text in (P.MANUAL_OFF_SCREEN, P.NO_SWITCH_SCREEN):
+        for text in (P.MANUAL_OFF_SCREEN, P.NO_SWITCH_SCREEN, P.HAND_OFF_SCREEN):
             with self.subTest(text=text):
                 self.assertEqual(P.fit_screen(text), text.split("|"))  # nothing cut off
-        self.assertIn("red wire", P.MANUAL_OFF_SCREEN)
+        # Every wire: lesson 3 has one red wire per copy, free build any wire.
+        self.assertEqual(P.MANUAL_OFF_SCREEN, "DANGER!|Pull every wire|out of the + line|right now!")
+        self.assertEqual(P.MANUAL_OFF_WORDS, "pull every wire out of the + line")
 
     def test_red_button_says_how_on_the_screen_and_the_laptop(self):
         board = FakeBoard(1, has_power_switch=False, has_current=False)
         session = Session(board, lesson=1)
         out = session.toggle_power()
         self.assertEqual(out["say"], NO_SWITCH_SAY)
-        self.assertIn("pull the red wire out of the + line", out["say"])
-        self.assertIn("push the red wire back into the + line", out["say"])
+        self.assertIn("pull every wire out of the + line", out["say"])
+        self.assertIn("push the wires back into the + line", out["say"])
         self.assertEqual(board.screen, P.NO_SWITCH_SCREEN.split("|"))
         self.assertTrue(board.power_on)
 
@@ -270,6 +283,296 @@ class TestRandomCircuitsAt3V3(unittest.TestCase):
                 if made["mistake"] is None:  # never LED to LED in one row (in series)
                     rows = [r for p in leds for r in p["rows"] if P.is_row(r)]
                     self.assertEqual(len(rows), len(set(rows)), made)
+
+
+STATION_OPTS = {"rows": "T1-T63,B1-B63,PT+,PB+", "has_current": False,
+                "has_power_switch": False}
+SAFETY = "First look at the LED. If it is very bright or feels warm, pull every wire out of " \
+         "the + line right now"
+NO_SENSOR_CLAIMS = re.compile(r"\b(almost )?no current\b", re.IGNORECASE)
+
+
+class StiffStation(FakeBoard):
+    """The station with a supply that holds 3.3 V (no sag, no current
+    sensor, no power switch): it reads exactly the rows it is given, every
+    other row empty. An LED with no resistor reads like this."""
+
+    def __init__(self, lesson, rows, **kw):
+        super().__init__(lesson, seed=1, **dict(STATION_OPTS, **kw))
+        self.now = dict(rows)
+
+    def read(self):
+        r = super().read()
+        rows = dict(self.now, **{"PT+": V})
+        r["rows"] = {n: (0.0 if rows.get(n, FLOAT) is FLOAT else rows[n]) for n in self.rows}
+        r["floating"] = [n for n in self.rows if rows.get(n, FLOAT) is FLOAT]
+        r["supply_v"] = V
+        return r
+
+
+# An LED with no resistor on a supply that holds 3.3 V (the station), and the
+# mistake whose rows it fits: a wire in the resistor's place reads like a
+# blocked LED; the LED's long leg pushed into the row before the resistor
+# leaves the LED's row empty, like an open circuit.
+LOOK_ALIKES = {
+    1: {"led_backwards": {"T5": V, "T10": V, "T12": 0.0},
+        "open_circuit": {"T5": V, "T10": FLOAT, "T12": 0.0}},
+    3: {"led_backwards": {"T5": V, "T10": V, "T12": 0.0},
+        "open_circuit": {"T5": V, "T10": FLOAT, "T12": 0.0}},
+    4: {"led_backwards": {"T2": V, "T5": V, "T10": V, "T12": 0.0},  # the button held
+        "open_circuit": {"T2": V, "T5": V, "T10": FLOAT, "T12": 0.0}},
+}
+
+
+class TestAStiffSupplyWithNoCurrentSensor(unittest.TestCase):
+    """Round 2 (G3): on the station an LED with no resistor does not sag the
+    supply, so it reads like a blocked LED or an open circuit. Without a
+    current sensor every such hint starts with a check the student can see,
+    names a missing resistor, and never claims that no current flows."""
+
+    def test_the_safety_sentence_comes_first_for_both_look_alikes(self):
+        for lid, cases in LOOK_ALIKES.items():
+            for mistake_id, rows in cases.items():
+                with self.subTest(lesson=lid, mistake=mistake_id):
+                    board = StiffStation(lid, rows)
+                    with tempfile.TemporaryDirectory() as tmp:
+                        session = Session(board, lesson=lid, history_path=Path(tmp) / "h.json")
+                        agent = build_agent(session, ScriptedTutorModel())
+                        reply, _ = ask(agent, [], "Check my circuit")
+                    self.assertEqual(session.last_check[1]["mistake_id"], mistake_id)
+                    self.assertIn(SAFETY, reply)
+                    self.assertTrue(re.search(r"resistor may be missing|skip the resistor", reply))
+                    self.assertIsNone(NO_SENSOR_CLAIMS.search(reply), reply)
+                    # The short version on the board screen (4 x 20, nothing cut).
+                    self.assertEqual(board.screen, ["LED bright or warm?", "Pull every wire",
+                                                    "out of the + line!"])
+                    # The next level of help (the hint button) says it too.
+                    explain = session.hint()["say"]
+                    self.assertIn("pull every wire out of the + line first", explain)
+                    self.assertIsNone(NO_SENSOR_CLAIMS.search(explain), explain)
+
+    def test_the_led_fact_and_instant_help_say_it_too(self):
+        board = StiffStation(1, LOOK_ALIKES[1]["led_backwards"])
+        s = summarize([board.read() for _ in range(3)], LESSONS[1])
+        led = next(f for f in observations(s, LESSONS[1]) if f["kind"] == "led_state")
+        self.assertEqual(led["values"]["state"], "blocked")
+        self.assertTrue(led["text"].startswith(SAFETY), led["text"])
+        self.assertIsNone(NO_SENSOR_CLAIMS.search(led["text"]))
+        # Instant help, the moment the circuit appears: the same words first.
+        with tempfile.TemporaryDirectory() as tmp:
+            board = StiffStation(1, {})
+            app = App(board, lesson=1, history_path=Path(tmp) / "h.json",
+                      model=ScriptedTutorModel(), instant=True)
+            app.instant_inline = app.auto_inline = True
+            clock = Clock()
+            app.live.clock = clock
+
+            def settle():
+                for _ in range(10):
+                    clock.t += 0.25
+                    app.instant_tick()
+            settle()
+            board.now = dict(LOOK_ALIKES[1]["led_backwards"])
+            settle()
+        said = [m["text"] for m in app.log if m["who"] == "tutor"]
+        self.assertTrue(said and said[0].startswith(SAFETY), said)
+        self.assertTrue(all(NO_SENSOR_CLAIMS.search(t) is None for t in said), said)
+
+    def test_with_a_current_sensor_the_hints_stay_as_they_were(self):
+        board = FakeBoard(1, "led_backwards", seed=1)  # current sensor: 0 mA measured
+        session = Session(board, lesson=1)
+        session.measure()
+        out = session.log_mistake("led_backwards")
+        self.assertEqual(out["say"], next(m for m in LESSONS[1]["mistakes"]
+                                          if m["id"] == "led_backwards")["hint"])
+        self.assertNotIn("screen", out)
+        s = summarize([board.read() for _ in range(3)], LESSONS[1])
+        led = next(f for f in observations(s, LESSONS[1]) if f["kind"] == "led_state")
+        self.assertIn("almost no current flows", led["text"])  # measured, so it is a fact
+
+    def test_every_look_alike_mistake_has_its_no_sensor_texts(self):
+        for lid in (1, 3, 4):
+            for m in LESSONS[lid]["mistakes"]:
+                if m["id"] not in ("led_backwards", "open_circuit"):
+                    continue
+                with self.subTest(lesson=lid, mistake=m["id"]):
+                    ns = m["no_sensor"]
+                    self.assertTrue(ns["hint"].startswith(("First look at the LED.",
+                                                           "You are holding the button. First")))
+                    self.assertIn("pull every wire out of the + line right now", ns["hint"])
+                    self.assertIn("resistor", ns["description"])
+                    for text in (ns["hint"], ns["explain"], ns["description"]):
+                        self.assertIsNone(NO_SENSOR_CLAIMS.search(text), text)
+                    self.assertEqual(P.fit_screen(ns["screen"]), ns["screen"].split("|"))
+
+
+class TestPowerOffByHand(InstantApp):
+    """Round 2 (G4): no power switch. After Genesis asks for the power to be
+    switched off by hand, the + line going empty is the power off: Genesis
+    says so, keeps the mistake open, and the same mistake coming back is not
+    a new one."""
+
+    def check(self, session, agent, history):
+        reply, _ = ask(agent, history, "Check my circuit")
+        return reply
+
+    def test_instant_help_off(self):
+        board = FakeBoard(1, "no_resistor", seed=1, **STATION_OPTS)
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Session(board, lesson=1, history_path=Path(tmp) / "h.json")
+            agent = build_agent(session, ScriptedTutorModel())
+            history = []
+            self.assertTrue(self.check(session, agent, history).startswith(
+                "Switch the power off by hand right now: pull every wire out of the + line"))
+            for how in ("ALL", "WIRES"):  # the feed too, or only the circuit's wires
+                with self.subTest(unplug=how):
+                    board.send(f"UNPLUG {how}")
+                    self.assertEqual(self.check(session, agent, history), P.HAND_OFF_SAY)
+                    self.assertEqual(session.open_mistake["mistake"], "no_resistor")  # kept
+                    self.assertEqual(board.screen, P.HAND_OFF_SCREEN.split("|"))
+                    self.assertTrue(board.power_on)
+                    board.send("UNPLUG NONE")  # pushed back in, but not fixed
+                    self.assertTrue(self.check(session, agent, history).startswith(
+                        "Switch the power off by hand right now"))
+            self.assertEqual([m["mistake"] for m in session.history["mistakes"]],
+                             ["no_resistor"])  # one mistake, not three
+            board.send("SCENARIO 1 correct")  # fixed, and pushed back in
+            self.assertIn("Your circuit is correct!", self.check(session, agent, history))
+            self.assertIsNone(session.manual_off)
+
+    def test_instant_help_on(self):
+        self.make("no_resistor", **STATION_OPTS)
+        self.step("BUILD 4")
+        texts = [m["text"] for m in self.said()]
+        self.assertTrue(any(t.startswith("Switch the power off by hand") for t in texts), texts)
+        self.step("UNPLUG ALL")
+        self.assertEqual(self.said()[-1]["text"], P.HAND_OFF_SAY)
+        self.step("BUILD 3")  # the student works on the circuit with the power off
+        self.assertEqual(self.said()[-1]["text"], P.HAND_OFF_SAY)  # said once
+        self.assertNotIn("That fixed it.", [m["text"] for m in self.said()])
+        self.step("BUILD 4")
+        self.step("UNPLUG NONE")  # pushed back in, not fixed: the danger again
+        self.assertTrue(self.said()[-1]["text"].startswith("Switch the power off by hand"))
+        self.assertNotIn("That fixed it.", [m["text"] for m in self.said()])
+        s = self.app.session
+        self.assertEqual([m["mistake"] for m in s.history["mistakes"]], ["no_resistor"])
+        self.assertEqual(s.open_mistake["mistake"], "no_resistor")
+        self.step("SCENARIO 1 correct")  # now it is fixed
+        self.assertIn("Your circuit is correct!", self.said()[-1]["text"])
+
+    def test_the_unplugged_line_is_never_a_sagging_supply(self):
+        # supply_v 0 and the + taps floating: power off, whatever the rows say.
+        rows = {"T5": 0.0, "T10": 2.0, "T12": 0.0, "PT+": FLOAT, "PB+": FLOAT}
+        r = reading(rows, 0.0, 0.0, with_sensor=False)
+        for lid in (1, 3, 4):
+            with self.subTest(lesson=lid):
+                result = check(summarize([r], LESSONS[lid]), LESSONS[lid])
+                self.assertEqual(result, {"status": "power_off", "by_hand": True})
+        free = free_check(summarize([r], {"rows": ["T5", "T10", "T12"]}))
+        self.assertEqual(free, {"status": "power_off", "by_hand": True})  # no cut_power
+        fact = power_fact(summarize([r], LESSONS[1]))
+        self.assertIn("off by hand", fact["text"])
+        # A + tap that still reads 3.3 V is not unplugged: a sag is still a sag.
+        sag = reading({"T5": 2.2, "T10": 2.2, "T12": 0.0, "PT+": 2.2}, 0.0, 2.2,
+                      with_sensor=False)
+        self.assertEqual(check(summarize([sag], LESSONS[1]), LESSONS[1])["mistake_id"],
+                         "no_resistor")
+
+    def test_unplugged_with_nobody_asking_is_just_power_off(self):
+        board = FakeBoard(1, "correct", seed=1, **STATION_OPTS)
+        board.send("UNPLUG ALL")
+        _, result, _ = Session(board, lesson=1).measure()
+        self.assertEqual((result["status"], result["by_hand"]), ("power_off", True))
+        self.assertNotIn("asked", result)
+        self.assertIn("push the wires back into the + line", result["message"])
+
+
+class TestMeterTopAndWindows(unittest.TestCase):
+    def test_lesson_2_top_1k_on_a_clipping_meter_names_both_causes(self):
+        for top, want in ((2.8, "bottom_missing"), (2.85, "bottom_missing"),
+                          (2.9, "bottom_missing"), (3.1, "top_1k")):
+            with self.subTest(top=top):
+                board = FakeBoard(2, "top_1k", seed=1, meter_top=top, **STATION_OPTS)
+                _, result, _ = Session(board, lesson=2).measure()
+                self.assertEqual(outcome(result), want)
+        m = next(m for m in LESSONS[2]["mistakes"] if m["id"] == "bottom_missing")
+        for text in (m["description"], m["hint"], m["explain"]):
+            self.assertIn("top resistor may be much smaller", text)
+            self.assertIsNone(NO_SENSOR_CLAIMS.search(text), text)
+        self.assertIn("color bands", m["hint"])
+
+    def test_the_led_row_can_be_anywhere_in_its_window(self):
+        """No current sensor: the current is worked out from the rows, and the
+        whole LED row window must pass (rows at the station's 3.3 V)."""
+        cases = {1: ("T10", {"T5": V, "T12": 0.0}, LESSONS[1]),
+                 3: ("T10", {"T5": V, "T12": 0.0}, LESSONS[3]),
+                 4: ("T10", {"T2": V, "T5": V, "T12": 0.0}, None)}
+        for lid, (row, rest, lesson) in cases.items():
+            if lesson is None:  # lesson 4: the pressed step's rules
+                st = LESSONS[4]["states"]["pressed"]
+                lesson = dict(LESSONS[4], accept=st["accept"], expected=st["expected"],
+                              check_step="pressed",
+                              mistakes=[m for m in LESSONS[4]["mistakes"]
+                                        if m.get("step") in (None, "pressed")])
+            window = lesson["accept"]["rows"][row]
+            self.assertEqual((window["min"], window["max"]), (1.5, 2.4))
+            v = window["min"]
+            while v <= window["max"] + 1e-9:
+                with self.subTest(lesson=lid, led_row=round(v, 2)):
+                    r = reading(dict(rest, **{row: round(v, 2)}), 0.0, V, with_sensor=False)
+                    self.assertEqual(outcome(check(summarize([r], lesson), lesson)), "ok")
+                v += 0.01
+
+
+class TestUnmappedStation(unittest.TestCase):
+    """Round 2 (G9): the station before its row map is flashed (hello rows [])."""
+
+    def test_genesis_says_what_to_do_not_row_names(self):
+        board = FakeBoard(1, seed=1, rows=[], has_current=False, has_power_switch=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Session(board, lesson=1, history_path=Path(tmp) / "h.json")
+            self.assertTrue(session.board.unmapped)
+            agent = build_agent(session, ScriptedTutorModel())
+            reply, _ = ask(agent, [], "Check my circuit")
+        self.assertIn("row map is not flashed yet", reply)
+        self.assertIn("mux test, then make_fw_maps.py, then flash", reply)
+        self.assertIsNone(re.search(r"\b[TB]\d+\b", reply), reply)
+        self.assertEqual(board.screen, P.fit_screen(UNMAPPED_SCREEN))
+        self.assertEqual(session.history["mistakes"], [])
+        self.assertFalse(Session(FakeBoard(1, seed=1), lesson=1).board.unmapped)
+
+    def test_the_page_says_it_too(self):
+        board = FakeBoard(1, seed=1, rows=[], has_current=False, has_power_switch=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            app = App(board, lesson=1, history_path=Path(tmp) / "h.json",
+                      model=ScriptedTutorModel())
+            self.assertTrue(app.state()["board"]["unmapped"])
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("The station's row map is not flashed yet: run the mux test, then "
+                      "make_fw_maps.py, then flash the firmware again.", html)
+        for lid in (1, 4):  # a lesson with steps adds no "press the button" to it
+            with self.subTest(lesson=lid):
+                _, result, _ = Session(FakeBoard(lid, seed=1, rows=[]), lesson=lid).measure()
+                self.assertEqual((result["status"], result["unmapped"]), ("missing_rows", True))
+                self.assertNotIn("next_step", result)
+
+
+class TestFreeBuildMeterTop(unittest.TestCase):
+    def test_a_row_at_the_supply_fits_any_prediction_near_the_top(self):
+        parts = [{"kind": "wire", "rows": ["PT+", "T5"]},
+                 {"kind": "resistor", "rows": ["T5", "T10"], "ohms": 1500},
+                 {"kind": "resistor", "rows": ["T10", "T15"], "ohms": 10000},
+                 {"kind": "wire", "rows": ["T15", "PT-"]}]
+
+        def measured(t10):
+            return {"rows": {"T5": V, "T10": t10, "T15": 0.0}, "current_ma": None,
+                    "current_source": "calculated", "supply_v": V, "nominal_v": V}
+        self.assertEqual(physics_check(parts, measured(2.87))["score"], 1.0)
+        self.assertEqual(physics_check(parts, measured(V))["score"], 1.0)  # what the station sends
+        self.assertLess(physics_check(parts, measured(2.0))["score"], 1.0)
+        # Below the meter's lowest top (2.8 V) a prediction must match the number.
+        low = [dict(p, ohms=4700) if p.get("ohms") == 1500 else p for p in parts]
+        self.assertLess(physics_check(low, measured(V))["score"], 1.0)
 
 
 if __name__ == "__main__":

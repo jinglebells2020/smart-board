@@ -35,7 +35,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import BaseModel, Field
 
 from agent.deadline import RunAbandoned
-from protocol import is_row, row_label
+from protocol import ADC_ACCURACY_V, ADC_TOP_V, SUPPLY_V, is_row, row_label
 from sim import solver
 
 KINDS = ("wire", "resistor", "led", "button", "unknown")
@@ -45,6 +45,11 @@ MAX_TRIES = 2
 MAX_HYPOTHESES = 3
 MAX_PARTS = 12
 ROW_TOLERANCE_V = 0.3
+# The station's meter tops out at about 2.8 to 3.1 V and sends anything at or
+# above its top as the supply ("at the supply"). So a row measured at the
+# supply matches any prediction at or above this (2.8 V: the meter's lowest
+# top, protocol.ADC_TOP_V less its accuracy).
+AT_SUPPLY_MIN_V = round(ADC_TOP_V - ADC_ACCURACY_V, 2)
 CURRENT_TOLERANCE = 0.20  # 20 %...
 CURRENT_TOLERANCE_MA = 1.0  # ...or 1 mA (at 3.3 V a 220 and a 330 ohm LED circuit differ by 1.9 mA)
 RECURSION_LIMIT = 8
@@ -329,8 +334,12 @@ def physics_check(parts, measured):
             unexplained.append(r)
             mismatches.append(f"{r}: has {m:.1f} V, your guess leaves it empty")
         else:
-            ok = abs(p - m) <= ROW_TOLERANCE_V
-            error += abs(p - m)
+            # Read at the supply on a 3.3 V board (the station): its meter only
+            # says "at or above its top", so any prediction from 2.8 V up fits.
+            clipped = (nominal <= SUPPLY_V + 0.05 and abs(m - nominal) < 0.01
+                       and AT_SUPPLY_MIN_V <= p <= nominal + 0.05)
+            ok = clipped or abs(p - m) <= ROW_TOLERANCE_V
+            error += 0.0 if clipped else abs(p - m)
             if not ok:
                 mismatches.append(f"{r}: you predict {p:.1f} V, measured {m:.1f} V")
         ok_rows[r] = ok

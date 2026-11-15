@@ -39,20 +39,26 @@ class TestLessonFile(unittest.TestCase):
     def test_rows_layout_and_steps(self):
         self.assertEqual((L4["id"], L4["title"]), (4, "Button switch"))
         self.assertEqual(L4["circuit"], "3.3 V -> push button -> 220 ohm resistor -> red LED -> ground")
-        self.assertEqual(L4["rows"], ["T5", "T8", "T13", "T15"])
+        # Rows 2, 5, 10 and 12 each have their own light on the station (a row
+        # without one lights both of its neighbours instead).
+        self.assertEqual(L4["rows"], ["T2", "T5", "T10", "T12"])
         legs = {p["part"]: [leg["row"] for leg in p["legs"]] for p in L4["layout"]}
-        self.assertEqual(legs, {"Red wire": ["PT+", "T5"], "Push button": ["T5", "T8"],
-                                "220 ohm resistor": ["T8", "T13"], "Red LED": ["T13", "T15"],
-                                "Black wire": ["T15", "PT-"]})
+        self.assertEqual(legs, {"Red wire": ["PT+", "T2"], "Push button": ["T2", "T5"],
+                                "220 ohm resistor": ["T5", "T10"], "Red LED": ["T10", "T12"],
+                                "Black wire": ["T12", "PT-"]})
         pressed, released = L4["states"]["pressed"], L4["states"]["released"]
-        self.assertEqual(pressed["accept"]["current_ma"], {"min": 4.0, "max": 7.5})
+        # (3.3 - 2.4) / 220 = 4.1 mA and (3.3 - 1.5) / 220 = 8.2 mA: the whole LED
+        # row window fits (a board with no sensor works the current out from it).
+        self.assertEqual(pressed["accept"]["rows"]["T10"], {"min": 1.5, "max": 2.4})
+        self.assertEqual(pressed["accept"]["current_ma"], {"min": 4.0, "max": 8.5})
         self.assertEqual(pressed["expected"]["current_ma"], 5.9)
         self.assertEqual(pressed["expected"]["math"], "(3.3 - 2) / 220 = 0.0059 A = 5.9 mA")
         self.assertEqual(released["accept"]["current_ma"], {"max": 1})
-        self.assertNotIn("T8", released["accept"]["rows"])  # may be empty when let go
+        self.assertNotIn("T5", released["accept"]["rows"])  # may be empty when let go
         self.assertEqual({m["id"]: m.get("step") for m in L4["mistakes"]},
                          {"button_always_on": "released", "button_not_connecting": "pressed",
-                          "led_backwards": "pressed", "no_resistor": None})
+                          "led_backwards": "pressed", "open_circuit": "pressed",
+                          "no_resistor": None})
 
     def test_texts_follow_the_rules(self):
         self.assertIn("A button is like a drawbridge: down, cars cross; up, the road is broken.",
@@ -99,7 +105,7 @@ class TestSteps(unittest.TestCase):
         self.assertEqual(check_with(board, session, True)["status"], "step_ok")
         result = check_with(board, session, False)
         self.assertEqual((result["mistake_id"], result["step"], result["rows"]),
-                         ("button_always_on", "released", ["T5", "T8"]))
+                         ("button_always_on", "released", ["T2", "T5"]))
         self.assertEqual(session.button_step, "released")  # a mistake keeps the step
         self.assertFalse(session.passed_current)
 
@@ -113,7 +119,14 @@ class TestSteps(unittest.TestCase):
     def test_led_backwards_is_caught(self):
         board, session = board_and_session("led_backwards")
         result = check_with(board, session, True)
-        self.assertEqual((result["mistake_id"], result["rows"]), ("led_backwards", ["T13", "T15"]))
+        self.assertEqual((result["mistake_id"], result["rows"]), ("led_backwards", ["T10", "T12"]))
+        self.assertEqual(session.button_step, "pressed")
+
+    def test_open_circuit_is_caught_while_held(self):
+        board, session = board_and_session("open_circuit")
+        result = check_with(board, session, True)
+        self.assertEqual((result["mistake_id"], result["rows"], result["step"]),
+                         ("open_circuit", ["T10"], "pressed"))
         self.assertEqual(session.button_step, "pressed")
 
     def test_no_resistor_cuts_the_power(self):
@@ -211,14 +224,14 @@ class TestTutor(unittest.TestCase):
         out = self.app.ask("Check my circuit")
         self.assertIn("still flowing", out["reply"])
         self.assertTrue(out["reply"].endswith(LET_GO))
-        self.assertEqual(self.board.lights, {"T5": "red", "T8": "red"})
+        self.assertEqual(self.board.lights, {"T2": "red", "T5": "red"})
         self.assertEqual(self.app.state()["mini_lesson"]["title"], "A bridge that never goes up")
 
     def test_page_state_and_hold(self):
         state = self.app.state()
         self.assertEqual((state["button_step"], state["held"]), ("pressed", False))
         self.assertIn("states", state["lesson"])
-        self.assertEqual(state["lesson"]["accept"]["current_ma"], {"min": 4.0, "max": 7.5})
+        self.assertEqual(state["lesson"]["accept"]["current_ma"], {"min": 4.0, "max": 8.5})
         self.assertEqual(state["mini_lesson"]["title"], "Buttons are drawbridges")  # intro card
         self.assertEqual(self.app.hold(True)["type"], "ack")
         self.assertTrue(self.app.state()["held"])

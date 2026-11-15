@@ -135,24 +135,30 @@ def _circuit(lesson, scenario, held=False, v=SUPPLY_V):
             # 3.3 / 330 = 10 mA.
             return v, v / r * 1000, {"T5": v, "T10": 0.0, "T12": 0.0}
     if lesson == 4:
-        # "Button switch": red wire PT+ -> T5; push button T5-T8; 220 ohm
-        # T8-T13; LED long leg T13, short leg T15; black wire T15 -> PT-.
+        # "Button switch": red wire PT+ -> T2; push button T2-T5; 220 ohm
+        # T5-T10; LED long leg T10, short leg T12; black wire T12 -> PT-.
+        # (Rows 2, 5, 10 and 12 each have their own light on the station.)
         r = 220.0
-        released = {"T5": v, "T8": FLOATING, "T13": FLOATING, "T15": 0.0}  # the path is broken
+        released = {"T2": v, "T5": FLOATING, "T10": FLOATING, "T12": 0.0}  # the path is broken
         joined = scenario == "button_always_on" or (held and scenario != "button_not_connecting")
         if scenario in ("correct", "button_always_on", "button_not_connecting"):
             if not joined:
                 return v, 0.0, released
-            return v, (v - LED_VF) / r * 1000, {"T5": v, "T8": v, "T13": LED_VF, "T15": 0.0}
+            return v, (v - LED_VF) / r * 1000, {"T2": v, "T5": v, "T10": LED_VF, "T12": 0.0}
         if scenario == "led_backwards":
             # Button held: the 3.3 V reaches the LED, which blocks it.
-            return (v, 0.0, {"T5": v, "T8": v, "T13": v, "T15": 0.0}) if held else (v, 0.0, released)
+            return (v, 0.0, {"T2": v, "T5": v, "T10": v, "T12": 0.0}) if held else (v, 0.0, released)
+        if scenario == "open_circuit":
+            # Button held, but the resistor is in the wrong row: row 10 holds
+            # only the LED's long leg, so nothing drives it. No current.
+            return (v, 0.0, {"T2": v, "T5": v, "T10": FLOATING, "T12": 0.0}) if held \
+                else (v, 0.0, released)
         if scenario == "no_resistor":
             # Button held: the LED straight from the button to ground.
             if held:
                 return (LED_VF_AT_LIMIT, CURRENT_LIMIT_MA,
-                        {"T5": LED_VF_AT_LIMIT, "T8": LED_VF_AT_LIMIT, "T13": LED_VF_AT_LIMIT,
-                         "T15": 0.0})
+                        {"T2": LED_VF_AT_LIMIT, "T5": LED_VF_AT_LIMIT, "T10": LED_VF_AT_LIMIT,
+                         "T12": 0.0})
             return v, 0.0, released
     if lesson == 2:
         # Red wire PT+ -> T5; top resistor T5-T10; bottom resistor
@@ -202,7 +208,7 @@ SCENARIOS = {
         "resistor_too_big", "led_bypassed", "loose_led_leg"] + UNLISTED[3],
     # Lesson 4: what the board reads depends on HOLD (is the button held).
     4: ["correct", "button_always_on", "button_not_connecting", "led_backwards",
-        "no_resistor"] + UNLISTED[4],
+        "open_circuit", "no_resistor"] + UNLISTED[4],
 }
 # Free build (not a lesson file, so not in SCENARIOS): any circuit, given as
 # a netlist (NETLIST <json>) and worked out by sim/solver.py.
@@ -219,8 +225,8 @@ PARTS = {
         ("wire", "T15", "PT-")],
     3: [("wire", "PT+", "T5"), ("resistor", "T5", "T10"), ("led", "T10", "T12"),
         ("wire", "T12", "PT-")],
-    4: [("wire", "PT+", "T5"), ("button", "T5", "T8"), ("resistor", "T8", "T13"),
-        ("led", "T13", "T15"), ("wire", "T15", "PT-")],
+    4: [("wire", "PT+", "T2"), ("button", "T2", "T5"), ("resistor", "T5", "T10"),
+        ("led", "T10", "T12"), ("wire", "T12", "PT-")],
 }
 
 
@@ -281,7 +287,7 @@ class FakeBoard:
     def __init__(self, lesson=1, scenario="correct", seed=None, noise=True,
                  rows=None, has_current=True, has_power_switch=True,
                  has_screen=True, buttons=4, firmware_cut_ma=P.FIRMWARE_CUT_MA,
-                 supply_v=SUPPLY_V):
+                 supply_v=SUPPLY_V, meter_top=None):
         self._rng = random.Random(seed)
         supply_v = float(supply_v)
         if not 0 < supply_v <= 30:
@@ -309,6 +315,13 @@ class FakeBoard:
         # switch, cut power by itself above this current (None = never).
         self.firmware_cut_ma = firmware_cut_ma if (has_current and has_power_switch) else None
         self.power_on = True
+        # The station's meter (only when asked: meter_top in volts, about 2.8
+        # to 3.1): a row at or above its top is sent as the supply ("at the
+        # supply"), like the station's clip. None: every number as it is.
+        self.meter_top = meter_top
+        # Power off by hand (sim only, UNPLUG): None, "wires" (the circuit's
+        # wires pulled out of the + line) or "all" (every wire, the feed too).
+        self.unplugged = None
         self.held = False  # lesson 4: the push button on the breadboard (HOLD on|off)
         self.built = None  # BUILD n: only the first n parts are in (None: all)
         self.lights = {}   # row -> color
@@ -476,8 +489,26 @@ class FakeBoard:
             if supply < v:  # one copy pulls the shared supply down
                 nodes = {k: (supply if x == v else x) for k, x in nodes.items()}
 
+        if self.unplugged and self.power_on:
+            # Wires pulled out of the + line by hand: nothing drives the rows
+            # that got their voltage from it (rows joined to - still read 0 V),
+            # and no current flows. "all": the + line itself floats too, and
+            # the station then sends supply_v 0.
+            nodes = {k: (FLOATING if not k.startswith("P") and x is not FLOATING and x > 0.05
+                         else x) for k, x in nodes.items()}
+            current, supply = 0.0, v  # nothing loads the supply any more
+            nodes.update({k: v for k in ("PT+", "PB+") if k in nodes})
+            if self.unplugged == "all":
+                supply = 0.0
+                nodes.update({"PT+": FLOATING, "PB+": FLOATING})
+
         def jitter(value, size=NOISE_V):
             return value + (self._rng.gauss(0, size) if self._noise else 0.0)
+
+        def meter(value):
+            if self.meter_top is not None and value >= self.meter_top:
+                return v  # at or above the station meter's top: sent as the supply
+            return value
 
         rows, floating = {}, []
         for name in self.rows:
@@ -486,13 +517,15 @@ class FakeBoard:
                 rows[name] = round(self._rng.uniform(0.0, v) if self._noise else 0.0, 3)
                 floating.append(name)
             elif self.power_on:
-                rows[name] = round(jitter(nodes[name]), 3)
+                rows[name] = round(meter(jitter(nodes[name])), 3)
             else:
                 rows[name] = round(jitter(0.0), 3)
         if not self.power_on:
             supply, current = 0.0, 0.0
+        elif self.unplugged == "all":
+            supply, current = 0.0, 0.0  # the station sends 0 for a floating + tap
         else:
-            supply = jitter(supply)
+            supply = meter(jitter(supply))
             current = jitter(current, NOISE_MA_ABS + NOISE_MA_REL * current)
         reading = {
             "type": "reading", "t_ms": self._t_ms, "power_on": self.power_on,
@@ -516,11 +549,12 @@ class FakeBoard:
         return out
 
     def send(self, line):
-        """Handle one text command. Returns the board's answer (a dict)."""
+        """Handle one text command. Returns the board's answer (a dict), or
+        None for an empty line (the laptop's keep-alive: never answered)."""
         text = line.strip()
         parts = text.split()
         if not parts:
-            return {"type": "error", "msg": "empty command"}
+            return None  # an empty line is the laptop's keep-alive: no answer
         cmd = parts[0].upper()
 
         def ack(c=None):
@@ -577,6 +611,12 @@ class FakeBoard:
             else:
                 return error("BUILD needs a number of parts, or ALL")
             return ack(f"BUILD {'ALL' if self.built is None else self.built}")
+        if cmd == "UNPLUG" and len(parts) == 2 and parts[1].lower() in ("all", "wires", "none"):
+            # simulator only: switch the power off by hand (no power switch):
+            # UNPLUG ALL (every wire out of the + line), WIRES (only the
+            # circuit's wires), NONE (pushed back in)
+            self.unplugged = None if parts[1].lower() == "none" else parts[1].lower()
+            return ack(f"UNPLUG {parts[1].upper()}")
         if cmd == "HOLD" and len(parts) == 2 and parts[1].lower() in ("on", "off"):
             # simulator only: is the push button on the breadboard held down (lesson 4)
             self.held = parts[1].lower() == "on"
@@ -637,6 +677,9 @@ def main(argv=None):
     p.add_argument("--supply", type=float, default=SUPPLY_V,
                    help=f"supply voltage in volts (default {SUPPLY_V:g}, like the station; "
                         "the lessons are written for it)")
+    p.add_argument("--meter-top", type=float, default=None,
+                   help="like the station's meter: a row at or above this many volts (about "
+                        "2.8 to 3.1) is sent as the supply")
     p.add_argument("--count", type=int, default=0,
                    help="stop after this many readings (0 = run forever)")
     p.add_argument("--interval", type=float, default=SAMPLE_MS / 1000,
@@ -653,7 +696,7 @@ def main(argv=None):
                           has_current=not args.no_current,
                           has_power_switch=not args.no_power_switch,
                           has_screen=not args.no_screen, buttons=args.buttons,
-                          supply_v=args.supply)
+                          supply_v=args.supply, meter_top=args.meter_top)
     except ValueError as e:
         print(e, file=sys.stderr)
         return 2
@@ -666,7 +709,7 @@ def main(argv=None):
 
     def read_commands():
         for line in sys.stdin:
-            if line.strip():
+            if line.strip():  # an empty line is a keep-alive: no answer
                 emit(board.send(line))
                 for ev in board.events():
                     emit(ev)

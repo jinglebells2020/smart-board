@@ -119,7 +119,7 @@ it can look at one row at a time but cannot drive one row and watch another.
 > **Superseded:** the station has one 3.3 V breadboard supply from the S3's
 > regulator, powered by the laptop's USB cable. No rail switch, no current
 > sensor, no supervisor: unplugging USB is the only off switch, and Genesis
-> tells the student to pull the red wire out of the + line instead.
+> tells the student to pull every wire out of the + line instead.
 
 - **Sources.** USB-C 5 V, a 12 V adapter, or later one small protected
   lithium cell. They are combined through diodes. A fuse sits right behind

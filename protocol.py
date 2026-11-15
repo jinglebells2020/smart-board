@@ -89,14 +89,24 @@ def button_words(n):
 
 # --- Switching the power off by hand --------------------------------------
 # The station has no power switch: the laptop's USB cable powers it all,
-# and the breadboard's + line gets its 3.3 V through the red wire. So
-# "switch the power off by hand" means: pull the red wire out of the +
-# line (the board keeps measuring; unplugging USB would stop it too).
-MANUAL_OFF_WORDS = "pull the red wire out of the + line"
-MANUAL_ON_WORDS = "push the red wire back into the + line"
+# and the breadboard's + line gets its 3.3 V through a wire from the
+# station; the circuit takes it from the + line through its own wires (the
+# red wire, one per LED circuit in lesson 3, or any wire or leg in free
+# build). So "switch the power off by hand" means: pull every wire out of
+# the + line (the board keeps measuring; unplugging USB would stop it too).
+# With the feed wire out, the station sends "supply_v": 0 and lists its +
+# taps (PT+, PB+) as floating: Genesis knows the power is off.
+MANUAL_OFF_WORDS = "pull every wire out of the + line"
+MANUAL_ON_WORDS = "push the wires back into the + line"
 # The board screen's text for it (fit_screen keeps it to the screen size).
-MANUAL_OFF_SCREEN = "DANGER!|Pull the red wire|out of the + line|right now!"
-NO_SWITCH_SCREEN = "No power switch.|Power off: pull the|red wire out of +.|On: push it back in."
+MANUAL_OFF_SCREEN = "DANGER!|Pull every wire|out of the + line|right now!"
+NO_SWITCH_SCREEN = "No power switch.|Off: pull every wire|out of the + line.|On: push them back."
+# Said when the student did switch the power off by hand after being asked.
+HAND_OFF_SAY = (f"Good, the power is off. Now fix the circuit, then "
+                f"{MANUAL_ON_WORDS}.")
+HAND_OFF_SCREEN = "Power is off. Good!|Fix the circuit,|then push the wires|back into the + line"
+# The + line reads at most this (volts) and its taps float: unplugged by hand.
+HAND_OFF_V = 0.1
 
 # --- Power cut by the board itself ----------------------------------------
 # A board with a current sensor and a power switch must switch power off by

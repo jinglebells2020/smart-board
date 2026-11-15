@@ -6,6 +6,7 @@ different answers: no current sensor, no power switch, only 16 rows.
 """
 
 import json
+import time
 import unittest
 
 import protocol as P
@@ -14,7 +15,7 @@ from agent.build import ask, build_agent
 from agent.buttons import handle_button
 from agent.lessons import load_lessons
 from agent.mock_model import ScriptedTutorModel
-from agent.session import Session
+from agent.session import GREEN_HOLD_S, Session
 from agent.tools import make_tools
 from sim.fake_board import SCENARIOS, UNLISTED, FakeBoard
 
@@ -154,7 +155,9 @@ class TestNoCurrentSensor(unittest.TestCase):
                 with self.subTest(lesson=lid, mistake=scenario):
                     board, session, _, reply, calls = run(lid, scenario, **self.OPTS)
                     self.assertIn(("log_mistake", {"mistake_id": scenario}), calls)
-                    self.assertIn(mistake(lid, scenario)["hint"], reply)
+                    # Look-alikes of a dangerous circuit have their own texts here.
+                    spec = mistake(lid, scenario)
+                    self.assertIn(spec.get("no_sensor", spec)["hint"], reply)
 
     def test_read_current_says_calculated(self):
         tools = {f.__name__: f for f in make_tools(Session(FakeBoard(1, "correct", seed=1,
@@ -176,9 +179,9 @@ class TestNoPowerSwitch(unittest.TestCase):
         board, session, _, reply, calls = run(1, "no_resistor", **self.OPTS)
         self.assertTrue(reply.startswith("Switch the power off by hand"))
         self.assertIn(mistake(1, "no_resistor")["hint"], reply)
-        self.assertIn("pull the red wire out of the + line", reply)  # the station's way
+        self.assertIn("pull every wire out of the + line", reply)  # the station's way
         screen = " ".join(board.screen)
-        self.assertIn("Pull the red wire out of the + line", screen)
+        self.assertIn("Pull every wire out of the + line", screen)
         self.assertLessEqual(len(board.screen), P.SCREEN_LINES)
         self.assertTrue(board.power_on)  # nothing could switch it
         self.assertEqual(board.lights, {"T5": "red", "T10": "red"})
@@ -190,14 +193,14 @@ class TestNoPowerSwitch(unittest.TestCase):
         self.assertTrue(result["manual_power_off"])
         self.assertFalse(safety_cut)
         self.assertEqual(board.screen, P.fit_screen(P.MANUAL_OFF_SCREEN))
-        self.assertIn("Pull the red wire", " ".join(board.screen))
+        self.assertIn("Pull every wire", " ".join(board.screen))
 
     def test_cut_tool_says_what_to_do_instead(self):
         tools = {f.__name__: f for f in make_tools(Session(FakeBoard(**self.OPTS)))}
         out = json.loads(tools["cut_power"]())
         self.assertEqual(out["msg"], "no power switch")
         self.assertIn("by hand", out["do_instead"])
-        self.assertIn("pull the red wire out of the + line", out["do_instead"])
+        self.assertIn("pull every wire out of the + line", out["do_instead"])
 
     def test_power_button_explains(self):
         board = FakeBoard(**self.OPTS)
@@ -243,13 +246,27 @@ class TestColorsAndScreen(unittest.TestCase):
     def test_tutor_uses_colors_by_their_meaning(self):
         board, session, _, _, calls = run(1, "correct")
         self.assertIn(("light_row", {"rows": LESSONS[1]["rows"], "color": "green"}), calls)
-        # ...then the lesson moves on, and a new lesson starts with dark lights.
+        # ...then the lesson moves on. The green lights stay a moment, so the
+        # student sees them, and the new lesson starts with dark lights.
         self.assertEqual(session.lesson_id, 2)
-        self.assertEqual(board.lights, {})
+        self.assertEqual(board.lights, {r: "green" for r in LESSONS[1]["rows"]})
+        session.next_step()  # blue: the first part of lesson 2
+        self.assertEqual(set(board.lights.values()), {"blue"})
         board, *_ = run(1, "open_circuit")
         self.assertEqual(board.lights, {"T10": "red"})
         board, *_ = run(2, "bottom_4k7")
         self.assertEqual(set(board.lights.values()), {"yellow"})
+
+    def test_the_green_lights_stay_a_moment_after_a_pass(self):
+        board, session, _, _, _ = run(1, "correct")
+        self.assertEqual(session.lesson_id, 2)
+        self.assertEqual(board.lights, {r: "green" for r in LESSONS[1]["rows"]})
+        session.board.read()  # not time yet: they stay
+        self.assertEqual(set(board.lights.values()), {"green"})
+        session.board._clear_at = time.monotonic() - 0.01  # a few seconds later
+        session.board.read()
+        self.assertEqual(board.lights, {})
+        self.assertGreaterEqual(GREEN_HOLD_S, 3)
 
     def test_light_tool_rejects_other_colors(self):
         tools = {f.__name__: f for f in make_tools(Session(FakeBoard()))}

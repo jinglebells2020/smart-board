@@ -86,7 +86,7 @@
         "min": 2.8
       },
       "T10": {
-        "min": 1.6,
+        "min": 1.5,
         "max": 2.4
       },
       "T12": {
@@ -100,7 +100,7 @@
     ],
     "current_ma": {
       "min": 4.0,
-      "max": 7.5
+      "max": 8.5
     }
   },
   "resistor_words": "the 220 ohm resistor",
@@ -158,6 +158,12 @@
       "action": "hint",
       "hint": "Almost no current is flowing, but the row before the LED still has the full 3.3 volts. So the current is stopped at the LED: it may be backwards, in the wrong row, or missing, and the board cannot tell which. Look at the LED's long leg, the one marked + in the drawing: notice which row it is in, and which way it faces.",
       "explain": "Three things can cause this, and the board cannot tell which one: the LED may be in backwards, it may be in the wrong row (its long leg not in the same row as the resistor), or it may be missing. The long leg (+) should share a row with the resistor, and the short leg (-) should lead to ground.",
+      "no_sensor": {
+        "description": "The resistor may be missing, or the LED may be backwards, in the wrong row, or missing (this board cannot measure current, so it cannot tell which)",
+        "hint": "First look at the LED. If it is very bright or feels warm, pull every wire out of the + line right now: the resistor may be missing. If the LED is dark, the current is stopped at the LED: it may be backwards, in the wrong row, or missing. Look at the LED's long leg, the one marked + in the drawing: which row is it in, and which way does it face?",
+        "explain": "This board cannot measure current, so four things look the same to it. The 220 ohm resistor may be missing: then the LED gets far too much current and shines very brightly, so pull every wire out of the + line first. Or the LED may be in backwards, it may be in the wrong row (its long leg not in the same row as the resistor), or it may be missing: then it stays dark. The 220 ohm resistor must sit between the + side and the LED's long leg (+), and the short leg (-) should lead to ground.",
+        "screen": "LED bright or warm?|Pull every wire|out of the + line!"
+      },
       "mini_lesson": {
         "title": "LEDs are one-way doors",
         "idea": "An LED is like a one-way door. Current can only go through it in one direction, and only if the door is connected on both sides. If the door faces the wrong way or is not connected, the current stops.",
@@ -234,6 +240,12 @@
       "action": "hint",
       "hint": "No current, and no voltage at the LED. Something is not connected. Check that each leg is in the row you think it is.",
       "explain": "The circuit is not a closed loop. Each part must share a row with the next one: 3.3 V to the resistor, the resistor to the LED's long leg, and the LED's short leg to ground. The lit row is the measuring row, so make sure the resistor and the LED both reach it.",
+      "no_sensor": {
+        "description": "Circuit is not a closed loop (a part is in the wrong row), or the LED skips the resistor (this board cannot measure current, so it cannot tell which)",
+        "hint": "First look at the LED. If it is very bright or feels warm, pull every wire out of the + line right now: its long leg may skip the resistor. If it is dark, something is not connected: nothing reaches the LED's row. Check that each leg is in the row you think it is.",
+        "explain": "The LED's row has nothing connected, and this board cannot measure current, so two things look the same to it. The LED's long leg may skip the 220 ohm resistor (for example, pushed into the row before it): then the LED gets far too much current and shines very brightly, so pull every wire out of the + line first. Or the circuit is not a closed loop: each part must share a row with the next one, the 220 ohm resistor to the LED's long leg, and the LED's short leg to ground. The lit row is the LED's row, so make sure the resistor and the LED both reach it.",
+        "screen": "LED bright or warm?|Pull every wire|out of the + line!"
+      },
       "mini_lesson": {
         "title": "Circuits must be closed loops",
         "idea": "Electric current only flows around a complete loop, from the power supply and back again. It is like a train track: if one piece is missing, the train cannot go around. A part in the wrong row is like a missing piece of track.",

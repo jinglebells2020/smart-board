@@ -64,6 +64,8 @@ def student_texts(lesson):
         ml = m["mini_lesson"]
         texts += [m["description"], m["hint"], m["explain"], ml["title"], ml["idea"],
                   ml["question"], ml["why"], *ml["options"]]
+        ns = m.get("no_sensor") or {}  # the texts a board with no current sensor uses
+        texts += [ns[k] for k in ("description", "hint", "explain") if k in ns]
     return texts
 
 
@@ -115,8 +117,11 @@ class TestMiniLessonContent(unittest.TestCase):
     def test_reading_level_is_middle_school(self):
         for lid, m in ALL_MISTAKES:
             ml = m["mini_lesson"]
-            for name, text in [("idea", ml["idea"]), ("hint", m["hint"]),
-                               ("question + why", ml["question"] + " " + ml["why"])]:
+            texts = [("idea", ml["idea"]), ("hint", m["hint"]),
+                     ("question + why", ml["question"] + " " + ml["why"])]
+            if m.get("no_sensor"):
+                texts.append(("no-sensor hint", m["no_sensor"]["hint"]))
+            for name, text in texts:
                 with self.subTest(lesson=lid, mistake=m["id"], text=name):
                     self.assertLessEqual(reading_grade(text), 7.0, text)
 

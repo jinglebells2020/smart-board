@@ -14,7 +14,7 @@ import json
 import statistics
 from pathlib import Path
 
-from protocol import SUPPLY_V, low_supply_v, row_label, volts_words
+from protocol import HAND_OFF_V, SUPPLY_V, low_supply_v, row_label, volts_words
 
 LESSONS_DIR = Path(__file__).resolve().parent.parent / "lessons"
 
@@ -55,12 +55,30 @@ FREE_LESSON = {"id": FREE_ID, "kind": "free", "title": "Free build",
                "mistakes": []}
 
 
+PLUS_TAPS = ("PT+", "PB+")
+
+
+def power_off_by_hand(summary):
+    """Is the + line unplugged by hand? On a board with no power switch (the
+    station) the student switches off by pulling every wire out of the +
+    line: power_on stays true, but the board sends "supply_v" of about 0 and
+    lists the + taps it measures (PT+, PB+) as floating. That is not a short
+    and never a sagging-supply mistake: nothing is measured, the power is off."""
+    if not summary.get("power_on") or summary.get("supply_v", SUPPLY_V) > HAND_OFF_V:
+        return False
+    measured = summary.get("plus_measured") or []
+    return not measured or set(summary.get("plus_floating") or []) >= set(measured)
+
+
 def free_check(summary):
     """The check in free build: no plan, so no mistakes and no PASS. What
     the board measured, plus the safety a plan is not needed for: too much
-    current, or the + line pulled down (a big current even with no sensor)."""
+    current, or the + line pulled down (a big current even with no sensor).
+    The + line unplugged by hand is power off, not a pulled-down line."""
     if not summary["power_on"]:
         return {"status": "power_off"}
+    if power_off_by_hand(summary):
+        return {"status": "power_off", "by_hand": True}
     floating = set(summary["floating"])
     out = {"status": "free",
            "measured_rows": {r: v for r, v in summary["rows"].items() if r not in floating},
@@ -135,8 +153,11 @@ def summarize(readings, lesson):
 
     Returns {"rows", "spread", "floating", "flickering", "supply_v",
     "nominal_v", "power_on", "current_ma", "current_source", "current_note",
-    "missing_rows"}. "nominal_v" is the board's own supply voltage (the
-    readings' laptop-only "nominal_v", from its hello line), else 3.3.
+    "missing_rows", "plus_measured", "plus_floating"}. "nominal_v" is the
+    board's own supply voltage (the readings' laptop-only "nominal_v", from
+    its hello line), else 3.3. "plus_measured" are the + taps (PT+, PB+) in
+    every reading, "plus_floating" those floating in most of them (the +
+    line unplugged by hand: power_off_by_hand).
     "flickering" lists rows seen both connected and empty in this window
     (at least twice each): a loose leg.
     current_source is "measured" (a current sensor), "calculated" (from
@@ -164,6 +185,11 @@ def summarize(readings, lesson):
         "power_on": all(r["power_on"] for r in readings),
         "missing_rows": [n for n in wanted if n not in measured],
     }
+    every = set.intersection(*(set(r.get("rows", {})) for r in readings)) if readings else set()
+    plus = [t for t in PLUS_TAPS if t in every]
+    summary["plus_measured"] = plus
+    summary["plus_floating"] = [t for t in plus if sum(t in r.get("floating", []) for r in readings)
+                                > FLOAT_SHARE * len(readings)]
     currents = [r.get("current_ma") for r in readings]
     if currents and all(c is not None for c in currents):
         summary.update(current_ma=round(statistics.mean(currents), 3),
@@ -216,6 +242,10 @@ def check(summary, lesson):
     """
     if not summary["power_on"]:
         return {"status": "power_off"}
+    if power_off_by_hand(summary):
+        # The + line is unplugged (no power switch): nothing to judge, and
+        # never a sagging-supply mistake such as no_resistor.
+        return {"status": "power_off", "by_hand": True}
     if summary["missing_rows"]:
         names = ", ".join(summary["missing_rows"])
         return {"status": "missing_rows", "missing_rows": summary["missing_rows"],

@@ -279,9 +279,14 @@ class TestCommands(unittest.TestCase):
 
     def test_bad_commands(self):
         board = FakeBoard()
-        for bad in ["", "FOO", "CUT now", "PRESS", "PRESS x"]:
+        for bad in ["FOO", "CUT now", "PRESS", "PRESS x"]:
             with self.subTest(cmd=bad):
                 self.assertEqual(board.send(bad)["type"], "error")
+
+    def test_an_empty_line_is_a_keep_alive_with_no_answer(self):
+        board = FakeBoard()
+        for blank in ("", "   ", "\t"):
+            self.assertIsNone(board.send(blank))
 
 
 class TestCommandLine(unittest.TestCase):

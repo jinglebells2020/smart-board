@@ -131,6 +131,7 @@ current sensor:
 | `LED` with any other row or color | `{"type":"error","cmd":"LED","msg":"bad row or color"}` |
 | `SHOW ...` | `{"type":"error","cmd":"SHOW","msg":"no screen"}` |
 | `CUT` or `RESTORE` | `{"type":"error","cmd":"CUT","msg":"no power switch"}` (with `RESTORE` in `cmd` for RESTORE) |
+| an empty line (or only spaces) | **nothing**: it is the laptop's keep-alive (Genesis sends one about every 2 s) |
 | anything else | `{"type":"error","cmd":"<first word>","msg":"unknown command"}` |
 
 That passes every rule. When you add hardware, change the hello line
@@ -245,6 +246,9 @@ Do this before the checker, to see the lines with your own eyes.
    FLY AWAY
    ```
 
+   Then press Enter on an empty box: that empty line is the laptop's
+   keep-alive, and **nothing** may come back for it.
+
    With a power switch, after `CUT` the readings must say
    `"power_on":false`, and after `RESTORE` `"power_on":true`.
 6. Press each board button. Each press must print one `button` line.
@@ -320,8 +324,10 @@ station).
 
 A board **without** a power switch cannot cut. The laptop then tells
 the student to switch the power off by hand. On the station that means
-"pull the red wire out of the + line", on the laptop and on the screen.
-Nothing to do in firmware.
+"pull every wire out of the + line", on the laptop and on the screen.
+In firmware: when the + line is unplugged (its tap floats), send
+`"supply_v": 0` and put the tap in `floating`. Genesis then knows the
+power is off by hand, and never takes it for a short.
 
 **Test it safely with `--power-cut`.** Do **not** short the supply to
 test it. Instead:

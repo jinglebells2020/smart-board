@@ -8,6 +8,7 @@ plugged back in, and go silent.
 import contextlib
 import io
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -267,6 +268,233 @@ class TestTutorWithAnUnpluggedBoard(unittest.TestCase):
             port.board.send("SCENARIO 1 correct")
             ask(agent, history, "I flipped the LED. Check my circuit")
             self.assertEqual(s.lesson_id, 2)  # passed lesson 1 over the serial port
+
+
+class TestBacklogKeepAliveAndConnect(unittest.TestCase):
+    """Round 2: the newest reading after a long pause, the keep-alive, and a
+    fresh start with the board's lights."""
+
+    def test_read_takes_in_a_backlog_bigger_than_one_chunk(self):
+        # A Linux tty hands over about 4 KB at a time; 20 readings of every
+        # row (about 2 KB each) waited while nobody read.
+        port = FakeSerialPort(FakeBoard(1, "correct", seed=1), chunk=4095)
+        board = connect(port)
+        board.read()
+        port.board.send("SCENARIO 1 open_circuit")  # the student changes the circuit...
+        port.backlog(19)
+        newest = port.board.read()  # ...and this is the board as it is now
+        port._line(newest)
+        self.assertGreater(len(port._out), 4 * 4095)
+        r = board.read()
+        self.assertEqual(r["t_ms"], newest["t_ms"])
+        self.assertIn("T10", r["floating"])
+        self.assertEqual(len(port._out), 0)  # nothing old is left to read later
+
+    def test_keep_alive_every_few_seconds_gets_no_answer(self):
+        port = FakeSerialPort(FakeBoard(seed=1))
+        board = connect(port, keep_alive=0.05)
+        start = port.keep_alives
+        for _ in range(5):
+            time.sleep(0.06)
+            board.read()
+        self.assertGreaterEqual(port.keep_alives - start, 3)
+        self.assertNotIn("", port.written)  # an empty line is never a command
+        self.assertEqual(board.send("LED T1 red")["type"], "ack")  # still in step
+        self.assertIsNone(board.send("   "))  # a blank line: sent, never answered
+
+    def test_no_keep_alive_while_lines_go_out_anyway(self):
+        port = FakeSerialPort(FakeBoard(seed=1))
+        board = connect(port, keep_alive=60.0)
+        start = port.keep_alives
+        board.read()
+        board.events()
+        self.assertEqual(port.keep_alives, start)
+
+    def test_led_clear_once_after_the_hello(self):
+        fake = FakeBoard(seed=1)
+        fake.send("LED T10 red")  # left on by a laptop that restarted
+        port = FakeSerialPort(fake)
+        board = connect(port)
+        self.assertEqual(port.written, ["LED CLEAR"])
+        self.assertEqual(fake.lights, {})
+        self.assertEqual(board.connects, 1)
+        link = BoardLink(board)
+        self.assertEqual(link.lights, {})  # both sides agree
+
+    def test_a_stray_answer_is_not_taken_for_another_command(self):
+        port = FakeSerialPort(FakeBoard(seed=1))
+        board = connect(port)
+        port._line({"type": "error", "cmd": "", "msg": "unknown command: "})  # stray
+        port._line({"type": "ack", "cmd": "LED T3 blue"})  # late, from an older command
+        answer = board.send("SHOW Hello")
+        self.assertEqual(answer, {"type": "ack", "cmd": "SHOW"})
+
+    def test_station_lost_says_unplug_the_cable_first(self):
+        fake = FakeBoard(seed=1, has_power_switch=False, has_current=False)
+        port = FakeSerialPort(fake)
+        board = connect(port)
+        port.unplug()
+        with self.assertRaises(BoardError) as e:
+            board.read()
+        msg = str(e.exception)
+        self.assertTrue(msg.startswith(SB.STATION_STOPPED), msg)
+        self.assertIn("+ may be joined straight to -: unplug the USB cable now", msg)
+        # A board that has a power switch keeps the plain words.
+        other = FakeSerialPort(FakeBoard(seed=1))
+        b2 = connect(other)
+        other.unplug()
+        with self.assertRaises(BoardError) as e:
+            b2.read()
+        self.assertIn("Is the USB cable still plugged in?", str(e.exception))
+        # The ESP32-S3's USB id alone is enough (before any hello is known).
+        b3 = connect(FakeSerialPort(FakeBoard(seed=1)), vid=SB.STATION_VID)
+        self.assertTrue(b3.is_station())
+
+    def test_station_silence_says_the_same(self):
+        port = FakeSerialPort(FakeBoard(seed=1, has_power_switch=False))
+        board = connect(port)
+        port.silent = True
+        with self.assertRaises(BoardError) as e:
+            board.read()
+        self.assertTrue(str(e.exception).startswith(SB.STATION_STOPPED))
+
+    def test_the_tutor_tells_the_station_student_to_pull_the_cable(self):
+        port = FakeSerialPort(FakeBoard(1, "correct", seed=1, has_power_switch=False,
+                                        has_current=False))
+        with tempfile.TemporaryDirectory() as tmp:
+            s = Session(connect(port), lesson=1, history_path=Path(tmp) / "h.json")
+            agent = build_agent(s, ScriptedTutorModel())
+            port.unplug()
+            reply, _ = ask(agent, [], "Check my circuit")
+        self.assertIn("not answering", reply)
+        self.assertIn("+ may be joined straight to -: unplug the USB cable now", reply)
+
+
+class TestBoardLinkKeepsOnlyWhatTheBoardConfirmed(unittest.TestCase):
+    """Round 2 (G2): the laptop's picture of the lights and the screen only
+    changes on an ack, and a refusal never leaves a stale picture."""
+
+    class Refusing(FakeBoard):
+        refuse = None  # (command word, error message) to refuse
+
+        def send(self, line):
+            word = line.split()[0].upper() if line.split() else ""
+            if self.refuse and word == self.refuse[0]:
+                return {"type": "error", "cmd": word, "msg": self.refuse[1]}
+            return super().send(line)
+
+    def test_a_refused_show_or_led_changes_nothing_it_should_not(self):
+        board = self.Refusing(seed=1)
+        link = BoardLink(board)
+        link.show("Hello")
+        link.set_light("T10", "red")
+        board.refuse = ("SHOW", "too long")  # the old text stays on the screen
+        link.show("x")
+        self.assertEqual(link.screen, ["Hello"])
+        board.refuse = ("SHOW", "a rail is down: the screen keeps the short warning")
+        link.show("New text")
+        self.assertEqual(link.screen, [])  # not known: never the old text
+        board.refuse = ("LED", "unknown color: x")
+        link.set_light("T12", "red")
+        self.assertEqual(link.lights, {"T10": "red"})  # the board kept T10
+        board.refuse = ("LED", "a rail is down: the row lights stay off until it recovers")
+        link.set_light("T12", "blue")
+        self.assertEqual(link.lights, {})  # that firmware switched every light off
+
+    def test_a_reconnected_board_starts_dark(self):
+        port = FakeSerialPort(FakeBoard(seed=1))
+        link = BoardLink(connect(port))
+        link.set_light("T5", "blue")
+        link.show("Step 1")
+        port.unplug()
+        with self.assertRaises(BoardError):
+            link.read()
+        port.plug_in()
+        link.read()  # connects again: hello, LED CLEAR
+        self.assertEqual((link.lights, link.screen), ({}, []))
+        self.assertEqual(port.board.lights, {})
+
+
+class TestTerminalTutorButtons(unittest.TestCase):
+    """Round 2 (G8): python -m agent --serial acts on the board's buttons
+    while it waits for the student to type."""
+
+    def test_the_poller_hands_presses_to_the_same_handler(self):
+        import threading
+        from agent.__main__ import ButtonPoller
+        port = FakeSerialPort(FakeBoard(1, "correct", seed=1))
+        session = Session(connect(port), lesson=1)
+        pressed = []
+        poller = ButtonPoller(session, pressed.append, threading.Lock())
+        port.board.send("PRESS 3")
+        self.assertEqual(poller.poll_once(), [3])
+        self.assertEqual(pressed, [3])
+        self.assertEqual(poller.poll_once(), [])
+
+    def test_a_press_while_waiting_for_typing(self):
+        import os
+        import agent.__main__ as cli
+        port = FakeSerialPort(FakeBoard(1, "correct", seed=1))
+        pressed = []
+
+        def typing(prompt=""):
+            if prompt == "you> " and not pressed:
+                pressed.append(3)
+                port.board.send("PRESS 3")  # blue, pressed on the board itself
+                time.sleep(1.0)  # the student has not typed anything yet
+            return "/quit"
+
+        out = io.StringIO()
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(cli, "choose_port", return_value="COM9"), \
+                mock.patch.object(cli, "SerialBoard", lambda p, b: connect(port)), \
+                mock.patch("builtins.input", typing), contextlib.redirect_stdout(out):
+            code = cli.main(["--serial", "auto", "--lesson", "1", "--fresh",
+                             "--history", str(Path(tmp) / "h.json"),
+                             "--notebooks", str(Path(tmp) / "nb")])
+        text = out.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("(button 3: Next step)", text)
+        self.assertIn("step> 1 of 4: Red wire", text)
+        self.assertEqual(port.board.lights, {"T5": "blue"})
+
+    def test_a_question_from_a_button_turn_is_answered_at_the_prompt(self):
+        """Yellow pressed while the power is off: Zip asks "Turn the power back
+        on?". The terminal is waiting at you>, so the next typed line is the
+        answer (never two threads reading the keyboard)."""
+        import os
+        import agent.__main__ as cli
+        fake = FakeBoard(1, "correct", seed=1)
+        port = FakeSerialPort(fake)
+        typed = iter(["yes", "/quit"])
+        state = {"pressed": False}
+
+        def typing(prompt=""):
+            self.assertEqual(prompt, "you> ")  # only the main loop reads the keyboard
+            if not state["pressed"]:
+                state["pressed"] = True
+                fake.send("CUT")
+                fake.send("PRESS 1")  # yellow: check my circuit
+                time.sleep(1.5)
+            return next(typed)
+
+        out = io.StringIO()
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(cli, "choose_port", return_value="COM9"), \
+                mock.patch.object(cli, "SerialBoard", lambda p, b: connect(port)), \
+                mock.patch("builtins.input", typing), contextlib.redirect_stdout(out):
+            cli.main(["--serial", "auto", "--lesson", "1", "--fresh",
+                      "--history", str(Path(tmp) / "h.json"),
+                      "--notebooks", str(Path(tmp) / "nb")])
+        text = out.getvalue()
+        self.assertIn("(button 1: Check my circuit)", text)
+        self.assertIn("(type your answer at you>: yes/no)", text)
+        self.assertTrue(fake.power_on)  # "yes" turned it back on
+        self.assertIn("Your circuit is correct!", text)
 
 
 if __name__ == "__main__":

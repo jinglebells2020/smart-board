@@ -39,7 +39,9 @@ class TestLessonThree(unittest.TestCase):
         self.assertEqual(l3["copies"], {"min": 1, "max": 3})
         self.assertEqual(l3["current_from"][0]["ohms"], 330)
         self.assertEqual(l3["expected"]["current_ma"], 3.9)  # (3.3 - 2) / 330
-        self.assertEqual(l3["accept"]["current_ma"], {"min": 3.0, "max": 5.0})
+        # (3.3 - 2.4) / 330 = 2.7 mA and (3.3 - 1.5) / 330 = 5.5 mA: the whole
+        # row window fits (a board with no sensor works the current out from it).
+        self.assertEqual(l3["accept"]["current_ma"], {"min": 2.7, "max": 5.5})
         self.assertIn("330 ohm resistor", [p["part"] for p in l3["layout"]])
         self.assertEqual([m["id"] for m in l3["mistakes"]], [m["id"] for m in LESSONS[1]["mistakes"]])
         self.assertNotIn("220", json.dumps(l3))

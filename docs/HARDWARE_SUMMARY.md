@@ -40,7 +40,7 @@ are **not** in the station (`docs/TECH_PLAN.md` marks where).
 | Lesson circuit supply voltage | DECIDED | 3.3 V for every lesson (`SUPPLY_V` in `protocol.py`; was 5 V) | `docs/LESSONS.md` |
 | Simulator supply voltage | DECIDED | 3.3 V by default, `--supply` for any other | `sim/fake_board.py` |
 | What powers the station | DECIDED | The laptop's USB-C cable powers everything | `jinglebells2020/smartboard` |
-| Power switch | DECIDED | None (`has_power_switch: false`). Unplugging USB is the only off switch; for the breadboard alone, pull the red wire out of the + line | `jinglebells2020/smartboard` |
+| Power switch | DECIDED | None (`has_power_switch: false`). Unplugging USB is the only off switch; for the breadboard alone, pull every wire out of the + line (the station then sends `supply_v` 0) | `jinglebells2020/smartboard` |
 | Current limit: hardware | DECIDED | None of its own. A hard short resets the S3 | `jinglebells2020/smartboard` |
 | Current limit: simulator | SUGGESTED | 100 mA (`CURRENT_LIMIT_MA`, marked PLACEHOLDER). At 3.3 V an LED alone across the supply stays under it | Claude |
 | Current limit: software safety cut | SUGGESTED | 30 mA (`SAFETY_MAX_MA` in `agent/lessons.py`), used only with a current sensor | Claude |
@@ -89,7 +89,7 @@ are **not** in the station (`docs/TECH_PLAN.md` marks where).
 | Lesson 3 parts | DECIDED | 330 Ω resistor and a red LED, 1 to 3 copies: 3.9 mA each | `docs/LESSONS.md` |
 | Lesson 4 parts | DECIDED | Push button, 220 Ω resistor, red LED | `docs/LESSONS.md` |
 | Red LED forward voltage used in lesson math | DECIDED | 2 V | `docs/LESSONS.md` |
-| LED colours in lessons | DECIDED | Red, yellow or green only: at 3.3 V a blue or white LED barely lights | `docs/LESSONS.md` |
+| LED colours in lessons | DECIDED | Red, yellow or yellow-green only: at 3.3 V a blue, white or bright "pure green" LED (about 3 V) barely lights | `docs/LESSONS.md` |
 | Inventory beyond the lessons | UNKNOWN | Not listed | — |
 
 ## 6. Division of logic
@@ -123,4 +123,4 @@ are **not** in the station (`docs/TECH_PLAN.md` marks where).
 | With no current sensor, a missing resistor reads like a backwards LED unless the + line sags; the station's regulator may hold 3.3 V (`docs/LESSONS.md`, "What the station cannot catch") | SUGGESTED | Claude |
 | Lesson 2's "top resistor is 1k" puts the middle at 3.0 V, near the meter's top: on a station that saturates there it reads like "bottom resistor missing" | SUGGESTED | Claude |
 | The 30 mA cut and the simulator's 100 mA limit are not checked against the real station (it has no sensor and no switch) | SUGGESTED | Claude |
-| A hard short resets the S3, so the laptop loses the board until it restarts (`SerialBoard` keeps trying to reconnect) | SUGGESTED | Claude |
+| A hard short resets the S3, so the laptop loses the board until it restarts (`SerialBoard` keeps trying to reconnect). The regulator gets hot until the cable is pulled, so Genesis then says: unplug the USB cable now, then find the wire from + to - | SUGGESTED | Claude |

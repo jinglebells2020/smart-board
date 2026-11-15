@@ -20,6 +20,7 @@ led_state, same_voltage, current_vs_expected, extra_rows, flicker.
 
 import re
 
+from agent.lessons import power_off_by_hand
 from protocol import SUPPLY_V, low_supply_v, row_label
 
 PLUS, MINUS = ("PT+", "PB+"), ("PT-", "PB-")
@@ -35,6 +36,9 @@ SHOULD_DIFFER_V = 1.0    # ...when the plan says they differ by more than this
 # The + line pulled below this share of the supply (2.8 V at 3.3 V): a big
 # current flows. low_supply_v() in protocol.py.
 LOW_SUPPLY_V = low_supply_v(SUPPLY_V)
+# Without a current sensor, what the student must do when an LED that looks
+# blocked is in fact shining brightly (no resistor): switch off by hand.
+NO_SENSOR_OFF = "pull every wire out of the + line right now"
 
 
 def _supply(summary):
@@ -114,6 +118,12 @@ def _expected(lesson, row, supply=EXPECTED_SUPPLY_V):
 def power_fact(summary, safety_cut=False):
     on = bool(summary.get("power_on"))
     supply = summary.get("supply_v") or 0.0
+    if on and not safety_cut and power_off_by_hand(summary):
+        # No power switch: the + line was unplugged by hand. Not a short.
+        return {"kind": "power", "rows": [], "values": {"on": False, "supply_v": 0.0,
+                                                        "safety_cut": False, "by_hand": True},
+                "text": "The + line is unplugged: the power is off by hand, so nothing can "
+                        "be measured."}
     if safety_cut:
         text = (f"The power was on ({_v(supply)}) but has been switched off to keep the "
                 "parts safe.")
@@ -197,9 +207,19 @@ def circuit_facts(summary, lesson, label=""):
                 state, text = "on", (f"The LED has {_v(drop)} across it and current flows, "
                                      "so it should be lit.")
             elif drop > LED_BLOCKED_V and (current is None or current < CURRENT_FLOWS_MA):
-                state, text = "blocked", (f"The LED has {_v(drop)} across it but almost no "
-                                          "current flows: it is blocked (backwards, missing "
-                                          "or open).")
+                if source == "measured":
+                    state, text = "blocked", (f"The LED has {_v(drop)} across it but almost no "
+                                              "current flows: it is blocked (backwards, missing "
+                                              "or open).")
+                else:
+                    # No current sensor: an LED with no resistor on a supply that
+                    # holds 3.3 V reads exactly like this, and it draws about 90 mA.
+                    state, text = "blocked", (
+                        f"First look at the LED. If it is very bright or feels warm, "
+                        f"{NO_SENSOR_OFF}: the resistor may be missing. The LED has "
+                        f"{_v(drop)} across it, and this board cannot measure current, so "
+                        "it cannot tell that from an LED that is blocked (backwards, missing "
+                        "or open), which stays dark.")
             elif abs(drop) < SHORTED_V and flows:
                 state, text = "shorted", (f"The LED has almost no voltage across it "
                                           f"({_v(abs(drop))}) while current flows: the current "
@@ -260,7 +280,7 @@ def free_facts(summary, safety_cut=False):
     """Free build (no plan): the facts that need no plan. The power, the
     voltage of every row with something in it, and the current."""
     facts = [power_fact(summary, safety_cut)]
-    if summary.get("power_on") or safety_cut:
+    if (summary.get("power_on") and not power_off_by_hand(summary)) or safety_cut:
         floating = set(summary.get("floating", []))
         for row, v in summary.get("rows", {}).items():
             if row in floating:
@@ -292,7 +312,7 @@ def number(facts):
 def observations(summary, lesson, extra_rows=None, safety_cut=False):
     """Every fact for one check: the power, then the circuit, then extra rows."""
     facts = [power_fact(summary, safety_cut)]
-    if summary.get("power_on") or safety_cut:
+    if (summary.get("power_on") and not power_off_by_hand(summary)) or safety_cut:
         facts += circuit_facts(summary, lesson)
         if extra_rows:
             facts.append(extra_rows_fact(extra_rows))

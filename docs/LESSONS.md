@@ -12,30 +12,41 @@ Every lesson runs from **3.3 V**, the station's breadboard supply
 (`SUPPLY_V` in `protocol.py`, `docs/HARDWARE.md`). The numbers below are
 for 3.3 V. Three things about the station shape the accept ranges:
 
-- **Its meter tops out at about 2.9 to 3.1 V.** A row at or above that is
-  sent as the supply, 3.3 V ("at the supply"). So a row joined to + must
-  read **at least 2.8 V** (not 90 % of the supply: 2.97 V would sit inside
-  the meter's top).
+- **Its meter tops out at about 2.8 to 3.1 V.** The station sends a row
+  at or above its clip point (its + tap's saturated reading minus 0.1 V;
+  2.85 V before it is calibrated) as the supply, 3.3 V ("at the supply").
+  So a row joined to + must read **at least 2.8 V** (not 90 % of the
+  supply: 2.97 V would sit inside the meter's top).
 - **It is good to about 0.1 V.** Every range leaves at least 0.1 V on
   each side of the expected value (`tests/test_station.py` checks every
   lesson circuit with readings 0.1 V low, 0.1 V high and with the meter
-  topping out at 2.9, 3.0 and 3.1 V).
+  topping out at 2.8, 2.85, 2.9, 3.0 and 3.1 V).
+- **It has no current sensor.** The current is worked out from the rows
+  (below), so each lesson's current window covers its whole LED row
+  window: an LED row anywhere in 1.5 to 2.4 V passes (a low-drop red LED
+  read 0.1 V low still fits).
 - **"The + line is pulled down"** means below 0.85 × the supply: 2.8 V
   (`LOW_SUPPLY_SHARE` in `protocol.py`). A board that says another
   supply in its hello line (`"supply_v"`) is judged against its own.
 
-**LED colours.** The lessons use **red, yellow or green** LEDs only. At
-3.3 V a blue or white LED (about 3.0 V) barely lights, and two LEDs in a
-row (about 3.8 V) cannot light at all. Free build and the random judge
-circuits may still use any colour; the parts tray says so.
+**LED colours.** The lessons use **red, yellow or yellow-green** LEDs
+only. At 3.3 V a blue or white LED (about 3.0 V) barely lights, and so
+does a bright "pure green" one (about 3 V, like blue; many kit LEDs sold
+as green are this kind). Two LEDs in a row (about 3.8 V) cannot light at
+all. Free build and the random judge circuits may still use any colour;
+the parts tray says so.
 
 ## Where every part goes (protocol version 2)
 
 The board measures breadboard rows by name: `T1`..`T63` are rows 1 to 63,
 holes a-e (top half). `PT+` and `PT-` are the top power strip. The
-lessons use only rows 5 to 15, so a board that measures just the first
+lessons use only rows 2 to 15, so a board that measures just the first
 16 rows (`T1`-`T16`) can check them. If a board does not measure a row
-a lesson needs, the tutor says so plainly and does not guess.
+a lesson needs, the tutor says so plainly and does not guess. A station
+whose row map is not flashed yet measures no rows at all (its hello line
+has `"rows": []`): then Genesis says that plainly, with what to do (run
+the mux test, then `make_fw_maps.py`, then flash), and lists no row
+names.
 
 **Lesson 1**, in build order:
 
@@ -86,24 +97,62 @@ A resistor with an end in an empty (floating) row carries no current.
 
 ### What the station cannot catch
 
-- **No resistor.** It is found from the rows only because the + line
-  sags when far too much current flows (rows 5 and 10 both drop below
-  2.6 V; the fake board's supply has a 100 mA limit and sags to 2.2 V).
-  The station's 3.3 V regulator may hold its voltage with one LED across
-  it (a red LED takes roughly 90 mA): then the rows look the same as an
-  LED put in backwards, and the tutor gives that hint. Only a current
-  sensor, or a supply that sags, can tell them apart. (A hard short, a
-  wire from + to -, resets the S3, so the laptop loses the board.)
+- **No resistor, on a supply that holds.** It is found from the rows only
+  when the + line sags (rows 5 and 10 both drop below 2.6 V; the fake
+  board's supply has a 100 mA limit and sags to 2.2 V). The station's
+  3.3 V regulator usually holds its voltage with one LED across it (a red
+  LED takes roughly 90 mA), and the board has no current sensor, so it
+  cannot see the current. Then the rows look exactly like one of two
+  other mistakes:
+  - a wire in the resistor's place: like **LED backwards** (row 10 at
+    3.3 V, row 12 at 0 V);
+  - the LED's long leg pushed into the row before the resistor: like
+    **open circuit** (row 10 empty).
+
+  So on a board with no current sensor these two hints (lessons 1, 3 and
+  4) use their `"no_sensor"` texts: they start with a check the student
+  can see, still hint first ("First look at the LED. If it is very
+  bright or feels warm, pull every wire out of the + line right now: the
+  resistor may be missing."), they list a missing resistor among the
+  causes, and they never say that no current flows (without a sensor
+  that number comes only from the resistor rows). The board screen shows
+  the short version: "LED bright or warm? / Pull every wire / out of the
+  + line!". The LED fact (`physics.led_state`) and instant help say the
+  same. A board with a current sensor keeps the plain texts.
+- **A hard short** (a wire from + straight to -) pulls the regulator down
+  and resets the S3, so the laptop loses the board. Genesis then says
+  "The board stopped. If you just added a wire or part, + may be joined
+  straight to -: unplug the USB cable now, then find that wire." (on the
+  laptop: the board screen cannot be reached then).
 - **Lesson 2, top resistor is 1k.** The middle is 3.3 x 10 / 11 = 3.0 V,
-  right at the top of the station's meter. On a station whose meter tops
-  out at 3.0 V or lower it reads as the full 3.3 V, the same as "bottom
-  resistor not connected", and the tutor gives that hint. Below the top it
-  reads about 3.0 V and is found as "top resistor is 1k".
+  right at the top of the station's meter. Its clip point is 2.8 to
+  3.0 V on most chips (the rail tap's saturated reading minus 0.1 V), so
+  the middle almost always reads as the full 3.3 V, the same as "bottom
+  resistor not connected". That is why "bottom missing" is a "may"
+  mistake with two causes: the bottom resistor or the ground wire may not
+  be connected, **or** the top resistor may be much smaller than the
+  bottom one (compare their colour bands). Only on a chip whose clip
+  point is above about 3.1 V does the middle read about 3.0 V and get
+  found as "top resistor is 1k".
 
 Every other mistake is found from row voltages and empty rows alone.
-"LED backwards" keeps its two possible causes: the LED backwards, or its
-long leg not in row 10. Row voltages cannot tell these apart either: in
-both, row 10 sits at 3.3 V and row 12 at 0 V.
+"LED backwards" keeps its possible causes: the LED backwards, or its
+long leg not in row 10 (and, with no current sensor, a missing
+resistor). Row voltages cannot tell these apart either: in all of them,
+row 10 sits at 3.3 V and row 12 at 0 V.
+
+**Power off by hand.** The station has no power switch: after a
+dangerous mistake Genesis asks the student to pull every wire out of the
++ line. With the station's feed wire out, the + line floats: the board
+sends `"supply_v": 0` and lists its + taps (`PT+`, `PB+`) as floating.
+That is the power off, never a sagging supply (`no_resistor` needs the +
+line to read between about 1 and 2.6 V). After such a request, the
+plan's + rows (row 5 through the red wire; every copy's in lesson 3)
+going empty counts too. Genesis then says "Good, the power is off. Now
+fix the circuit, then push the wires back into the + line.", keeps the
+mistake open (the hint button still helps with it), never says "That
+fixed it", and if the same mistake is back when the wires go in again,
+it is the same mistake, not a new one in the history.
 
 ## Lesson 0: How a breadboard connects
 
@@ -154,8 +203,8 @@ in others**.
 ## Lesson 1: LED with resistor
 - Circuit: 3.3 V → 220 ohm → red LED → ground
 - Expected current: (3.3 - 2) / 220 = 0.0059 A = 5.9 mA
-- Accept (rows): row 5 at least 2.8 V, row 10 between 1.6 and 2.4 V,
-  row 12 at most 0.5 V, none of them empty, and current 4 to 7.5 mA
+- Accept (rows): row 5 at least 2.8 V, row 10 between 1.5 and 2.4 V,
+  row 12 at most 0.5 V, none of them empty, and current 4 to 8.5 mA
   (measured, or calculated as (row 5 - row 10) / 220).
 - Mistakes to catch (rows: `T5`, `T10`, `T12`):
   - LED backwards OR the LED's long leg not in row 10: no current, so
@@ -167,10 +216,13 @@ in others**.
     Mini-lesson: "LEDs are one-way doors". The hint and the drawing
     point at the LED's long leg (marked + in the drawing; the short leg
     side is drawn flat, like a real LED): `"point_at"` in the lesson
-    file.
+    file. With no current sensor a wire in the resistor's place reads the
+    same, so the hint (its `"no_sensor"` text) starts with "First look at
+    the LED. If it is very bright or feels warm, pull every wire out of
+    the + line right now: the resistor may be missing."
   - No resistor: the LED sits straight across the supply, current runs
     into the supply's limit and the supply voltage sags (rows 5 and 10
-    both about 2.2 V) → cut power (on the station: "pull the red wire out
+    both about 2.2 V) → cut power (on the station: "pull every wire out
     of the + line"), explain why.
     Detect: supply at most 2.6 V, row 10 between 1 and 2.6 V, row 12 at
     most 0.5 V. Red lights: rows 5 and 10. (Without a current sensor
@@ -179,7 +231,9 @@ in others**.
   - Open circuit (a part in the wrong row): row 10 holds only the LED's
     long leg, so nothing drives it.
     Detect: row 10 **empty**, row 5 at least 2.8 V, row 12 at most
-    0.5 V → hint. Red light: row 10.
+    0.5 V → hint. Red light: row 10. With no current sensor the LED's
+    long leg pushed into row 5 (skipping the resistor) reads the same, so
+    this hint also starts with "First look at the LED".
     Mini-lesson: "Circuits must be closed loops"
   - Resistor too big, for example 1k instead of 220 ohm. The LED still
     takes its 2 V, so the resistor gets the other 1.3 V:
@@ -225,9 +279,16 @@ in others**.
     sizes. Red lights: rows 5 and 10. (Near the top of the station's
     meter: see "What the station cannot catch".)
     Mini-lesson: "Bigger resistor, bigger share"
-  - Bottom resistor (or the ground wire) not connected: the loop is
-    broken below the middle, so 0 mA. With no current the top resistor
-    drops 0 V, so the middle keeps the full 3.3 V.
+  - The middle at the full 3.3 V, with two causes the board cannot tell
+    apart, so the texts say "may" (like "LED backwards"): the bottom
+    resistor or the ground wire may not be connected (the loop is broken
+    below the middle, so 0 mA, and with no current the top resistor
+    drops 0 V), **or** the top resistor may be much smaller than the
+    bottom one (a 1k on top gives 3.0 V, which the station's meter sends
+    as 3.3 V: see "What the station cannot catch"). The hint asks to look
+    at every part between the middle and ground, and to compare the
+    colour bands of the two resistors. It never says "no current is
+    flowing".
     Detect: row 10 at least 3.2 V, not empty. Red: rows 10 and 15.
     Mini-lesson: "No flow, no voltage drop"
   - Top resistor (or the 3.3 V wire) not connected: 0 mA, and the middle
@@ -252,23 +313,39 @@ lesson 2 mistakes needs the current to be found.
   checked on its own rows.
 - Expected current for each copy: (3.3 - 2) / 330 = 0.0039 A = 3.9 mA.
   Three copies take about 12 mA, under the 30 mA cut.
-- Accept: as lesson 1, with the current 3 to 5 mA for each copy (with a
-  sensor, the board's total must be the number of copies times that).
-- Mistakes: as lesson 1. Resistor too big (1k: 1.3 mA): measured
-  current 0.1 to 2.9 mA for a copy. Current skips the LED:
-  3.3 / 330 = 10 mA, detected at 7 to 30 mA.
+- Accept: as lesson 1 (row 10 between 1.5 and 2.4 V), with the current
+  2.7 to 5.5 mA for each copy: (3.3 - 2.4) / 330 = 2.7 mA and
+  (3.3 - 1.5) / 330 = 5.5 mA, so the whole row window fits. With a
+  sensor, the board's total must be the number of copies times that.
+  When it is not, but every copy looks right by its voltages, the odd
+  copy carries the total less the other copies' 3.9 mA each (one 1k in
+  two copies: 3.9 + 1.3 = 5.2 mA in all, so 1.3 mA for the odd one).
+- Mistakes: as lesson 1, with the same no-current-sensor texts for "LED
+  backwards" and "open circuit". Resistor too big (1k: 1.3 mA): measured
+  current 0.1 to 2.5 mA for a copy (a gap below the 2.7 mA accept).
+  Current skips the LED: 3.3 / 330 = 10 mA, detected at 7 to 30 mA.
 
 ## Lesson 4: Button switch
 - Circuit: 3.3 V → push button → 220 ohm → red LED → ground. Two steps:
   "pressed" (hold the button and check) then "released" (let go and
   check).
-- Pressed: rows 5 and 8 at least 2.8 V, row 13 between 1.6 and 2.4 V,
-  row 15 at most 0.5 V, current 4 to 7.5 mA ((3.3 - 2) / 220 = 5.9 mA).
-- Released: no current (at most 1 mA); rows 8 and 13 may be empty.
+- Where every part goes: red wire `PT+` -> row 2, push button rows 2 and
+  5, 220 ohm resistor rows 5 and 10, red LED long leg (+) row 10 and
+  short leg (-) row 12, black wire row 12 -> `PT-`. Rows 2, 5, 10 and 12
+  each have their own light on the station (rows 2 5 7 10 12 15 ... do;
+  any other row lights the two rows beside it), so every blue "put a part
+  here" light is on a hole the part goes in. The spans are the same as
+  before: the button 3 rows, the resistor 5, the LED 2.
+- Pressed: rows 2 and 5 at least 2.8 V, row 10 between 1.5 and 2.4 V,
+  row 12 at most 0.5 V, current 4 to 8.5 mA ((3.3 - 2) / 220 = 5.9 mA;
+  (3.3 - 2.4) / 220 = 4.1 and (3.3 - 1.5) / 220 = 8.2 mA).
+- Released: no current (at most 1 mA); rows 5 and 10 may be empty.
 - Mistakes: button always on (current of 2 mA or more after letting go),
-  button not connecting (no current while held), LED backwards (row 13
-  at the full 3.3 V while held), no resistor (the + line sags below
-  2.6 V).
+  button not connecting (no current while held), LED backwards (row 10
+  at the full 3.3 V while held), open circuit (row 10 empty while held:
+  nothing reaches the LED's long leg), no resistor (the + line sags below
+  2.6 V). With no current sensor, "LED backwards" and "open circuit" use
+  their safety-first texts (see "What the station cannot catch").
 
 ## When a mistake is not on the list
 
@@ -294,7 +371,7 @@ because for an unknown mistake we do not know which part is wrong. Two
 practice circuits in the simulator are on purpose not on any list:
 
 - Lesson 1, a 150 ohm resistor: (3.3 - 2) / 150 = 0.0087 A = 8.7 mA
-  (above the 4 to 7.5 mA range, below the 30 mA safety cut). Rows alone
+  (above the 4 to 8.5 mA range, below the 30 mA safety cut). Rows alone
   look correct, so only a board with a current sensor gives the clue.
 - Lesson 2, a 4.7k bottom resistor: middle = 3.3 x 4.7 / 14.7 = 1.06 V,
   current = 3.3 / 14700 = 0.00022 A = 0.22 mA. Row 10 is too low, so any

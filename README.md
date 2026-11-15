@@ -12,9 +12,14 @@ The real board is **the station**, built in
 light strip on each side, a StickS3 screen and four coloured buttons
 (yellow check, white hint, blue next step, red power). **Its breadboard
 runs on 3.3 V**, so every lesson is written for 3.3 V, and it has no
-current sensor and no power switch: when a circuit is dangerous, Genesis
-tells the student to pull the red wire out of the + line. Everything
-also works with the fake board, without hardware.
+current sensor and no power switch: when the board sees a dangerous
+circuit (the + line pulled down), Genesis tells the student to pull every
+wire out of the + line. Without a current sensor it cannot see every
+danger (an LED with no resistor often reads like a backwards LED), so
+those hints start with a check the student can see: "First look at the
+LED. If it is very bright or feels warm, pull every wire out of the +
+line right now." Everything also works with the fake board, without
+hardware.
 
 ## Target user
 
@@ -27,8 +32,8 @@ written at about a 6th grade reading level.
 
 | Part                     | Status                                        |
 |--------------------------|-----------------------------------------------|
-| `sim/fake_board.py`      | Done. Speaks serial protocol version 2. Simulates lessons 0 to 4 (lesson 4's push button held or let go with `HOLD on|off`), every listed mistake (including a loose leg that flickers), two unlisted ones, a part plugged into a row outside the plan (`stray_part`) and 1 to 3 copies of a circuit (`COPIES T0 T15 B0`). Starts with any rows, with or without a current sensor, power switch or screen, on a 3.3 V supply like the station (`--supply` for another) |
-| `lessons/*.json`         | Done for lesson 0 (how a breadboard connects: tap holes, one question), lessons 1 and 2, lesson 3 "More LEDs" (the LED circuit with a 330 ohm resistor, built 1 to 3 times anywhere; each copy is checked, and with three the total current must be about 3 x 3.9 = 11.7 mA), and lesson 4 "Button switch" (two guided steps: hold the button and check, then let go and check; each step has its own rules and mistakes): 22 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). Any other mistake gets a clue from the numbers. All numbers, ranges and texts are for the station's 3.3 V, and allow its meter (±0.1 V, the top of its range read as the supply) |
+| `sim/fake_board.py`      | Done. Speaks serial protocol version 2. Simulates lessons 0 to 4 (lesson 4's push button held or let go with `HOLD on|off`), every listed mistake (including a loose leg that flickers), two unlisted ones, a part plugged into a row outside the plan (`stray_part`), 1 to 3 copies of a circuit (`COPIES T0 T15 B0`) and the power switched off by hand (`UNPLUG ALL`, `UNPLUG WIRES`, `UNPLUG NONE`: the + line unplugged, like on the station). Starts with any rows, with or without a current sensor, power switch or screen, on a 3.3 V supply like the station (`--supply` for another), optionally with the station's meter top (`--meter-top 2.9`: a row at or above it reads as the supply). It never answers an empty line (the laptop's keep-alive) |
+| `lessons/*.json`         | Done for lesson 0 (how a breadboard connects: tap holes, one question), lessons 1 and 2, lesson 3 "More LEDs" (the LED circuit with a 330 ohm resistor, built 1 to 3 times anywhere; each copy is checked, and with three the total current must be about 3 x 3.9 = 11.7 mA), and lesson 4 "Button switch" (two guided steps: hold the button and check, then let go and check; each step has its own rules and mistakes; its parts sit on rows 2, 5, 10 and 12, which each have their own light on the station): 23 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). The mistakes whose rows also fit an LED with no resistor ("LED backwards", "open circuit") have safety-first texts for a board with no current sensor. Any other mistake gets a clue from the numbers. All numbers, ranges and texts are for the station's 3.3 V, and allow its meter (±0.1 V, the top of its range read as the supply) |
 | `docs/SERIAL_PROTOCOL.md`| Done, version 2: a voltage per row, empty rows, current (or null), row lights with colors, screen text, 4 buttons |
 | `protocol.py`            | Done. Row names, light colors, button meanings and the station's button colours, the supply voltage (`SUPPLY_V = 3.3`; a board's hello line can say its own `supply_v`), what "switch the power off by hand" means on the station, and screen size, in one place |
 | `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
@@ -222,12 +227,24 @@ Without `--serial` the fake board is used.
 
 **3.3 V.** The station's breadboard runs on 3.3 V, and every lesson is
 written for it (5.9 mA through lesson 1's LED, 1.65 V in the middle of
-lesson 2). Use red, yellow or green LEDs: a blue or white one barely
-lights at 3.3 V. The station has no power switch: the red button, and any
-dangerous circuit, makes Genesis say "pull the red wire out of the + line"
-on the laptop and on the station's screen. Before the row map is flashed
-the station measures no named rows, and Genesis says it cannot check the
-lesson yet.
+lesson 2). Use red, yellow or yellow-green LEDs: a blue, white or bright
+"pure green" one (about 3 V) barely lights at 3.3 V. The station has no
+power switch: the red button, and a dangerous circuit the board can see
+(the + line pulled down), make Genesis say "pull every wire out of the +
+line" on the laptop and on the station's screen. When the student does,
+Genesis says "Good, the power is off. Now fix the circuit, then push the
+wires back into the + line." The station has no current sensor either, so
+an LED with no resistor, which its regulator usually holds at 3.3 V, reads
+like a backwards LED or an open circuit: those hints start with "First
+look at the LED. If it is very bright or feels warm, pull every wire out
+of the + line right now". **A hard short** (+ straight to -) resets the
+station, so the laptop loses it: Genesis says "The board stopped. If you
+just added a wire or part, + may be joined straight to -: unplug the USB
+cable now, then find that wire." If the row lights freeze or anything
+gets warm: pull the USB cable first. Before the row map is flashed the
+station measures no rows: Genesis says the row map is not flashed yet
+(run the mux test, then `make_fw_maps.py`, then flash) and checks no
+lesson.
 
 ## Run the tutor in a terminal
 
@@ -385,9 +402,11 @@ buttons. Pick circuits in **Teacher → Practice mode**.
    **Open the student's notebook** shows the line it just wrote.
 7. Restart with `--no-power-switch --no-current --rows T1-T16` (like the
    station, on fewer rows): the same lessons still work. No resistor now
-   puts "DANGER! / Pull the red wire / out of the + line / right now!" on
-   the board screen, Zip says to pull the red wire out of the + line, and
-   the current shows as "worked out from the rows".
+   puts "DANGER! / Pull every wire / out of the + line / right now!" on
+   the board screen, Zip says to pull every wire out of the + line, and
+   the current shows as "worked out from the rows". A backwards LED now
+   starts with "First look at the LED": on a board with no current sensor
+   it reads the same as an LED with no resistor.
 
 ## How we use deepagents
 

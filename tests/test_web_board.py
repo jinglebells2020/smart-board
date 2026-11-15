@@ -162,17 +162,17 @@ class TestNoSwitchNoSensorSixteenRows(ServerCase):
         self.press(1)
         s = self.state()
         self.assertTrue(s["log"][-1]["text"].startswith("Switch the power off by hand"))
-        self.assertIn("pull the red wire out of the + line", s["log"][-1]["text"])
-        self.assertIn("Pull the red wire out of the + line", " ".join(s["board"]["screen"]))
+        self.assertIn("pull every wire out of the + line", s["log"][-1]["text"])
+        self.assertIn("Pull every wire out of the + line", " ".join(s["board"]["screen"]))
         self.assertTrue(s["reading"]["power_on"])
 
     def test_power_button_says_it_cannot(self):
         self.press(4)
         s = self.state()
         self.assertIn("has no power switch", s["log"][-1]["text"])
-        self.assertIn("pull the red wire out of the + line", s["log"][-1]["text"])
+        self.assertIn("pull every wire out of the + line", s["log"][-1]["text"])
         self.assertIn("No power switch.", s["board"]["screen"])
-        self.assertIn("red wire out of +.", s["board"]["screen"])
+        self.assertIn("Off: pull every wire", s["board"]["screen"])
 
     def test_unknown_current_shows_none(self):
         self.post("/api/ask", {"text": "check"})  # pass lesson 1

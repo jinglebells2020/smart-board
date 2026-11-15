@@ -194,7 +194,8 @@ def feedback_items(reading, measured, usable, tray=None, plan=None):
                     # At 3.3 V a blue or white LED (about 3 V) is left with
                     # almost nothing for its resistor: it only glows a little.
                     dim = (f" It needs almost all of the {nominal:g} volts, so it only "
-                           "glows a little. Red, yellow and green LEDs are brighter here.")
+                           "glows a little. Red, yellow and yellow-green LEDs are brighter "
+                           "here.")
                 add("led_on", "good", f"{_cap(_name(p))} in {_rows_words(p['rows'])} is on: "
                     f"it has {va - vb:.1f} volts across it and current flows through it.{dim}",
                     p["rows"], "green")

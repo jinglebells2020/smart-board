@@ -16,7 +16,7 @@ from agent.boardlink import BoardLink
 from agent.deadline import RunAbandoned
 from agent.diagnoser import compare_with_rules, lights_from, validate_diagnosis
 from agent.lessons import (FREE_ID, FREE_LESSON, SAFETY_MAX_MA, calculate_current, check,
-                           free_check, load_lessons, summarize)
+                           free_check, load_lessons, power_off_by_hand, summarize)
 from agent.notebook import entry_start, mistake_label
 from agent.feedback import feedback_items, main_problem, problem_text
 from agent.planner import plan_experiment
@@ -24,21 +24,32 @@ from agent.physics import circuit_facts, extra_rows_fact, free_facts, number, po
 from agent.reader import measured_of, read_and_check, reader_payload
 from agent.placement import (HOME, ROW, describe, driven_rows, find_all_placements,
                              find_placement, is_row_map, shift_lesson, shift_name)
-from protocol import (BUTTON_COLORS, MANUAL_OFF_SCREEN, MANUAL_OFF_WORDS, MANUAL_ON_WORDS,
-                      NO_SWITCH_SCREEN, SUPPLY_V, button_words, is_row, power_cut_words,
-                      row_label)
+from protocol import (BUTTON_COLORS, HAND_OFF_SAY, HAND_OFF_SCREEN, MANUAL_OFF_SCREEN,
+                      MANUAL_OFF_WORDS, MANUAL_ON_WORDS, NO_SWITCH_SCREEN, SUPPLY_V,
+                      button_words, is_row, power_cut_words, row_label)
 
 WINDOW = 10  # readings per measurement (about 1 second on the fake board)
 REPEAT_IF_SEEN = 2  # same mistake this many times -> practice the lesson again
 
 # Board screen text when the student must switch power off by hand (a board
-# with no power switch, like the station: pull the red wire out of the +
+# with no power switch, like the station: pull every wire out of the +
 # line), and when the red button is pressed on such a board. Both live in
 # protocol.py; fit_screen keeps them to the screen size.
 STILL_UNSAFE_SCREEN = "Still unsafe!|Power is off again.|Fix the circuit|first."
 # What the laptop says when the board cannot switch the power.
 NO_SWITCH_SAY = (f"This board has no power switch. To switch the power off, {MANUAL_OFF_WORDS}. "
                  f"To switch it back on, {MANUAL_ON_WORDS}.")
+# The + line is unplugged by hand, but nobody asked for it.
+POWER_OFF_BY_HAND_SAY = ("The power is off: nothing reaches the + line, so I cannot measure "
+                         f"anything. When you are ready, {MANUAL_ON_WORDS}.")
+# The station before its row map is flashed: its hello line lists no rows.
+UNMAPPED_SAY = ("The station's row map is not flashed yet, so the board cannot measure any "
+                "row. A job for the teacher: run the mux test, then make_fw_maps.py, then "
+                "flash the firmware again (docs/FIRMWARE_GUIDE.md, part 0).")
+UNMAPPED_SCREEN = "No row map yet.|Run the mux test,|make_fw_maps.py,|then flash again."
+# The green "correct" lights stay on this long after a lesson passes (or
+# until the student presses blue, or anything else lights a row).
+GREEN_HOLD_S = 5.0
 
 # A student message that asks for power to come back on: they say they
 # fixed something, or ask for the power. Only then may the AI turn power
@@ -137,6 +148,12 @@ class Session:
         self.experiments_done = 0
         self.experiment = None
         self.power_log = []
+        # No power switch: the dangerous mistake the student was asked to
+        # switch the power off for by hand, {"lesson", "mistake", "off_seen",
+        # "occurrence"}, until a check shows something else. While it is set,
+        # the plan's + rows going empty is "power off by hand", and the same
+        # mistake coming back is the same occurrence, not a new one.
+        self.manual_off = None
 
     # --- Lessons -------------------------------------------------------
     @property
@@ -209,9 +226,16 @@ class Session:
     def set_lesson(self, lesson_id):
         if lesson_id != self.lesson_id:
             # A new lesson starts with dark lights: old green or red lights
-            # would point at rows that mean something else now.
-            self.board.clear_lights()
+            # would point at rows that mean something else now. After a pass
+            # the green "correct" lights stay a few seconds first, so the
+            # student sees them (until blue, or any new light).
+            lights = set(self.board.lights.values())
+            if lights == {"green"}:
+                self.board.clear_lights_later(GREEN_HOLD_S)
+            else:
+                self.board.clear_lights()
             self.open_mistake = None
+            self.manual_off = None
         if lesson_id != self.lesson_id:
             self.placement = HOME  # a new lesson: guide the student to its own rows
         self.lesson_id = lesson_id
@@ -275,7 +299,15 @@ class Session:
         data = on or readings
         lesson_file = self.lessons[self.lesson_id]
         copies = []
-        if self.is_free():
+        unmapped = board.unmapped and not self.is_explore()
+        if unmapped:
+            # The station before its row map is flashed: no row to measure.
+            # Say what to do, never a list of row names.
+            summary = summarize(data, self.lesson)
+            result = {"status": "missing_rows", "unmapped": True,
+                      "missing_rows": list(self.lesson.get("rows", [])),
+                      "message": UNMAPPED_SAY, "screen": UNMAPPED_SCREEN}
+        elif self.is_free():
             # Free build: no plan. Every usable row the board measured.
             rows = [r for r in data[0]["rows"] if is_row(r)] if data else []
             summary = summarize(data, dict(lesson_file, rows=rows))
@@ -299,7 +331,7 @@ class Session:
                 board.clear_lights()  # old lights point at the old rows
                 if tuple(new) != HOME:  # back where the lesson shows: nothing to say
                     moved = describe(new, lesson_file)
-        if self.is_free():
+        if self.is_free() or unmapped:
             pass  # checked above
         elif copies:
             summary, result = self._check_copies(data, lesson_file, copies)
@@ -307,9 +339,22 @@ class Session:
             summary = summarize(data, self.lesson)
             result = check(summary, self._step_lesson(self.lesson) if self.button_step
                            else self.lesson)
-        if not self.is_explore() and not self.is_free() and result["status"] != "power_off":
+        if self.manual_off and result["status"] != "power_off" and not unmapped \
+                and self._plus_rows_off(summary, copies):
+            # Asked to switch off by hand, and the plan's + rows are empty now:
+            # the student pulled the wires out of the + line.
+            result = {"status": "power_off", "by_hand": True}
+        if result.get("by_hand"):
+            if self.manual_off:
+                self.manual_off["off_seen"] = True
+                result.update(asked=True, message=HAND_OFF_SAY, screen=HAND_OFF_SCREEN)
+                board.show(HAND_OFF_SCREEN)
+            else:
+                result["message"] = POWER_OFF_BY_HAND_SAY
+        if not self.is_explore() and not self.is_free() and result["status"] != "power_off" \
+                and not unmapped:
             result = self._extra_parts(data, result, copies)
-        if self.button_step and result["status"] != "power_off":
+        if self.button_step and result["status"] != "power_off" and not unmapped:
             result = self._button_steps(result)
         if moved:
             if is_row_map(self.placement):  # any spacing
@@ -349,8 +394,25 @@ class Session:
             else:
                 result["manual_power_off"] = True
                 board.show(MANUAL_OFF_SCREEN)
+                key = str(result.get("mistake_id") or "danger")
+                same = self.manual_off and (self.manual_off["lesson"], self.manual_off["mistake"]) \
+                    == (self.lesson_id, key)
+                if not same:
+                    self.manual_off = {"lesson": self.lesson_id, "mistake": key,
+                                       "off_seen": False, "occurrence": None}
                 self._safety(f"No power switch: asked for the power to be switched off by "
                              f"hand ({what})")
+        if self.manual_off and not result.get("manual_power_off") \
+                and result["status"] != "power_off":
+            self.manual_off = None  # the board shows something else now
+        if result["status"] == "mistake" and not board.has_current and not safety_cut:
+            # No current sensor: a mistake whose rows also fit a dangerous one
+            # (an LED with no resistor reads like a blocked LED) puts its short
+            # "look at the LED first" check on the board screen at once.
+            spec = self._mistake_spec(self.lesson_id, result.get("mistake_id")) or {}
+            if spec.get("screen") and not result.get("manual_power_off"):
+                result["screen"] = spec["screen"]
+                board.show(spec["screen"])
         if self.is_free():
             # The facts that need no plan (plain Python), then the circuit
             # reader and the physics check, then the feedback list. After the
@@ -374,6 +436,28 @@ class Session:
             self.pending_entry = entry
         return summary, result, safety_cut
 
+    def _plus_rows_off(self, summary, copies):
+        """Are the plan's + rows (the rows a part joins to the + line: row 5
+        through the red wire in lesson 1; every copy's in lesson 3) all empty
+        now? After a request to switch off by hand, that is the power off."""
+        lessons = ([shift_lesson(self.lessons[self.lesson_id], p) for p in copies]
+                   if copies else [self.lesson])
+        plus = {leg["row"] for l in lessons for part in l.get("layout", [])
+                if any(g["row"] in ("PT+", "PB+") for g in part["legs"])
+                for leg in part["legs"] if is_row(leg["row"])}
+        floating = set(summary.get("floating", []))
+        return bool(plus) and all(r in floating or r not in summary.get("rows", {})
+                                  for r in plus)
+
+    def _for_board(self, spec):
+        """A mistake as this board should tell it: on a board with no current
+        sensor, a mistake with "no_sensor" texts uses those (its rows also
+        fit a dangerous circuit the board cannot see, so the hint starts with
+        a check the student can see, and the board screen shows it)."""
+        if spec and spec.get("no_sensor") and not self.board.has_current:
+            return {**{k: v for k, v in spec.items() if k != "no_sensor"}, **spec["no_sensor"]}
+        return spec
+
     def _safety(self, text):
         """Tell the listener (if any) about a safety step. Never changes it."""
         if self.on_safety is not None:
@@ -396,7 +480,7 @@ class Session:
         else:
             lessons = [self._step_lesson(self.lesson) if self.button_step else self.lesson]
         facts = [power_fact(summary, safety_cut)]
-        if summary.get("power_on") or safety_cut:
+        if (summary.get("power_on") and not power_off_by_hand(summary)) or safety_cut:
             for i, lesson in enumerate(lessons):
                 s = summarize(readings, lesson) if copies else summary
                 label = f"LED circuit {i + 1}" if len(lessons) > 1 else ""
@@ -465,8 +549,11 @@ class Session:
         copies. With more, each copy's current is worked out from its own
         resistor (Ohm's law); then the board's total current must be
         N x the accepted range for one copy. If it is not, but every copy
-        looks right by its voltages, each copy is checked again with the
-        total current / N (they all look the same, so they share it).
+        looks right by its voltages, the odd one out carries what the others
+        do not: the total minus (N - 1) x the expected current for one copy
+        (a too-big resistor in one of two copies: 3.9 + 1.3 mA in all, so
+        about 1.3 mA for the odd one). They all look the same by their
+        voltages, so each copy is checked again with that current.
         Returns (summary of all copies, result)."""
         n = len(places)
         shifted = [shift_lesson(lesson, p) for p in places]
@@ -480,7 +567,7 @@ class Session:
                 s = summarize(readings, l)
                 if share is not None:
                     s.update(current_ma=share, current_source="measured",
-                             current_note="the board's current, shared by the copies")
+                             current_note="the board's current, less what the other copies take")
                 elif n > 1:
                     value, note = calculate_current(s["rows"], s["floating"],
                                                     l.get("current_from", []))
@@ -495,7 +582,9 @@ class Session:
                       or n * per_copy.get("min", 0) <= total <= n * per_copy.get("max", 1e9))
         shared = n > 1 and not fits_total and all(r["status"] == "ok" for _, r in checked)
         if shared:
-            checked = check_all(share=round(total / n, 3))
+            each = lesson.get("expected", {}).get("current_ma")
+            odd = total - (n - 1) * each if each is not None else total / n
+            checked = check_all(share=round(max(0.0, odd), 3))
         if not measured:  # no current sensor: add up what each copy's resistor says
             parts = [s["current_ma"] for s, _ in checked]
             if parts and all(c is not None for c in parts):
@@ -684,8 +773,8 @@ class Session:
     def toggle_power(self):
         """Button 4 (red on the station): power off if on, on if off (the
         student is asking). A board with no power switch (the station) says
-        on its screen how to do it by hand instead: pull the red wire out of
-        the + line, or push it back in."""
+        on its screen how to do it by hand instead: pull every wire out of
+        the + line, or push them back in."""
         if not self.board.has_power_switch:
             self.board.show(NO_SWITCH_SCREEN)
             return {"error": "no power switch", "say": NO_SWITCH_SAY}
@@ -757,7 +846,8 @@ class Session:
                     "mini_lesson": lesson["intro_lesson"]}
         if mistake_id == "extra_part" and not self.is_explore(lesson_id):
             return self._extra_part_spec()
-        return next((m for m in lesson["mistakes"] if m["id"] == mistake_id), None)
+        return self._for_board(next((m for m in lesson["mistakes"] if m["id"] == mistake_id),
+                                    None))
 
     # --- Lesson 0: explore, then answer the quiz ------------------------------
     def _read_circuit(self, summary, result):
@@ -840,25 +930,48 @@ class Session:
 
         The mini-lesson explains the idea, never what to change on the board,
         so it is allowed on the first try alongside the hint."""
-        mistake = next((m for m in self.lesson["mistakes"] if m["id"] == mistake_id), None)
+        mistake = self._for_board(next((m for m in self.lesson["mistakes"]
+                                        if m["id"] == mistake_id), None))
         if mistake is None and mistake_id == "extra_part" and not self.is_explore():
             mistake = self._extra_part_spec()  # a part plugged in outside the plan
         if mistake is None:
             known = [m["id"] for m in self.lesson["mistakes"]]
             return {"error": f"unknown mistake {mistake_id!r} for lesson "
                              f"{self.lesson_id}. Known: {known}"}
+        off = self.manual_off
+        if off and off["off_seen"] and off.get("occurrence") is not None \
+                and (off["lesson"], off["mistake"]) == (self.lesson_id, mistake_id):
+            # The student switched the power off by hand and pushed the wires
+            # back in before fixing it: the same mistake as before, not a new one.
+            occurrence = off["occurrence"]
+            self.last_logged = {"lesson": self.lesson_id, "mistake": mistake_id,
+                                "occurrence": occurrence}
+            n = self.times_seen(self.lesson_id, mistake_id)
+            level, say = ("hint", mistake["hint"]) if n == 1 else ("explain", mistake["explain"])
+            self.open_mistake = {"lesson": self.lesson_id, "mistake": mistake_id, "level": level}
+            out = {"times_seen": n, "level": level, "say": say, "same_as_before": True,
+                   "mini_lesson": dict(mistake["mini_lesson"])}
+            if mistake.get("screen"):
+                out["screen"] = mistake["screen"]
+            return out
         self.history["mistakes"].append(
             {"lesson": self.lesson_id, "mistake": mistake_id, "time": time.time()})
         self._save()
         occurrence = len(self.history["mistakes"]) - 1
         self.last_logged = {"lesson": self.lesson_id, "mistake": mistake_id,
                             "occurrence": occurrence}
+        if off and (off["lesson"], off["mistake"]) == (self.lesson_id, mistake_id):
+            off["occurrence"] = occurrence
         n = self.times_seen(self.lesson_id, mistake_id)
         # Rule from CLAUDE.md: hint first, never the full answer on the first try.
         level, say = ("hint", mistake["hint"]) if n == 1 else ("explain", mistake["explain"])
         self.open_mistake = {"lesson": self.lesson_id, "mistake": mistake_id, "level": level}
         result = {"times_seen": n, "level": level, "say": say,
                   "mini_lesson": dict(mistake["mini_lesson"])}
+        if mistake.get("screen"):
+            # No current sensor: the short "look at the LED first" check for
+            # the board screen (show it with show_on_board, not the title).
+            result["screen"] = mistake["screen"]
         if n >= 2:
             # The same mistake again: the old mini-lesson did not stick, so ask
             # the lesson writer for a new one with a different comparison.

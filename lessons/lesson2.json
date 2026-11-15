@@ -248,7 +248,7 @@
     },
     {
       "id": "bottom_missing",
-      "description": "Bottom resistor (or the ground wire) may not be connected",
+      "description": "The bottom resistor or the ground wire may not be connected, or the top resistor may be much smaller than the bottom one (the board cannot tell which)",
       "rows": [
         "T10",
         "T15"
@@ -267,8 +267,8 @@
         ]
       },
       "action": "hint",
-      "hint": "No current is flowing, and the middle row has the full 3.3 volts. The current cannot get from the middle down to ground. Look at every part between the middle and ground.",
-      "explain": "The bottom resistor may not be connected, or the ground wire may not reach it. Either way the loop is broken below the middle, so no current flows and the middle keeps the full 3.3 volts. The bottom 10k resistor should go from the middle row to the ground row.",
+      "hint": "The middle row has the full 3.3 volts. Two things can do this, and the board cannot tell which. The current may not get from the middle down to ground. Or the top resistor may be much smaller than the bottom one. Look at every part between the middle and ground, and compare the color bands of the two resistors.",
+      "explain": "Two things can cause this, and the board cannot tell which. The bottom resistor may not be connected, or the ground wire may not reach it: then the loop is broken below the middle and the middle keeps the full 3.3 volts. Or the top resistor may be much smaller than the bottom one, for example 1k (brown-black-red) instead of 10k (brown-black-orange): then the middle gets almost all of the 3.3 volts, more than this board's meter can tell from the full 3.3. Both resistors should be 10k, and the bottom one should go from the middle row to the ground row.",
       "mini_lesson": {
         "title": "No flow, no voltage drop",
         "idea": "A resistor only lowers the voltage when current flows through it. It is like a garden hose with the end blocked: no water flows, so the pressure is the same all along the hose. With no current, every point keeps the full push of the power supply.",

@@ -25,6 +25,8 @@ RESISTORS = [100, 220, 330, 1000, 10000]
 LED_RESISTORS = [220, 330, 1000]  # keep a correct circuit's current safe
 COLORS = ["red", "yellow", "green", "blue"]
 # The colours that light well at 3.3 V (the lessons use only these).
+# ("green" is the solver's yellow-green LED, about 2.1 V. A bright "pure
+# green" one needs about 3 V, like blue: it is not modelled.)
 BRIGHT_AT_3V3 = ["red", "yellow", "green"]
 MISTAKES = ["led_backwards", "missing_link", "short", "no_resistor"]
 MISTAKE_CHANCE = 0.4

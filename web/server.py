@@ -56,7 +56,7 @@ from agent.notebook import Notebook  # noqa: E402
 from agent.activity import Activity  # noqa: E402
 from agent.trace import describe_step, describe_steps  # noqa: E402
 from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E402
-from agent.session import Session  # noqa: E402
+from agent.session import UNMAPPED_SAY, Session  # noqa: E402
 from protocol import (BUTTON_COLORS, BUTTON_LABELS, COLORS, DEFAULT_BAUD,  # noqa: E402
                       SCREEN_CHARS, SCREEN_LINES, SUPPLY_V, USABLE_ROWS_ENV, button_words,
                       is_row, parse_usable, power_cut_words, row_label)
@@ -83,6 +83,7 @@ class App:
         self.instant_inline = False  # tests: handle a change now, not in a thread
         self.auto_inline = False     # tests: run the automatic check now, not in a thread
         self.instant_mistake = None  # the last mistake instant help told about
+        self._hand_off_said = False  # "the power is off" (by hand) was said for this time
         self.building = None         # {"parts_in", "parts"} from the latest instant check
         self._auto_guard = threading.Lock()
         self._auto_running = False
@@ -377,6 +378,8 @@ class App:
                          "light": b.lights.get(name, "off")})
         return {"capabilities": b.capabilities(), "pretend": self.is_sim,
                 "rows": rows, "missing_rows": summary["missing_rows"],
+                # The station before its row map is flashed (hello rows []).
+                "unmapped": b.unmapped,
                 "lights": dict(b.lights), "screen": list(b.screen), "colors": COLORS,
                 "screen_size": [SCREEN_LINES, SCREEN_CHARS],
                 "buttons": {str(i): BUTTON_LABELS[i] for i in range(1, b.buttons + 1)},
@@ -637,6 +640,17 @@ class App:
         self._act(result, cut, found, event)
 
     def _act(self, result, cut, found, event):
+        if result.get("by_hand"):
+            # No power switch, and the + line is unplugged: the power is off by
+            # hand. Nothing is fixed yet (never "That fixed it"), the lights
+            # that point at the problem stay, and it is said once.
+            if not self._hand_off_said:
+                self._hand_off_said = True
+                self.instant_mistake = None  # the danger, if it comes back, is said again
+                self._auto_context = None
+                self._say(result.get("message") or "The power is off.", "careful")
+            return
+        self._hand_off_said = False
         before = (self.building or {}).get("parts_in", 0)
         self.building = {"parts_in": found["parts_in"], "parts": found["parts"]}
         if found["any_driven"] or cut:
@@ -1188,6 +1202,8 @@ def main(argv=None):
           f"current sensor {'yes' if caps['has_current'] else 'no'}, "
           f"power switch {'yes' if caps['has_power_switch'] else 'no'}, "
           f"supply {caps['supply_v']:g} V.")
+    if app.board.unmapped:
+        print(UNMAPPED_SAY)
     print(f"Notebook for {args.student}: {notebook.path}")
     if app.model_name == "offline practice tutor":
         print("No ANTHROPIC_API_KEY set: Zip uses the offline tutor for every answer.")

@@ -9,7 +9,7 @@ How to run it: see RUN.md in the main folder.
 | `tools.py`      | The tools: read_rows, read_current, cut_power, restore_power, get_hint, light_row, clear_lights, show_on_board, log_mistake, next_lesson |
 | `session.py`    | Rules that must never go wrong: safety, hints first, step-by-step building, the power button, picking the next lesson, saving history |
 | `boardlink.py`  | The laptop's handle on any board (fake or real): what it has, lights and screen as last set, checks before sending, power cuts the board made by itself |
-| `serial_board.py` | A real board on a USB serial port: same methods as the fake board (hello, read, send, events). Skips junk lines, asks HELLO when the hello line is missing, reconnects about once a second after the cable is unplugged, and gives every problem as BoardError in plain words |
+| `serial_board.py` | A real board on a USB serial port: same methods as the fake board (hello, read, send, events). Skips junk lines, asks HELLO when the hello line is missing, sends LED CLEAR once after the hello, takes in the whole backlog before returning the newest reading, sends an empty keep-alive line about every 2 s while in use, only takes an answer for its own command, reconnects about once a second after the cable is unplugged, and gives every problem as BoardError in plain words (on the station: "The board stopped. If you just added a wire or part, + may be joined straight to -: unplug the USB cable now, then find that wire.") |
 | `buttons.py`    | What the 4 board buttons do (the meanings are in `protocol.py`) |
 | `lessons.py`    | Checks a circuit from row voltages against lessons/*.json, calculates current when there is no sensor, and writes the clue for unknown mistakes |
 | `prompts.py`    | The instructions Claude follows                           |
@@ -49,11 +49,21 @@ once, before the AI answers:
   power, when the board has a power switch;
 - a dangerous mistake found from the rows (no resistor) cuts power too;
 - on a board with **no power switch** (the station), it puts "DANGER! /
-  Pull the red wire / out of the + line / right now!" on the board screen
+  Pull every wire / out of the + line / right now!" on the board screen
   (`MANUAL_OFF_SCREEN` in `protocol.py`). The tutor's first words then
-  tell the student the same: switch the power off by hand, pull the red
+  tell the student the same: switch the power off by hand, pull every
   wire out of the + line. Button 4 (red) on such a board says how to do
-  it by hand, on the screen and the laptop.
+  it by hand, on the screen and the laptop. When the + line then goes
+  empty (`supply_v` 0 with floating + taps, or the plan's + row empty),
+  the check says `power_off` with `by_hand`: "Good, the power is off. Now
+  fix the circuit, then push the wires back into the + line." The mistake
+  stays open, and the same mistake coming back when the wires go in again
+  is not logged a second time (`Session.manual_off`);
+- on a board with **no current sensor**, a mistake whose rows also fit an
+  LED with no resistor (`led_backwards`, `open_circuit` in lessons 1, 3
+  and 4) uses its `"no_sensor"` texts: the hint starts with "First look
+  at the LED. If it is very bright or feels warm, pull every wire out of
+  the + line right now", and the board screen shows its short version.
 
 Turning power **on** has its own rules, also in plain Python
 (`session.turn_power_on()`, the only way power is switched on):

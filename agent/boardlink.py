@@ -8,8 +8,13 @@ events(). BoardLink adds what the laptop needs on top:
   station sends 3.3; protocol.SUPPLY_V when a board does not say). Every
   reading it hands on carries that as "nominal_v" (a laptop-only field), so
   every check judges "low supply" against this board's own supply;
-- the lights and the screen text as the laptop last set them, so the
-  web page can show them for any board;
+- the lights and the screen text as the board last confirmed them (its
+  ack), so the web page can show them for any board. A refused or
+  unanswered command never leaves a stale picture: what the board may be
+  showing instead is dropped (a station that is reconnected starts dark,
+  because SerialBoard sends LED CLEAR after its hello);
+- lights that stay on for a while and then go off by themselves
+  (clear_lights_later: the green "correct" lights after a lesson passes);
 - checks before sending: only real rows, only the 5 colors, and screen
   text always fitted to SCREEN_LINES x SCREEN_CHARS;
 - one lock, so the web page and the tutor can share the board safely;
@@ -19,6 +24,7 @@ events(). BoardLink adds what the laptop needs on top:
 """
 
 import threading
+import time
 from collections import deque
 
 import protocol as P
@@ -37,8 +43,13 @@ class BoardLink:
             raise ValueError(f"board speaks protocol {hello.get('protocol')}, "
                              f"this laptop needs {P.PROTOCOL_VERSION}")
         self.hello = hello
-        self.lights = {}   # row -> color, as last set
-        self.screen = []   # lines, as last shown
+        self.lights = {}   # row -> color, as the board last confirmed
+        self.screen = []   # lines, as the board last confirmed ([]: blank or not known)
+        # A real board counts its connections: a new one means the board may
+        # have restarted, and it got LED CLEAR (agent/serial_board.py).
+        self._connects = getattr(board, "connects", None)
+        # clear_lights_later(): when the lights go off by themselves (or None).
+        self._clear_at = None
         # Power cuts the board made by itself (power_cut lines), oldest first.
         self.power_cuts = []
         # The latest one since power was last turned on, or None.
@@ -77,6 +88,12 @@ class BoardLink:
                     floating=[r for r in reading.get("floating", []) if self.is_usable(r)])
 
     @property
+    def unmapped(self):
+        """The station before its row map is flashed: its hello line lists no
+        rows at all, so nothing can be measured yet."""
+        return not self.hello.get("rows")
+
+    @property
     def has_current(self):
         return bool(self.hello["has_current"])
 
@@ -108,6 +125,7 @@ class BoardLink:
     def read(self):
         with self.lock:
             reading = self._usable_only(self.board.read())
+            self._reconnected()
             if reading.get("power_on"):
                 self._recent_on.append(reading)
             self.poll()  # a power_cut line can come right after this reading
@@ -115,12 +133,25 @@ class BoardLink:
 
     def send(self, command):
         with self.lock:
-            return self.board.send(command)
+            answer = self.board.send(command)
+            self._reconnected()
+            return answer
+
+    def _reconnected(self):
+        """The real board was connected again (it may have restarted, and it
+        got LED CLEAR): its lights are off and its screen is not known."""
+        n = getattr(self.board, "connects", None)
+        if n != self._connects:
+            self._connects = n
+            self.lights.clear()
+            self.screen = []
 
     def poll(self):
         """Collect lines the board sent on its own: button presses wait for
-        events(); power_cut lines are remembered here."""
+        events(); power_cut lines are remembered here. Lights waiting to go
+        off by themselves (clear_lights_later) go off here when it is time."""
         with self.lock:
+            self._clear_if_due()
             for ev in self.board.events():
                 if ev.get("type") == "button":
                     self._buttons.append(ev)
@@ -148,22 +179,47 @@ class BoardLink:
             return {"type": "error", "msg": f"{row} cannot be used on this board"}
         if color not in P.COLORS:
             return {"type": "error", "msg": f"unknown color {color!r}; use one of {list(P.COLORS)}"}
-        answer = self.send(f"LED {row} {color}")
-        if answer.get("type") == "ack":
-            if color == "off":
-                self.lights.pop(row, None)
-            else:
-                self.lights[row] = color
-        return answer
+        with self.lock:
+            self._clear_if_due(now=True)  # old lights waiting to go off go first
+            answer = self.send(f"LED {row} {color}")
+            if answer.get("type") == "ack":
+                if color == "off":
+                    self.lights.pop(row, None)
+                else:
+                    self.lights[row] = color
+            elif self._rail_down(answer):
+                # A station firmware that switches every row light off while a
+                # rail is down (older versions did): none of them is lit now.
+                self.lights.clear()
+            elif "did not answer" in str(answer.get("msg", "")):
+                self.lights.pop(row, None)  # not known: never claim it is lit
+            return answer
 
     def set_lights(self, rows, color):
         return [self.set_light(r, color) for r in rows]
 
     def clear_lights(self):
-        answer = self.send("LED CLEAR")
-        if answer.get("type") == "ack":
-            self.lights.clear()
-        return answer
+        with self.lock:
+            self._clear_at = None
+            answer = self.send("LED CLEAR")
+            if answer.get("type") == "ack":
+                self.lights.clear()
+            return answer
+
+    def clear_lights_later(self, seconds):
+        """Leave the lights as they are for `seconds`, then switch them all
+        off (checked on every read and poll). Lighting any row, or
+        clear_lights, before then switches the old ones off at once."""
+        with self.lock:
+            self._clear_at = time.monotonic() + seconds
+
+    def _clear_if_due(self, now=False):
+        if self._clear_at is not None and (now or time.monotonic() >= self._clear_at):
+            self.clear_lights()
+
+    @staticmethod
+    def _rail_down(answer):
+        return answer.get("type") == "error" and "rail is down" in str(answer.get("msg", ""))
 
     # --- Screen -----------------------------------------------------
     def show(self, text):
@@ -171,9 +227,15 @@ class BoardLink:
         if not self.has_screen:
             return {"type": "error", "msg": "no screen"}
         lines = P.fit_screen(text)
-        answer = self.send("SHOW " + "|".join(lines))
-        if answer.get("type") == "ack":
-            self.screen = lines
+        with self.lock:
+            answer = self.send("SHOW " + "|".join(lines))
+            if answer.get("type") == "ack":
+                self.screen = lines
+            elif str(answer.get("msg", "")) not in ("too long", "no screen"):
+                # Refused for another reason (a firmware that keeps its own
+                # warning on the screen while a rail is down), or no answer:
+                # what the screen shows now is not known. Never keep old text.
+                self.screen = []
         return dict(answer, lines=lines)
 
     # --- Power ------------------------------------------------------
