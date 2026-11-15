@@ -18,7 +18,8 @@ from agent.diagnoser import compare_with_rules, lights_from, validate_diagnosis
 from agent.lessons import (FREE_ID, FREE_LESSON, SAFETY_MAX_MA, calculate_current, check,
                            free_check, load_lessons, summarize)
 from agent.notebook import entry_start, mistake_label
-from agent.feedback import feedback_items, main_problem
+from agent.feedback import feedback_items, main_problem, problem_text
+from agent.planner import plan_experiment
 from agent.physics import circuit_facts, extra_rows_fact, free_facts, number, power_fact
 from agent.reader import measured_of, read_and_check, reader_payload
 from agent.placement import (HOME, ROW, describe, driven_rows, find_all_placements,
@@ -62,6 +63,11 @@ class Session:
         # Free build: the circuit reader (agent/reader.py), a function
         # payload -> CircuitGuess, set per agent like the diagnoser. None: off.
         self.reader = None
+        # Free build: the hypotheses that fit the latest check (lists of
+        # parts) and the experiment that tells them apart, kept for
+        # plan_experiment / run_experiment (agent/planner.py).
+        self.hypotheses = []
+        self.experiment_plan = None
         self.history_path = Path(history_path) if history_path else None
         self.history = {"mistakes": [], "passes": {}, "quiz": []}
         if self.history_path and self.history_path.exists():
@@ -758,9 +764,22 @@ class Session:
         reading = None
         if self.reader is not None and summary.get("power_on"):
             payload = reader_payload(measured, usable, self.tray, result.get("facts"))
-            reading = read_and_check(self.reader, payload, measured, usable, self.trace)
+            reading = read_and_check(self.reader, payload, measured, usable, self.trace,
+                                     (self.tray or {}).get("parts"))
+        plan = None
+        self.hypotheses = []
+        if reading is not None and reading.get("matching", 0) >= 2:
+            hyps = reading["hypotheses"]
+            self.hypotheses = [h["guess"]["parts"] for h in hyps]
+            about = [{"circuit": [p["words"] for p in h["guess"]["parts"]],
+                      "problem": next((problem_text(pr, h["guess"]["parts"])
+                                       for pr in h.get("problems") or []), None)} for h in hyps]
+            try:
+                plan = plan_experiment(self.hypotheses, measured, usable, about)
+            except Exception:
+                plan = None  # no plan: the tutor can still ask a question
         try:
-            items = feedback_items(reading, measured, usable, self.tray)
+            items = feedback_items(reading, measured, usable, self.tray, plan)
         except Exception as e:  # feedback must never stop a check
             items = [{"kind": "not_sure", "level": "maybe", "rows": [], "light": None,
                       "text": f"I am not sure what you built ({type(e).__name__})."}]
@@ -772,6 +791,14 @@ class Session:
             result["guess_matched"] = f"{reading['matched']} of {reading['total']}"
             result["mismatches"] = reading["mismatches"]
             result["reader_tries"] = reading["tries"]
+            # Every circuit that fits (most likely first), and what is wrong in each.
+            result["hypotheses"] = [
+                {"circuit": [p["words"] for p in h["guess"]["parts"]],
+                 "problems": [problem_text(pr, h["guess"]["parts"])
+                              for pr in h.get("problems") or []]}
+                for h in reading.get("hypotheses") or []]
+            if plan:
+                result["experiment_plan"] = plan
             if reading.get("error"):
                 result["reader_error"] = reading["error"]
         result["feedback"] = items

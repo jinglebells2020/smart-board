@@ -62,8 +62,11 @@ def validate_instruction(instruction, lesson):
     if bad:
         return False, (f"Do not ask about '{bad[0]}': the student never touches the power in "
                        "an experiment."), None
+    # "push button" is a part's name, not the action "push in" ("Press the
+    # push button in row 40" has one action: press).
+    actions_text = re.sub(r"\bpush[- ]button", "button", low)
     found = [(m.start(), a) for a, pattern in ACTION_PATTERNS.items()
-             for m in re.finditer(pattern, low)]
+             for m in re.finditer(pattern, actions_text)]
     if len(found) != 1:
         return False, (f"Name exactly ONE action from: {', '.join(ACTIONS)} "
                        f"(found {len(found)})."), None

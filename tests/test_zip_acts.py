@@ -358,7 +358,7 @@ class TestPower(unittest.TestCase):
         self.assertEqual(names, {"read_rows", "read_current", "cut_power", "restore_power",
                                  "get_hint", "light_row", "clear_lights", "show_on_board",
                                  "log_mistake", "next_lesson", "guide_next_part",
-                                 "run_experiment"})
+                                 "run_experiment", "plan_experiment"})
         json.loads(tool(session, "cut_power")("test"))
         self.assertFalse(board.power_on)
         out = json.loads(tool(session, "restore_power")())  # the student did not ask

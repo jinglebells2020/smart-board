@@ -133,6 +133,7 @@ def ask(agent, history, text, timeout=None):
         session.trace = []  # a new reply: a new "How Zip worked"
         session.experiments_done = 0  # at most 2 experiments per reply
         session.experiment = None
+        session.experiment_plan = None
     before = len(history)
     # Each reply is its own short thread: the checkpointer only keeps a reply
     # that is waiting for the student, and memory is read fresh every time.

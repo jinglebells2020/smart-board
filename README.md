@@ -76,7 +76,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (615 tests; it says `OK (skipped=1)` on a
+The last line should say `OK` (630 tests; it says `OK (skipped=1)` on a
 computer without Node.js and Playwright, which the page-layout browser
 check needs). They never call Claude, so
 they work without an API key.
@@ -125,10 +125,26 @@ python tools/eval_free_build.py --n 40
 It prints, for N random circuits: how often the guess passes the physics
 check, how often the guessed parts are exactly right, and how often the
 main problem was found. Add `--tray` to fill the parts tray like a
-student would. Offline (plain Python, 80 circuits): 89% pass the physics
-check, 49% exactly the right parts (54% with the tray), 82% main problem
-found. Two LEDs side by side can read like one chain to the board, so
-"passes physics" does not always mean "right parts".
+student would (push buttons are held pressed). Offline (plain Python, 80
+circuits): 89% pass the physics check, 54% exactly the right parts (71%
+with the tray), 85% main problem found. Two LEDs side by side can read
+like one chain to the board, so "passes physics" does not always mean
+"right parts".
+
+**When no current flows, several circuits read the same.** An LED in
+backwards, an LED whose leg missed its row, and "two wires" can all give
+the same voltages. So the circuit reader gives up to 3 possible circuits;
+each is checked with the solver, and Python ranks the ones that fit:
+every tray part used, and a usual student mistake (LED backwards, a
+missing link, a push button not pressed) before invisible extra wires.
+Zip names the most likely problem, hint first ("the LED between row 45
+and the - line is blocking the current: which way does its long leg
+go?"), and suggests one experiment, planned in plain Python
+(`agent/planner.py`): it tries every allowed action (turn around a part,
+press or let go of a button, pull a part out, move a leg) on every
+possible circuit with the solver, and picks the one whose results differ
+most. After you do it and press **Done**, Python compares what changed
+with each prediction and keeps the circuit that came true.
 
 ## Start the demo (one command)
 

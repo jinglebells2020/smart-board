@@ -120,6 +120,13 @@ changed something:
      used (the parts tray), or use run_experiment (e.g. "Turn around the
      LED in rows 10 and 12.") to tell two possibilities apart.
    - If there is a goal item, say whether the circuit does what they want.
+   - Several circuits can read the same (lesson_check "hypotheses": more
+     than one fits, above all when no current flows). Then call
+     plan_experiment: plain Python picks the action that tells them apart.
+     Call run_experiment with exactly its "instruction". After "done",
+     "hypothesis_kept" says which one came true: say its problem hint
+     first (for example "the LED between row 41 and the - line is
+     blocking the current: which way does its long leg go?").
    If lesson_check has "instant_trigger", this is an automatic check: the
    board changed and instant help saw the fact in instant_trigger.text.
    Explain that trigger first. If lesson_check has "building" (the
