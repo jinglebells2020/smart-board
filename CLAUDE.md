@@ -58,6 +58,9 @@ The software must work with any of those answers.
   checked by tests/test_page_design.py. The LED is drawn with a "+"
   by its long leg and a flat short-leg side. Every mini-lesson card has
   "Show the class": one full-screen slide, closed with Esc.
+  An "Agent activity" panel for judges (agent/activity.py; closed for the
+  student, opens with the Teacher view) lists the agents' last 50 actions
+  live, with counts; it only reads what happens.
 - lessons/*.json : where every part goes (layout), expected row
   voltages, and a hint, full explanation and mini-lesson for every
   mistake. Lesson 0 "How a breadboard connects" (kind "explore") has

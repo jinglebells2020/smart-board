@@ -386,6 +386,38 @@
   td.nowrap { white-space: nowrap; }
   td.given-full, td.quiz-right, td.quiz-wrong { font-weight: 700; }
 
+  /* ---- Agent activity: the judges' live panel, under the plan ---- */
+  .activity { flex: none; margin-top: 16px; }
+  /* Open: the drawing keeps its size and the plan scrolls to the list. */
+  @media (min-width: 1000px) {
+    .stage.activity-open { overflow-y: auto; }
+    .stage.activity-open .drawing { flex: none; height: max(300px, calc(100vh - 560px)); }
+  }
+  .activity-toggle { max-width: 100%; }
+  .activity-body { margin-top: 16px; max-height: 320px; overflow-y: auto; }
+  .activity-body h3 { margin: 0 0 8px; font-size: 20px; font-weight: 700; }
+  .activity-body p { margin: 0 0 8px; }
+  .ag-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .ag-chip { display: inline-flex; align-items: center; gap: 8px; padding: 0 8px;
+             border-radius: 999px; background: var(--page); color: var(--ink);
+             font-size: 16px; font-weight: 700; white-space: nowrap; }
+  .ag-dot { width: 16px; height: 16px; border-radius: 50%; flex: none; display: inline-block; }
+  .ag-0 { background: var(--blue); }    /* Zip (tutor) */
+  .ag-1 { background: var(--sky); }     /* Diagnoser */
+  .ag-2 { background: var(--ink); }     /* Detective */
+  .ag-3 { background: var(--green); }   /* Lesson writer */
+  .ag-4 { background: var(--ink-2); }   /* Grader */
+  .ag-5 { background: var(--yellow); }  /* Build guide */
+  .ag-6 { background: var(--line); }    /* Instant help */
+  .ag-7 { background: var(--coral); }   /* Python safety */
+  .activity-list { list-style: none; margin: 0; padding: 0; font-size: 16px; }
+  .activity-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+                      padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .activity-list .act { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+  .activity-list .when { color: var(--ink-2); white-space: nowrap; }
+  .activity-list li.new { animation: slide-in 0.4s ease-out; }
+  @keyframes slide-in { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+
   /* ---- Celebration: short confetti, no sound ---- */
   .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 50; }
   .confetti i { position: absolute; top: -24px; width: 8px; height: 16px; border-radius: 2px;
@@ -393,7 +425,8 @@
   @keyframes fall { to { transform: translateY(105vh) rotate(540deg); } }
   @media (prefers-reduced-motion: reduce) {
     .confetti { display: none; }
-    .guide .spark, .bb-light.red, .guide.bounce, .mini, .think-dot { animation: none !important; }
+    .guide .spark, .bb-light.red, .guide.bounce, .mini, .think-dot,
+    .activity-list li.new { animation: none !important; }
     .teacher { transition: none; }
   }
 
@@ -522,6 +555,25 @@
         </div>
         <div class="board-buttons" id="board-buttons"></div>
       </div>
+
+      <!-- judges: start. The "Agent activity" panel is for the judges and the
+           teacher (closed for the student), so it may name the agents. -->
+      <div class="activity" id="activity">
+        <button class="btn btn-soft btn-small activity-toggle" type="button" id="activity-toggle"
+                aria-expanded="false" aria-controls="activity-body">
+          <span class="ag-dot ag-0" aria-hidden="true"></span>
+          <span>Zip's agents: <span id="activity-total">0</span> actions</span>
+        </button>
+        <div class="activity-body" id="activity-body" hidden>
+          <h3>Agent activity</h3>
+          <p class="small muted">Live, newest first: everything Zip's AI agents do.
+            "Python safety" is plain Python with no AI: facts, checks and safety cuts.</p>
+          <div class="ag-chips" id="activity-chips"></div>
+          <p class="small muted" id="activity-totals"></p>
+          <ol class="activity-list" id="activity-list"></ol>
+        </div>
+      </div>
+      <!-- judges: end -->
 
     </section>
 
@@ -925,6 +977,71 @@
     });
   }
 
+  // ---- Agent activity (the judges' panel): live, newest first ----------------
+  const AGENT_CLASS = { "Zip (tutor)": 0, "Diagnoser": 1, "Detective": 2, "Lesson writer": 3,
+                        "Grader": 4, "Build guide": 5, "Instant help": 6, "Python safety": 7 };
+  const KIND_ICON = { think: "\u{1F4AD}", measure: "\u{1F4CF}", "act on board": "\u{1F4A1}",
+                      "ask student": "\u{1F64B}", check: "\u2705", memory: "\u{1F4D3}" };
+  let activitySeen = null;   // keys of the items already shown (null: first render)
+  let activityTouched = false;  // the panel was opened or closed by hand
+  function agentChip(name, count) {
+    const chip = document.createElement("span");
+    chip.className = "ag-chip";
+    const dot = document.createElement("span");
+    dot.className = "ag-dot ag-" + (AGENT_CLASS[name] ?? 6);
+    dot.setAttribute("aria-hidden", "true");
+    chip.append(dot, count === undefined ? name : name + " " + count);
+    return chip;
+  }
+  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+  function renderActivity(items, counts) {
+    counts = counts || { total: 0, by_agent: {} };
+    $("activity-total").textContent = counts.total;
+    const chips = $("activity-chips");
+    chips.replaceChildren();
+    Object.keys(AGENT_CLASS).forEach((name) => {
+      if (counts.by_agent && counts.by_agent[name]) chips.append(agentChip(name, counts.by_agent[name]));
+    });
+    $("activity-totals").textContent = [plural(counts.replies || 0, "reply", "replies"),
+      plural(counts.experiments || 0, "experiment", "experiments"),
+      plural(counts.lights_set || 0, "light set", "lights set"),
+      plural(counts.power_cuts || 0, "power cut", "power cuts")].join(" \u00B7 ");
+    const key = (i) => i.time + "|" + i.agent + "|" + i.action;
+    const list = $("activity-list");
+    const fresh = activitySeen === null ? new Set() : activitySeen;
+    const keys = new Set();
+    list.replaceChildren();
+    (items || []).forEach((item) => {
+      const k = key(item);
+      keys.add(k);
+      const li = document.createElement("li");
+      if (activitySeen !== null && !fresh.has(k)) li.className = "new";
+      const act = document.createElement("span");
+      act.className = "act";
+      act.textContent = item.action;
+      const icon = document.createElement("span");
+      icon.textContent = KIND_ICON[item.kind] || "";
+      icon.title = item.kind;
+      icon.setAttribute("aria-label", item.kind);
+      const when = document.createElement("span");
+      when.className = "when";
+      when.textContent = new Date(item.time * 1000).toLocaleTimeString([],
+        { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      li.append(agentChip(item.agent), act, icon, when);
+      list.append(li);
+    });
+    activitySeen = keys;
+  }
+  function setActivity(open) {
+    $("activity-toggle").setAttribute("aria-expanded", String(open));
+    $("activity-body").hidden = !open;
+    $("tile-rows").classList.toggle("activity-open", open);
+  }
+  $("activity-toggle").addEventListener("click", () => {
+    activityTouched = true;
+    setActivity($("activity-body").hidden);
+  });
+
   // ---- Lesson path with stars ----------------------------------------------
   function star(on, pop) {
     const s = svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" });
@@ -1100,6 +1217,7 @@
     setMood(busy ? "thinking" : (state.mood || "happy"));
     $("model").textContent = "Tutor: " + state.model;
     renderLog(state.log);
+    renderActivity(state.activity, state.activity_count);
     renderMini(state.mini_lesson);
     $("ask-power").hidden = !state.asks_power || busy;
     // Zip's experiment: one thing to do, then "done" or "can't".
@@ -1757,6 +1875,7 @@
   function setTeacher(open) {
     const drawer = $("teacher");
     $("teacher-toggle").setAttribute("aria-expanded", String(open));
+    if (open && !activityTouched) setActivity(true);  // Teacher view: the panel opens too
     if (open) {
       drawer.hidden = false;
       void drawer.getBoundingClientRect();  // let it slide in
