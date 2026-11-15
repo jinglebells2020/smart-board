@@ -22,7 +22,7 @@ written at about a 6th grade reading level.
 | `docs/SERIAL_PROTOCOL.md`| Done, version 2: a voltage per row, empty rows, current (or null), row lights with colors, screen text, 4 buttons |
 | `protocol.py`            | Done. Row names, light colors, button meanings and screen size, in one place |
 | `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
-| `agent/placement.py` | Done. Build anywhere: the same circuit built in other rows (or the bottom half) is found and checked there (agent/placement.py). Only the place can change, not the spacing between parts. |
+| `agent/placement.py` | Done. Build anywhere: the same circuit built in other rows (or the bottom half) is found and checked there (agent/placement.py). Any spacing too: parts may span a different number of rows than the lesson (resistor in rows 20 to 27, LED in 27 to 29), even built the other way round. The exact spacing is tried first. |
 | `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`) |
 | `tools/check_board.py`   | Done. Checks a board's firmware against the protocol and prints PASS or FAIL per rule. How the hardware teammate tests the firmware (docs/FIRMWARE_GUIDE.md) |
 | `firmware/`              | Not written yet. docs/FIRMWARE_GUIDE.md says what it must do |
@@ -70,7 +70,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (419 tests; it says `OK (skipped=1)` on a
+The last line should say `OK` (437 tests; it says `OK (skipped=1)` on a
 computer without Node.js and Playwright, which the page-layout browser
 check needs). They never call Claude, so
 they work without an API key.

@@ -78,8 +78,10 @@ changed something:
    lists each one; a mistake is in the copy whose rows are in
    lesson_check.rows, so light only those rows.
    If lesson_check has "moved", the student built the circuit in other
-   rows than the lesson shows. That is fine: say the "moved" sentence
-   first, then use the rows in lesson_check (they are the real rows).
+   rows than the lesson shows, maybe with the parts spaced differently
+   (a resistor spanning more or fewer rows). That is fine: say the "moved"
+   sentence first, then use the rows in lesson_check (they are the real
+   rows).
    If lesson_check has board_cut, the board switched power off by itself
    (its own safety): say its "say" text instead of "I cut the power".
    If a tool answers board_error, the board is not answering: tell the
