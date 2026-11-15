@@ -103,7 +103,7 @@ python -m unittest -v
 Wait about 2 minutes. The last lines should be:
 
 ```
-Ran 630 tests in 80.0s
+Ran 637 tests in 80.0s
 
 OK (skipped=1)
 ```

@@ -108,6 +108,10 @@ Reason like an electronics teacher:
   kind "unknown" rather than invent one.
 - A part can go straight to a + or - line: the lines are always there.
 - A leg in a row the board does not measure: use "U1" (then "U2", ...).
+- Every row with a voltage must be explained by your parts. Do not put
+  parts in rows the board reads as empty: they would show there. The one
+  exception is a single leg alone in a row (a leg in the wrong row, or a
+  part whose other end goes into a row the board does not measure).
 Several circuits can read exactly the same, above all when NO current
 flows. Give up to 3 hypotheses, most likely first. When no current flows,
 think of the common student mistakes before extra invisible wires: an LED
@@ -302,19 +306,21 @@ def physics_check(parts, measured):
     guessed_rows = {r for p in parts for r in p["rows"] if is_row(r)}
     check_rows = sorted({r for r, v in rows_m.items() if v is not None} |
                         (guessed_rows & set(rows_m)), key=lambda r: (r[0], int(r[1:])))
-    ok_rows, mismatches, error = {}, [], 0.0
+    # Every usable row counts: a row the board reads with a voltage must be
+    # explained, and a row it reads empty must stay empty. (Rows nobody
+    # touches that read empty agree by themselves, so they are not scored.)
+    ok_rows, mismatches, error, unexplained = {}, [], 0.0, []
     for r in check_rows:
         m, p = rows_m.get(r), pred.get(r, "absent")
         if m is None:
             ok = p in ("absent", None)
             if not ok:
-                mismatches.append(f"{r}: you predict {p:.1f} V, but nothing drives it (it is empty)")
-        elif p == "absent":
+                mismatches.append(f"{r}: your guess drives it ({p:.1f} V), but the board reads it "
+                                  "empty")
+        elif p in ("absent", None):
             ok = False
-            mismatches.append(f"{r}: measured {m:.1f} V, but your guess has no part there")
-        elif p is None:
-            ok = False
-            mismatches.append(f"{r}: measured {m:.1f} V, but in your guess nothing drives it")
+            unexplained.append(r)
+            mismatches.append(f"{r}: has {m:.1f} V, your guess leaves it empty")
         else:
             ok = abs(p - m) <= ROW_TOLERANCE_V
             error += abs(p - m)
@@ -338,7 +344,19 @@ def physics_check(parts, measured):
     parts_ok = [p["kind"] != "unknown" and all(ok_rows.get(r, True) for r in p["rows"] if is_row(r))
                 for p in parts]
     leds_on = {index[i]: on for i, on in sol.get("leds_on", {}).items()}
+    # A row where two or more legs meet (a real joint between parts) that the
+    # board reads empty: those parts would show, unless something blocks
+    # them. A single leg alone in an empty row (a leg in the wrong row) is fine.
+    legs = {}
+    for p in parts:
+        for r in p["rows"]:
+            if is_row(r):
+                legs[r] = legs.get(r, 0) + 1
+    empty_joints = sorted(r for r, n in legs.items() if n >= 2 and r in rows_m
+                          and rows_m[r] is None)
     return {"score": round(matched / total, 3), "matched": matched, "total": total,
+            "explains_all": not unexplained, "unexplained": unexplained,
+            "empty_joints": empty_joints,
             "passed": matched == total and bool(parts) and not mismatches,
             "mismatches": mismatches, "parts_ok": parts_ok, "current_ok": current_ok,
             "error": round(error, 4),
@@ -419,8 +437,10 @@ def rank(hypotheses, measured, tray_parts=None):
     """Hypotheses that pass the physics check first, then by how likely they
     are (plain Python): every tray part used (2 per unused part), no parts
     the tray does not list (1 each), and when no current flows a usual
-    mistake beats a circuit with none (2), fewer wires (0.25 each) and
-    fewer unknown parts (0.5 each). The reader's own order breaks ties."""
+    mistake beats a circuit with none (2), fewer wires (0.25 each), fewer
+    unknown parts (0.5 each) and no joint between parts in a row the board
+    reads empty (2 each). Those that explain every driven row always come
+    first. The reader's own order breaks ties."""
     tray = _tray_counts(tray_parts)
     current, source = measured.get("current_ma"), measured.get("current_source")
     driven = [v for v in measured.get("rows", {}).values() if v is not None]
@@ -442,10 +462,14 @@ def rank(hypotheses, measured, tray_parts=None):
         extra = sum(max(0, n - tray.get(k, 0)) for k, n in have.items()
                     if k != "wire") if tray else 0
         wires = sum(p["kind"] == "wire" for p in parts)
+        empty_joints = len(h.get("empty_joints") or [])
         h["penalty"] = (2 * unused + extra + (2 if no_current and not h["problems"] else 0)
-                        + 0.25 * wires + 0.5 * unknowns)
+                        + 0.25 * wires + 0.5 * unknowns + 2 * empty_joints)
         h["order"] = order
-    return sorted(hypotheses, key=lambda h: (not h["passed"], h["penalty"] if h["passed"] else 0,
+    # Hypotheses that explain every driven row first, then those that pass
+    # the whole check, then the preferences above.
+    return sorted(hypotheses, key=lambda h: (not h.get("explains_all", True), not h["passed"],
+                                             h["penalty"] if h["passed"] else 0,
                                              -h["score"], h["order"]))
 
 
@@ -513,6 +537,8 @@ def read_and_check(run, payload, measured, usable, trace, tray_parts=None):
     return {"guess": best["guess"], "score": best["score"], "matched": best["matched"],
             "total": best["total"], "passed": best["passed"], "mismatches": best["mismatches"],
             "predicted": best["predicted"], "current_ok": best.get("current_ok"),
+            "explains_all": best.get("explains_all", True),
+            "unexplained": best.get("unexplained", []),
             "problems": best.get("problems", []),
             "hypotheses": matching[:MAX_HYPOTHESES] or [best], "matching": len(matching),
             "tries": tries, "error": error}

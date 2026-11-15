@@ -128,7 +128,9 @@ def feedback_items(reading, measured, usable, tray=None, plan=None):
 
     guess = (reading or {}).get("guess")
     score = (reading or {}).get("score", 0.0)
-    if not guess or not guess.get("parts") or score < LOW_SCORE:
+    # A guess that leaves a row with a voltage unexplained is not used.
+    explains = (reading or {}).get("explains_all", True)
+    if not guess or not guess.get("parts") or score < LOW_SCORE or not explains:
         tray_button = any(p.get("name") == "push button" for p in (tray or {}).get("parts", []))
         if not driven and tray_button:
             add("not_sure", "maybe", "Nothing I can measure has power yet. If the push button "

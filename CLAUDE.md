@@ -89,6 +89,8 @@ The software must work with any of those answers.
   current flows). agent/planner.py picks the experiment that tells them
   apart (tool plan_experiment); after it, the hypothesis that came true is
   kept (result["hypothesis_kept"]). U1..U9 = rows the board cannot see.
+  The physics check compares every usable row: every row with a voltage
+  must be explained, and no joint between parts in a row that reads empty.
 - agent/serial_board.py : SerialBoard, a real board on a USB serial
   port (pyserial), same methods as the fake board. Server and
   python -m agent take --serial <port|auto> and --baud.
