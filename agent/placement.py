@@ -115,6 +115,49 @@ def find_placement(readings, lesson, current=HOME):
     return current
 
 
+def find_all_placements(readings, lesson, max_copies):
+    """Every place where a copy of the lesson circuit is built, for a lesson
+    with "copies" (lesson 3: 1 to 3 LED circuits). Lessons without "copies"
+    use find_placement() instead.
+
+    Same scoring as find_placement: how many of the lesson's rows, moved,
+    have something connected. A copy needs all of them, or at least
+    MIN_DRIVEN for a copy with a mistake (a row left empty). Two copies
+    never share a row. Best score first, then the lowest row first (top
+    half before bottom half), at most max_copies.
+    Returns a list of placements; [] when nothing is built (or power is off)."""
+    rows = lesson.get("rows", [])
+    if not rows or not readings:
+        return []
+    driven = driven_rows(readings)
+    if not driven:
+        return []
+    measured = set.intersection(*(set(r["rows"]) for r in readings))
+    numbers = [int(ROW.match(n).group(2)) for n in rows if ROW.match(n)]
+    if not numbers:
+        return []
+    candidates = []
+    for half in ("T", "B"):
+        for offset in range(1 - min(numbers), LAST_ROW - max(numbers) + 1):
+            p = (half, offset)
+            if not fits(lesson, p, measured):
+                continue
+            score = sum(shift_name(n, p) in driven for n in rows)
+            if score == len(rows) or score >= MIN_DRIVEN:
+                candidates.append((score, p))
+    candidates.sort(key=lambda c: (-c[0], c[1][0] != "T", min(numbers) + c[1][1]))
+    chosen, used = [], set()
+    for _, p in candidates:
+        moved = {shift_name(n, p) for n in rows}
+        if moved & used:
+            continue  # two copies never share a row
+        chosen.append(p)
+        used |= moved
+        if len(chosen) >= max_copies:
+            break
+    return chosen
+
+
 def describe(placement, lesson):
     """Plain words for the student, e.g. "rows 20 to 27 (top half)"."""
     rows = [shift_name(n, placement) for n in lesson.get("rows", [])]

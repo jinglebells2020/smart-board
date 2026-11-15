@@ -35,6 +35,7 @@ class TestSkippedLessons(unittest.TestCase):
     def test_skipped_lesson_zero_is_offered_after_the_last_lesson(self):
         s = Session(FakeBoard(1), lesson=1, history_path=self.path)
         self.assertEqual(self.pass_lesson(s)["lesson"], 2)
+        self.assertEqual(self.pass_lesson(s)["lesson"], 3)
         out = self.pass_lesson(s)
         self.assertEqual(out["lesson"], 0)
         self.assertIn("You skipped lesson 0, How a breadboard connects", out["reason"])
@@ -45,6 +46,7 @@ class TestSkippedLessons(unittest.TestCase):
     def test_starting_at_lesson_two_offers_one_then_zero(self):
         s = Session(FakeBoard(2), lesson=2, history_path=self.path)
         self.assertEqual(self.pass_lesson(s)["lesson"], 1)  # a building lesson first
+        self.assertEqual(self.pass_lesson(s)["lesson"], 3)
         self.assertEqual(self.pass_lesson(s)["lesson"], 0)
         out = self.pass_lesson(s)
         self.assertIsNone(out["lesson"])
@@ -68,13 +70,14 @@ class TestSkippedLessons(unittest.TestCase):
         board = FakeBoard(1, "correct", seed=1)
         app = App(board, lesson=1, history_path=self.path, model=ScriptedTutorModel())
         app.ask("Check my circuit")                   # lesson 1
-        reply = app.ask("Check my circuit")["reply"]  # lesson 2
+        app.ask("Check my circuit")                   # lesson 2
+        reply = app.ask("Check my circuit")["reply"]  # lesson 3, the last one
         self.assertIn("You skipped lesson 0", reply)
         self.assertNotIn("every lesson", reply)
         self.assertEqual(app.state()["lesson"]["id"], 0)
         self.assertEqual(board.lesson, 0)  # the pretend board shows lesson 0
         path = {p["id"]: p["passed"] for p in app.state()["path"]}
-        self.assertEqual(path, {0: False, 1: True, 2: True})
+        self.assertEqual(path, {0: False, 1: True, 2: True, 3: True})
         app.quiz("intro", LESSONS[0]["intro_lesson"]["answer"])
         reply = app.ask("Check my circuit")["reply"]
         self.assertIn("You passed every lesson", reply)
@@ -88,6 +91,7 @@ class TestSkippedLessons(unittest.TestCase):
         ask(agent, [], "Check my circuit")
         self.assertEqual(s.lesson_id, 1)
         self.assertEqual(self.pass_lesson(s)["lesson"], 2)
+        self.assertEqual(self.pass_lesson(s)["lesson"], 3)
         self.assertIn("every lesson", self.pass_lesson(s)["reason"])
 
 

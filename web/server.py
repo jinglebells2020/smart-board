@@ -9,7 +9,8 @@ server sits in between. It uses only Python's built-in http.server.
     GET  /api/state   lesson, latest reading, mistake history (polled ~4x a second)
     POST /api/ask     {"text": "..."}      -> the tutor's reply
     POST /api/build   {"scenario": "...", "place": "T 15"} -> fake board only: change the circuit
-                      (place, optional: build it in other rows, top T or bottom B)
+                      (place, optional: build it in other rows, top T or bottom B;
+                      or "copies": ["T 0", "T 15"]: the circuit at each place, lesson 3)
     POST /api/quiz    {"occurrence": n, "choice": 0..2} -> answer the mini-lesson question
     POST /api/press   {"id": 1..4}         -> fake board only: press a board button
     POST /api/reset   start again with a new student (a fresh notebook)
@@ -40,7 +41,7 @@ from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E40
 from agent.session import Session  # noqa: E402
 from protocol import (BUTTON_LABELS, COLORS, DEFAULT_BAUD, SCREEN_CHARS,  # noqa: E402
                       SCREEN_LINES, power_cut_words, row_label)
-from sim.fake_board import SCENARIOS, FakeBoard  # noqa: E402
+from sim.fake_board import SCENARIOS, SIM_EXTRA, FakeBoard  # noqa: E402
 
 PAGE = Path(__file__).resolve().parent / "index.html"
 
@@ -401,8 +402,7 @@ class App:
         for i, m in enumerate(s.history["mistakes"]):
             key = (m["lesson"], m["mistake"])
             counts[key] = counts.get(key, 0) + 1
-            spec = next((x for x in s.lessons[m["lesson"]]["mistakes"]
-                         if x["id"] == m["mistake"]), {})
+            spec = s._mistake_spec(m["lesson"], m["mistake"]) or {}
             history.append({
                 "lesson": m["lesson"], "mistake": m["mistake"],
                 "description": spec.get("description", m["mistake"]),
@@ -415,7 +415,10 @@ class App:
         return {
             "lesson": {k: lesson.get(k) for k in
                        ("id", "title", "circuit", "rows", "expected", "accept", "layout",
-                        "kind", "explore")},
+                        "kind", "explore", "copies")},
+            # Lessons with copies: how many LED circuits the latest check found.
+            "copies_found": ((s.last_check or ({}, {}))[1] or {}).get("count")
+                            if s.lesson.get("copies") else None,
             "path": self.progress(),
             "mood": self.mood(reading, reading_ok),
             "lesson_count": len(s.lessons),
@@ -431,7 +434,8 @@ class App:
             "model": self.model_name,
             "offline_note": OFFLINE_NOTE,
             "sim": self.is_sim,
-            "scenarios": SCENARIOS.get(s.lesson_id, []) if self.is_sim else [],
+            "scenarios": (SCENARIOS.get(s.lesson_id, []) + SIM_EXTRA.get(s.lesson_id, [])
+                          if self.is_sim else []),
             "scenario": self.raw_board.scenario if self.is_sim else None,
             "place": list(getattr(self.raw_board, "place", ("T", 0))) if self.is_sim else None,
             "busy": self.agent_lock.locked(),
@@ -515,13 +519,22 @@ class App:
             self.board.send(f"SCENARIO {self.session.lesson_id} correct")
         return {"reply": reply, "tools": tools, "offline": offline}
 
-    def build(self, scenario, place=None):
+    def build(self, scenario, place=None, copies=None):
         """Fake board only: change the circuit. place, like "T 15" or "B 0",
-        builds it somewhere else on the board (None: leave it where it is)."""
+        builds it somewhere else on the board (None: leave it where it is).
+        copies, like ["T 0", "T 15"], builds the circuit at each place (the
+        scenario is the last copy; the others are correct)."""
         if not self.is_sim:
             return {"error": "only the fake board can change circuits"}
         if place:
             answer = self.board.send(f"PLACE {place}")
+            if answer.get("type") == "error":
+                return answer
+        if copies:
+            if not isinstance(copies, list):
+                return {"type": "error", "msg": "copies must be a list like [\"T 0\", \"T 15\"]"}
+            answer = self.board.send("COPIES " + " ".join(str(c).replace(" ", "")
+                                                          for c in copies))
             if answer.get("type") == "error":
                 return answer
         return self.board.send(f"SCENARIO {self.session.lesson_id} {scenario}")
@@ -559,7 +572,8 @@ def make_handler(app):
                 self._send(200, app.ask(body.get("text")))
             elif self.path == "/api/build":
                 self._send(200, app.build(str(body.get("scenario", "")),
-                                          body.get("place") and str(body["place"])))
+                                          body.get("place") and str(body["place"]),
+                                          body.get("copies")))
             elif self.path == "/api/press":
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})

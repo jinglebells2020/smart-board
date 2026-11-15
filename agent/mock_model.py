@@ -111,6 +111,17 @@ class ScriptedTutorModel(BaseChatModel):
 
             def reply(text):
                 return plain_reply(f"{check['moved']} {text}")
+        if check.get("found") or check.get("extra_rows"):
+            # An extra part comes first; then how many LED circuits were found.
+            said_reply = reply
+            extra_first = (check["extra_say"] if check.get("extra_rows")
+                           and check.get("mistake_id") != "extra_part" else "")
+            found = check.get("found", "")
+
+            def reply(text):
+                if check.get("mistake_id") == "extra_part":  # the text is the extra part
+                    return said_reply(" ".join(t for t in (text, found) if t))
+                return said_reply(" ".join(t for t in (extra_first, found, text) if t))
 
         # Power is off: ask for it to come back on. Plain Python decides
         # whether the student asked; if not, restore_power refuses.
@@ -141,6 +152,10 @@ class ScriptedTutorModel(BaseChatModel):
             if "light_row" not in called:
                 # Red: problem here. A loose leg is yellow: careful, push it in.
                 return call("light_row", rows=check["rows"], color=check.get("light", "red"))
+            if (check.get("extra_rows") and check["mistake_id"] != "extra_part"
+                    and called.count("light_row") < 2):
+                # A part outside the plan, besides the mistake: yellow, careful.
+                return call("light_row", rows=check["extra_rows"], color="yellow")
             logged = result_of("log_mistake")
             manual = "do_instead" in result_of("cut_power")
             if "show_on_board" not in called:

@@ -36,6 +36,14 @@ CIRCUITS = {
         "top_missing":      ({"T5": 5, "T10": 0.0, "T15": 0}, 0.0, 5.0),
         "bottom_4k7":       ({"T5": 5, "T10": 5 * 4.7 / 14.7, "T15": 0}, 5 / 14700 * 1000, 5.0),
     },
+    3: {  # one LED circuit (copy) with a 330 ohm resistor
+        "correct":          ({"T5": 5, "T10": 2.0, "T12": 0}, (5 - 2) / 330 * 1000, 5.0),
+        "led_backwards":    ({"T5": 5, "T10": 5.0, "T12": 0}, 0.0, 5.0),
+        "no_resistor":      ({"T5": 2.2, "T10": 2.2, "T12": 0}, 100.0, 2.2),
+        "open_circuit":     ({"T5": 5, "T10": FLOAT, "T12": 0}, 0.0, 5.0),
+        "resistor_too_big": ({"T5": 5, "T10": 2.0, "T12": 0}, (5 - 2) / 1000 * 1000, 5.0),
+        "led_bypassed":     ({"T5": 5, "T10": 0.0, "T12": 0}, 5 / 330 * 1000, 5.0),
+    },
 }
 UNLISTED = {"resistor_150", "bottom_4k7"}
 

@@ -117,6 +117,7 @@
   .stage-title h2 { margin: 0; font-size: 20px; font-weight: 700; }
   .stage-title .circuit { font-size: 16px; color: var(--ink-2); }
   .step-note { font-size: 16px; font-weight: 700; color: var(--blue); }
+  .copies-note { font-size: 16px; font-weight: 700; color: var(--ink); }
   .pills { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .pill {
     display: inline-flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 16px;
@@ -469,6 +470,7 @@
         <div class="stage-title">
           <h2>The plan: where each part goes</h2>
           <div class="circuit" id="lesson-circuit"></div>
+          <div class="copies-note" id="copies-note" hidden></div>
           <div class="step-note" id="step-note" hidden></div>
         </div>
         <div class="pills">
@@ -718,6 +720,7 @@
     bottom_4k7: "Not on the list: 4.7k bottom resistor",
     loose_led_leg: "Loose LED leg",
     loose_resistor_leg: "Loose resistor leg",
+    stray_part: "Extra part plugged in",
   };
   // Plain words for what the tutor did (the tool names are code).
   const TOOL_WORDS = {
@@ -1012,6 +1015,12 @@
     const r = state.reading;
     $("lesson-title").textContent = `Lesson ${L.id}: ${L.title}`;
     $("lesson-circuit").textContent = L.circuit;
+    // A lesson with copies (lesson 3): how many LED circuits the board found.
+    $("copies-note").hidden = !L.copies;
+    if (L.copies) {
+      const n = state.copies_found;
+      $("copies-note").textContent = "LED circuits found: " + (n === null || n === undefined ? "none yet" : n);
+    }
 
     // A real board that is not answering: nothing is known, so say so.
     const noBoard = state.reading_ok === false;
@@ -1024,7 +1033,7 @@
     // unknown (null): then the page says so instead of showing a number.
     const shown = state.shown;
     const current = shown.current_ma === null ? null : Math.max(0, shown.current_ma);
-    renderCurrent(current, noBoard, L, r.power_on);
+    renderCurrent(current, noBoard, L, r.power_on, state.copies_found);
     $("current-source").textContent = noBoard ? "" : {
       calculated: "worked out from the rows",
       unknown: "no current sensor",
@@ -1046,7 +1055,7 @@
 
   // The current pill: green dot "just right" or coral dot "not yet", only
   // for values the lesson checks. The words stay dark, easy to read.
-  function renderCurrent(current, noBoard, L, powerOn) {
+  function renderCurrent(current, noBoard, L, powerOn, copies) {
     const pill = $("tile-current");
     const target = $("t-current");
     pill.classList.remove("good", "bad");
@@ -1060,6 +1069,9 @@
     let range = (L.accept || {}).current_ma;
     if (!range) return;
     range = [range.min ?? -Infinity, range.max ?? Infinity];
+    // More LED circuits (lesson 3): the board measures them all together.
+    const n = L.copies && copies ? copies : 1;
+    range = range.map((v) => v * n);
     const ok = powerOn && current >= range[0] && current <= range[1];
     pill.classList.add(ok ? "good" : "bad");
     const mark = document.createElement("span");

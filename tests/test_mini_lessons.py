@@ -320,8 +320,8 @@ class TestWebMiniLesson(unittest.TestCase):
                     continue
                 with self.subTest(lesson=lesson, mistake=scenario):
                     self.post("/api/reset", {})
-                    if lesson == 2:
-                        self.post("/api/ask", {"text": "check"})  # pass lesson 1
+                    for _ in range(1, lesson):  # pass the lessons before it
+                        self.post("/api/ask", {"text": "check"})
                     self.assertEqual(self.state()["lesson"]["id"], lesson)
                     out = self.make_mistake(scenario)
                     card = self.state()["mini_lesson"]

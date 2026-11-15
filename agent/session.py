@@ -13,9 +13,10 @@ import time
 from pathlib import Path
 
 from agent.boardlink import BoardLink
-from agent.lessons import SAFETY_MAX_MA, check, load_lessons, summarize
+from agent.lessons import SAFETY_MAX_MA, calculate_current, check, load_lessons, summarize
 from agent.notebook import entry_start, mistake_label
-from agent.placement import HOME, describe, find_placement, shift_lesson
+from agent.placement import (HOME, ROW, describe, driven_rows, find_all_placements,
+                             find_placement, shift_lesson)
 from protocol import is_row, power_cut_words, row_label
 
 WINDOW = 10  # readings per measurement (about 1 second on the fake board)
@@ -167,15 +168,30 @@ class Session:
             if board.before_cut:
                 on = list(board.before_cut)
         moved = None
-        if not self.is_explore():
+        data = on or readings
+        lesson_file = self.lessons[self.lesson_id]
+        copies = []
+        if lesson_file.get("copies") and not self.is_explore():
+            # A lesson with copies (lesson 3: 1 to 3 LED circuits): find every
+            # copy, anywhere on the board, and check each one.
+            copies = find_all_placements(data, lesson_file, lesson_file["copies"].get("max", 1))
+            if copies and tuple(copies[0]) != tuple(self.placement):
+                self.placement = copies[0]  # the drawing shows the first copy
+                board.clear_lights()
+        elif not self.is_explore():
             # Built the same circuit somewhere else? Then check it there.
-            new = find_placement(on or readings, self.lessons[self.lesson_id], self.placement)
+            new = find_placement(data, lesson_file, self.placement)
             if tuple(new) != tuple(self.placement):
                 self.placement = new
                 board.clear_lights()  # old lights point at the old rows
-                moved = describe(new, self.lessons[self.lesson_id])
-        summary = summarize(on or readings, self.lesson)
-        result = check(summary, self.lesson)
+                moved = describe(new, lesson_file)
+        if copies:
+            summary, result = self._check_copies(data, lesson_file, copies)
+        else:
+            summary = summarize(data, self.lesson)
+            result = check(summary, self.lesson)
+        if not self.is_explore() and result["status"] != "power_off":
+            result = self._extra_parts(data, result, copies)
         if moved:
             result["moved"] = (f"You built it in {moved}, not where the lesson shows. "
                                "That is fine: I am checking it there.")
@@ -209,6 +225,141 @@ class Session:
         if entry is not None:
             self.pending_entry = entry
         return summary, result, safety_cut
+
+    def _check_copies(self, readings, lesson, places):
+        """Check every copy of a lesson with "copies" (lesson 3).
+
+        Each copy is checked with its own row voltages. With one copy the
+        current is the board's current, exactly like a lesson without
+        copies. With more, each copy's current is worked out from its own
+        resistor (Ohm's law); then the board's total current must be
+        N x the accepted range for one copy. If it is not, but every copy
+        looks right by its voltages, each copy is checked again with the
+        total current / N (they all look the same, so they share it).
+        Returns (summary of all copies, result)."""
+        n = len(places)
+        shifted = [shift_lesson(lesson, p) for p in places]
+        merged = summarize(readings, {"rows": [r for l in shifted for r in l["rows"]]})
+        measured = merged["current_source"] == "measured"
+        total = merged["current_ma"] if measured else None
+
+        def check_all(share=None):
+            out = []
+            for l in shifted:
+                s = summarize(readings, l)
+                if share is not None:
+                    s.update(current_ma=share, current_source="measured",
+                             current_note="the board's current, shared by the copies")
+                elif n > 1:
+                    value, note = calculate_current(s["rows"], s["floating"],
+                                                    l.get("current_from", []))
+                    s.update(current_ma=value, current_note=note,
+                             current_source="calculated" if value is not None else "unknown")
+                out.append((s, check(s, l)))
+            return out
+
+        checked = check_all()
+        per_copy = lesson.get("accept", {}).get("current_ma")
+        fits_total = (total is None or per_copy is None
+                      or n * per_copy.get("min", 0) <= total <= n * per_copy.get("max", 1e9))
+        shared = n > 1 and not fits_total and all(r["status"] == "ok" for _, r in checked)
+        if shared:
+            checked = check_all(share=round(total / n, 3))
+        if not measured:  # no current sensor: add up what each copy's resistor says
+            parts = [s["current_ma"] for s, _ in checked]
+            if parts and all(c is not None for c in parts):
+                merged.update(current_ma=round(sum(parts), 3), current_source="calculated",
+                              current_note="calculated for each LED circuit and added up")
+
+        # The result: the most urgent copy (a power cut first), else all ok.
+        rank = {"power_off": 0, "missing_rows": 1, "mistake": 2, "unknown": 3, "ok": 4}
+        order = sorted(range(n), key=lambda i: (
+            rank.get(checked[i][1]["status"], 3),
+            checked[i][1].get("action") != "cut_power", i))
+        worst = checked[order[0]][1]
+        if worst["status"] == "ok":
+            # With a current sensor the total current was checked above (a
+            # too-big resistor shows there), so nothing was left unchecked.
+            not_checked = [] if measured else sorted(
+                {m for _, r in checked for m in r.get("not_checked", [])})
+            result = {"status": "ok", **({"not_checked": not_checked} if not_checked else {})}
+        else:
+            result = dict(worst)
+            if shared and worst["status"] == "mistake":
+                # Every copy looked the same, so the board cannot tell which one
+                # it is: light the rows of every copy with this mistake.
+                result["rows"] = [row for _, r in checked
+                                  if r.get("mistake_id") == worst["mistake_id"]
+                                  for row in r.get("rows", [])]
+        result["count"] = n
+        result["copies"] = [{"rows": describe(p, lesson), "status": r["status"],
+                             "mistake_id": r.get("mistake_id")}
+                            for p, (_, r) in zip(places, checked)]
+        where = " and ".join(c["rows"] for c in result["copies"])
+        result["found"] = (f"I found {n} LED circuit{'s' if n != 1 else ''}: {where}."
+                           if n else "")
+        return merged, result
+
+    def _extra_parts(self, readings, result, copies):
+        """Something plugged into a row that is not in the plan (any lesson
+        but lesson 0): those rows light yellow, no power cut. When the check
+        already found a mistake, that mistake stays (a power cut must not be
+        hidden) and the extra rows are added for the tutor to mention first."""
+        plan = set()
+        for l in ([shift_lesson(self.lessons[self.lesson_id], p) for p in copies]
+                  or [self.lesson]):
+            plan |= set(l.get("rows", []))
+            plan |= {leg["row"] for part in l.get("layout", []) for leg in part["legs"]}
+        extra = sorted((n for n in driven_rows(readings) if ROW.match(n) and n not in plan),
+                       key=lambda n: (n[0] != "T", int(n[1:])))
+        if not extra:
+            return result
+        if result["status"] in ("ok", "unknown"):
+            keep = {k: result[k] for k in ("count", "copies", "found") if k in result}
+            result = {"status": "mistake", "mistake_id": "extra_part", "action": "hint",
+                      "rows": extra, "light": "yellow", **keep}
+        result["extra_rows"] = extra
+        result["extra_say"] = self._extra_words(extra)
+        return result
+
+    @staticmethod
+    def _extra_words(rows):
+        words = [row_label(r) for r in rows]
+        if len(words) == 1:
+            where, verb = words[0], "is"
+        else:
+            where = "rows " + ", ".join(w.replace("row ", "") for w in words[:-1]) \
+                    + " and " + words[-1].replace("row ", "")
+            verb = "are"
+        return (f"Something is plugged into {where}, which {verb} not in the plan. "
+                "Take out any part that is not in the plan.")
+
+    def _extra_part_spec(self):
+        """The "extra_part" mistake (not in the lesson files: it can happen in
+        every lesson). The hint names the rows of the latest check."""
+        rows = ((self.last_check or ({}, {}))[1] or {}).get("extra_rows") or []
+        hint = (self._extra_words(rows) if rows else
+                "Something is plugged into a row that is not in the plan. Take out any "
+                "part that is not in the plan.")
+        return {"id": "extra_part", "description": "Something is plugged into a row that is "
+                                                   "not in the plan",
+                "rows": rows, "action": "hint", "light": "yellow", "hint": hint,
+                "explain": "Every part in the plan has its own rows. A part in any other row "
+                           "is not part of this circuit: it may be a part you forgot to take "
+                           "out, and it can give the current a path it should not take. Take "
+                           "out any part that is not in the plan, then check again.",
+                "mini_lesson": {
+                    "title": "Every part needs a job",
+                    "idea": "A circuit is like a team where every player has a job. A part "
+                            "that is not in the plan has no job in this circuit. It can even "
+                            "give the current a new path to take.",
+                    "question": "A part sits in a row that is not in the plan. What can it do?",
+                    "options": ["Make the LED change color",
+                                "Give the current a path it should not take",
+                                "Make the power last longer"],
+                    "answer": 1,
+                    "why": "Any part that touches the circuit can give the current a new "
+                           "path, even if you did not mean it to."}}
 
     # --- Notebook --------------------------------------------------------
     NEXT_TIME = {"mistake": "Next time: look at the rows that light red first.",
@@ -370,6 +521,8 @@ class Session:
             # Lesson 0's own mini-lesson (not about a mistake).
             return {"id": "intro", "description": lesson["title"],
                     "mini_lesson": lesson["intro_lesson"]}
+        if mistake_id == "extra_part" and not self.is_explore(lesson_id):
+            return self._extra_part_spec()
         return next((m for m in lesson["mistakes"] if m["id"] == mistake_id), None)
 
     # --- Lesson 0: explore, then answer the quiz ------------------------------
@@ -400,6 +553,8 @@ class Session:
         The mini-lesson explains the idea, never what to change on the board,
         so it is allowed on the first try alongside the hint."""
         mistake = next((m for m in self.lesson["mistakes"] if m["id"] == mistake_id), None)
+        if mistake is None and mistake_id == "extra_part" and not self.is_explore():
+            mistake = self._extra_part_spec()  # a part plugged in outside the plan
         if mistake is None:
             known = [m["id"] for m in self.lesson["mistakes"]]
             return {"error": f"unknown mistake {mistake_id!r} for lesson "

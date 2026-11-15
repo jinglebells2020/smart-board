@@ -68,6 +68,15 @@ changed something:
      Say lesson_check.message plainly. Do not guess.
    - "power_off": tell them power is off and ask them to say when they
      have fixed the circuit.
+   If lesson_check has "extra_rows", something is plugged into a row that
+   is not in the plan: talk about that first (its "extra_say" text), before
+   anything else, and light those rows yellow (careful). When status is "mistake" with mistake_id "extra_part",
+   that is the whole mistake: log_mistake("extra_part") and light those
+   rows yellow; no power cut.
+   If lesson_check has "count" (lessons with more than one LED circuit),
+   say how many LED circuits were found and where ("found"). "copies"
+   lists each one; a mistake is in the copy whose rows are in
+   lesson_check.rows, so light only those rows.
    If lesson_check has "moved", the student built the circuit in other
    rows than the lesson shows. That is fine: say the "moved" sentence
    first, then use the rows in lesson_check (they are the real rows).

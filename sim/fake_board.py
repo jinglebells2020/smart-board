@@ -63,6 +63,13 @@ def _circuit(lesson, scenario):
     row is empty, so it floats. PT+ is the supply and PT- is ground.
     """
     v = SUPPLY_V
+    if scenario == "stray_part" and lesson in STRAY:
+        # Sim only: the correct circuit plus one more part, from the middle
+        # row to the row 20 below it. That row is otherwise empty, so it
+        # just gets the same voltage, and no extra current flows.
+        supply, current, circuit = _circuit(lesson, "correct")
+        middle = STRAY[lesson]
+        return supply, current, dict(circuit, **{f"T{int(middle[1:]) + 20}": circuit[middle]})
     if lesson == 0:
         # "How a breadboard connects": nothing to build. An empty board.
         if scenario == "correct":
@@ -97,6 +104,25 @@ def _circuit(lesson, scenario):
         if scenario == "resistor_150":
             # NOT a listed mistake (see UNLISTED): (5 - 2) / 150 = 20 mA.
             return v, (v - LED_VF) / 150.0 * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}
+    if lesson == 3:
+        # "More LEDs": lesson 1 with a 330 ohm resistor, built 1 to 3 times
+        # (COPIES). One copy: (5 - 2) / 330 = 9.1 mA.
+        r = 330.0
+        if scenario == "correct":
+            return v, (v - LED_VF) / r * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}
+        if scenario == "led_backwards":
+            return v, 0.0, {"T5": v, "T10": v, "T12": 0.0}
+        if scenario == "no_resistor":
+            return (LED_VF_AT_LIMIT, CURRENT_LIMIT_MA,
+                    {"T5": LED_VF_AT_LIMIT, "T10": LED_VF_AT_LIMIT, "T12": 0.0})
+        if scenario == "open_circuit":
+            return v, 0.0, {"T5": v, "T10": FLOATING, "T12": 0.0}
+        if scenario == "resistor_too_big":
+            # 1k instead of 330: (5 - 2) / 1000 = 3.0 mA.
+            return v, (v - LED_VF) / 1000.0 * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}
+        if scenario == "led_bypassed":
+            # 5 / 330 = 15.2 mA.
+            return v, v / r * 1000, {"T5": v, "T10": 0.0, "T12": 0.0}
     if lesson == 2:
         # Red wire PT+ -> T5; top resistor T5-T10; bottom resistor
         # T10-T15; black wire T15 -> PT-.
@@ -132,6 +158,7 @@ UNLISTED = {
     0: [],
     1: ["resistor_150"],
     2: ["bottom_4k7"],
+    3: [],
 }
 SCENARIOS = {
     0: ["correct"],
@@ -139,7 +166,14 @@ SCENARIOS = {
         "resistor_too_big", "led_bypassed", "loose_led_leg"] + UNLISTED[1],
     2: ["correct", "bottom_1k", "middle_floating", "top_1k",
         "bottom_missing", "top_missing", "loose_resistor_leg"] + UNLISTED[2],
+    3: ["correct", "led_backwards", "no_resistor", "open_circuit",
+        "resistor_too_big", "led_bypassed", "loose_led_leg"] + UNLISTED[3],
 }
+# Sim only: the correct circuit plus a part from the middle row (named here)
+# to the row 20 below it, which is not in the plan ("extra_part").
+STRAY = {1: "T10", 2: "T10", 3: "T10"}
+# Practice circuits that are not a lesson's own mistake ids.
+SIM_EXTRA = {lesson: ["stray_part"] for lesson in STRAY}
 # Loose legs: the circuit is right, but one leg wobbles in its hole, so on
 # every other reading that row lets go: it floats and no current flows.
 LOOSE = {"loose_led_leg": "T10", "loose_resistor_leg": "T10"}
@@ -182,8 +216,11 @@ class FakeBoard:
 
     def set_scenario(self, lesson, scenario):
         """Change which circuit the pretend student has built."""
-        if lesson not in SCENARIOS or scenario not in SCENARIOS[lesson]:
+        if (lesson not in SCENARIOS
+                or scenario not in SCENARIOS[lesson] + SIM_EXTRA.get(lesson, [])):
             raise ValueError(f"unknown lesson/scenario: {lesson} {scenario}")
+        if lesson != getattr(self, "lesson", lesson):
+            self.copies = None  # a new lesson: one circuit again
         self.lesson = lesson
         self.scenario = scenario
 
@@ -194,9 +231,19 @@ class FakeBoard:
         if half not in ("T", "B"):
             raise ValueError(f"half must be T or B: {half}")
         self.place = (half, int(offset))
+        self.copies = None
 
-    def _moved(self, name):
-        half, offset = getattr(self, "place", ("T", 0))
+    def set_copies(self, places):
+        """Sim only: build the lesson circuit at each place, e.g.
+        [("T", 0), ("T", 15), ("B", 0)]. The scenario applies to the LAST
+        copy; the others are correct. The current is the sum."""
+        places = [(str(h).upper(), int(o)) for h, o in places]
+        if not places or any(h not in ("T", "B") for h, _ in places):
+            raise ValueError("give at least one place, each T or B with an offset")
+        self.copies = places
+
+    def _moved(self, name, place=None):
+        half, offset = place or getattr(self, "place", ("T", 0))
         if name in ("PT+", "PT-"):
             return f"P{half}{name[2]}"
         if name[0] in "TB" and name[1:].isdigit():
@@ -214,15 +261,26 @@ class FakeBoard:
         step = SAMPLE_MS + (self._rng.randint(-30, 30) if self._noise else 0)
         self._t_ms += step
         if self.scenario in LOOSE:
-            supply, current, circuit = _circuit(self.lesson, "correct")
             self._wobble = not getattr(self, "_wobble", False)
-            if self._wobble:  # the leg lets go: that row is empty, no current
-                circuit = dict(circuit, **{LOOSE[self.scenario]: FLOATING})
-                current = 0.0
-        else:
-            supply, current, circuit = _circuit(self.lesson, self.scenario)
-        nodes = dict(circuit, **{"PT+": supply, "PT-": 0.0})
-        nodes = {self._moved(k): v for k, v in nodes.items()}
+        places = getattr(self, "copies", None) or [getattr(self, "place", ("T", 0))]
+        nodes, supply, current = {}, SUPPLY_V, 0.0
+        for i, place in enumerate(places):
+            # The scenario is the last copy; any others are built correctly.
+            scenario = self.scenario if i == len(places) - 1 else "correct"
+            if scenario in LOOSE:
+                s, c, circuit = _circuit(self.lesson, "correct")
+                if self._wobble:  # the leg lets go: that row is empty, no current
+                    circuit = dict(circuit, **{LOOSE[scenario]: FLOATING})
+                    c = 0.0
+            else:
+                s, c, circuit = _circuit(self.lesson, scenario)
+            supply, current = min(supply, s), current + c
+            nodes.update({self._moved(k, place): v
+                          for k, v in dict(circuit, **{"PT+": s, "PT-": 0.0}).items()})
+        if len(places) > 1:
+            current = min(current, CURRENT_LIMIT_MA)  # the supply's limit
+            if supply < SUPPLY_V:  # one copy pulls the shared supply down
+                nodes = {k: (supply if v == SUPPLY_V else v) for k, v in nodes.items()}
 
         def jitter(value, size=NOISE_V):
             return value + (self._rng.gauss(0, size) if self._noise else 0.0)
@@ -317,6 +375,18 @@ class FakeBoard:
             except ValueError as e:
                 return error(str(e))
             return ack(f"PLACE {self.place[0]} {self.place[1]}")
+        if cmd == "COPIES" and len(parts) >= 2:  # simulator only: COPIES T0 T15 B0
+            try:
+                places = []
+                for token in parts[1:]:
+                    half, offset = token[0], token[1:]
+                    if not offset.lstrip("-").isdigit():
+                        raise ValueError(f"not a place: {token} (use T0, T15, B0, ...)")
+                    places.append((half, int(offset)))
+                self.set_copies(places)
+            except ValueError as e:
+                return error(str(e))
+            return ack("COPIES " + " ".join(f"{h}{o}" for h, o in self.copies))
         if cmd == "SCENARIO" and len(parts) == 3:  # simulator only
             try:
                 self.set_scenario(int(parts[1]), parts[2])
