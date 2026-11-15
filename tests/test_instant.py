@@ -216,6 +216,110 @@ class TestBuilding(InstantApp):
         json.dumps(self.app.state())
 
 
+class TestFixesFromTheRealTest(InstantApp):
+    """PR #19 real test: pass cascade, mid-build focus, empty board, count."""
+
+    def build_up(self, upto):
+        for n in range(1, upto + 1):
+            self.step(f"BUILD {n}")
+
+    def test_no_pass_cascade(self):
+        self.make()
+        self.build_up(4)
+        self.assertEqual(self.app.session.lesson_id, 2)  # lesson 1 passed (one automatic check)
+        self.assertEqual(self.board.built, 0)  # the new lesson starts on an empty board
+        self.settle(10)  # nobody touches the board
+        self.assertEqual(self.app.session.lesson_id, 2)
+        self.assertEqual(len(self.said()), 1)
+
+    def test_guard_never_passes_two_lessons_without_a_board_change(self):
+        self.make()
+        self.build_up(4)
+        self.assertEqual(self.app.session.lesson_id, 2)
+        self.board.send("BUILD ALL")  # lesson 2's correct circuit, but no steady change seen
+        self.app.trigger_auto()
+        self.assertEqual(self.app.session.lesson_id, 2)  # the guard: no second pass
+        self.assertEqual(len(self.said()), 1)
+        self.settle()  # (the board as it is now: the silent starting point)
+        self.step("BUILD 0")  # the student clears it and builds lesson 2:
+        self.build_up(4)      # real board changes, so it is checked as normal
+        self.assertEqual(self.app.session.lesson_id, 3)
+
+    def test_a_real_board_keeps_its_old_circuit_after_a_pass(self):
+        self.make(built=None)
+        self.app.ask("Check my circuit")  # passed by hand: on to lesson 2
+        self.assertEqual(self.app.session.lesson_id, 2)
+        self.board.send("BUILD ALL")  # like a real board: the old wires are still in
+        self.settle(10)
+        self.assertEqual(self.app.session.lesson_id, 2)  # the new starting point, silently
+        self.assertEqual(len(self.said()), 1)
+
+    def test_the_fake_board_starts_empty_only_with_instant_help(self):
+        self.make()
+        self.build_up(4)
+        self.assertEqual(self.board.built, 0)
+        self.make(instant=False, built=None)
+        self.app.ask("Check my circuit")
+        self.assertIsNone(self.board.built)  # without instant help: a correct build, as before
+        self.assertEqual(self.app.build("correct")["type"], "ack")
+        self.assertIsNone(self.board.built)  # a practice circuit is the whole circuit
+
+    def test_mid_build_the_automatic_check_has_the_trigger_and_no_red_on_empty_rows(self):
+        self.make("stray_part")
+        self.build_up(2)
+        result = self.app.session.last_check[1]
+        self.assertEqual(result["instant_trigger"]["fact"], "extra_rows")
+        self.assertEqual(result["instant_trigger"]["rows"], ["T30"])
+        self.assertEqual(result["building"], {"parts_in": 2, "parts": 4})
+        self.assertEqual(self.board.lights, {"T30": "yellow"})
+        self.assertIsNone(self.app.session.instant_context)  # only for that check
+
+    def test_the_light_tool_skips_empty_plan_rows_mid_build(self):
+        from agent.tools import make_tools
+        self.make("stray_part")
+        self.build_up(2)
+        s = self.app.session
+        s.measure()
+        s.instant_context = {"trigger": {"rows": ["T30"]}, "building": {"parts_in": 2, "parts": 4},
+                             "empty_rows": ["T12"]}
+        light_row = next(t for t in make_tools(s) if t.__name__ == "light_row")
+        self.board.send("LED CLEAR")
+        light_row(["T10", "T12", "T30"], "red")
+        self.assertEqual(self.board.lights, {"T10": "red", "T30": "red"})  # not row 12: empty
+        light_row(["T12"], "blue")  # "put a part here" is always fine
+        self.assertEqual(self.board.lights["T12"], "blue")
+        s.instant_context = None
+        light_row(["T12"], "red")  # a normal check lights what it asks for
+        self.assertEqual(self.board.lights["T12"], "red")
+
+    def test_an_empty_board_is_quiet_and_resets(self):
+        self.make("stray_part")
+        self.build_up(2)
+        self.assertIsNotNone(self.app.instant_mistake)
+        n = len(self.app.log)
+        self.step("BUILD 0")  # the board is cleared
+        self.assertEqual(len(self.app.log), n)  # no "That fixed it."
+        self.assertIsNone(self.app.instant_mistake)
+        self.assertEqual(self.board.lights, {})
+
+    def test_that_fixed_it_needs_a_plan_row_still_in(self):
+        self.make("stray_part")
+        self.build_up(2)
+        self.step("SCENARIO 1 correct")
+        self.assertEqual(self.said()[-1]["text"], "That fixed it.")
+
+    def test_bypassed_led_mid_build_is_not_a_finished_build(self):
+        self.make("led_bypassed")
+        self.build_up(3)  # the black wire is not in yet
+        self.assertEqual(self.app.building, {"parts_in": 3, "parts": 4})
+        self.assertNotIn("Your circuit is correct", " ".join(m["text"] for m in self.said()))
+
+    def test_prompt_rules(self):
+        for needed in ('"instant_trigger"', "Explain that trigger first", '"when you add the ..."',
+                       "never light those empty"):
+            self.assertIn(needed, SYSTEM_PROMPT)
+
+
 class SlowTutor(ScriptedTutorModel):
     """The offline tutor, slower (like a real model), to overlap checks."""
 
@@ -243,7 +347,9 @@ class TestOneAtATime(InstantApp):
         self.assertEqual(self.app.log, [])
 
     def test_a_change_during_an_automatic_check_runs_it_once_more(self):
-        self.make(model=SlowTutor(), built=None)
+        # (A circuit that does not pass: a passing one must not run again on
+        # the same board, see TestNoPassCascade.)
+        self.make("led_backwards", model=SlowTutor(), built=None)
         self.app.auto_inline = False
         runs = []
         real_turn = self.app._turn

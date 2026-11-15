@@ -127,7 +127,11 @@ def make_tools(session):
         if str(color).lower() not in COLORS:
             return json.dumps({"type": "error",
                                "msg": f"color must be one of {list(COLORS)}"})
-        return json.dumps(board.set_lights(rows, color))
+        allowed = session.lights_allowed(rows, color)
+        if not allowed:  # mid-build: an empty row is not a mistake (instant help)
+            return json.dumps({"type": "ack", "skipped": list(rows),
+                               "why": "still building: those rows are just empty"})
+        return json.dumps(board.set_lights(allowed, color))
 
     def clear_lights() -> str:
         """Turn every row light off."""

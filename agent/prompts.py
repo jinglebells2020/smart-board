@@ -85,6 +85,13 @@ changed something:
    - Still call log_mistake for a known mistake_id (status "mistake"), and
      follow the safety steps above exactly as before. The diagnosis never
      turns power on or off and never decides a pass.
+   If lesson_check has "instant_trigger", this is an automatic check: the
+   board changed and instant help saw the fact in instant_trigger.text.
+   Explain that trigger first. If lesson_check has "building" (the
+   student is still building: building.parts_in < building.parts, or no
+   current and a plan row is empty), a missing part is NOT a mistake:
+   only mention it as "when you add the ...", never light those empty
+   rows, and do not call a row with nothing plugged in a problem.
    If lesson_check has "extra_rows", something is plugged into a row that
    is not in the plan: talk about that first (its "extra_say" text), before
    anything else, and light those rows yellow (careful). When status is "mistake" with mistake_id "extra_part",

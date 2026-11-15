@@ -73,6 +73,10 @@ class App:
         self._auto_done = threading.Event()
         self._auto_done.set()
         self._auto_last = None
+        self._watching = None      # the lesson instant help is watching (a change resets it)
+        self._changes = 0          # steady board changes handled so far
+        self._passed_at = None     # _changes when an automatic check last passed a lesson
+        self._auto_context = None  # what the next automatic check is about (the trigger)
         self.raw_board = board
         # One shared handle (with a lock) for the page, the tutor and buttons.
         self.board = BoardLink(board)
@@ -146,6 +150,8 @@ class App:
         self._new_session(self.start_lesson)
         if self.is_sim:  # the pretend student starts with a correct build
             self.board.send(f"SCENARIO {self.session.lesson_id} correct")
+        self.watch_new_lesson()  # instant help: a fresh start, nothing to react to yet
+        self._passed_at = None
         self._welcome()
 
     def student_name(self):
@@ -496,6 +502,8 @@ class App:
         Returns the change event, if this reading completed one."""
         if not self.instant or self.session.is_explore():
             return None
+        if self.session.lesson_id != self._watching:
+            self.watch_new_lesson()
         if reading is None:
             try:
                 reading = self.board.read()
@@ -509,9 +517,21 @@ class App:
                 threading.Thread(target=self._instant, args=(event,), daemon=True).start()
         return event
 
+    def watch_new_lesson(self):
+        """A new lesson (a pass, or any set_lesson): forget the old board
+        state, take the board as it is as the new starting point (silently),
+        and wait for the student to change it. On a real board the old
+        circuit would otherwise be checked against the new lesson at once."""
+        self._watching = self.session.lesson_id
+        self.live.reset()
+        self.instant_mistake = None
+        self.building = None
+        self._auto_context = None
+
     def _instant(self, event):
         """One steady change: a quick check in plain Python (no AI, the
         lesson's state is put back after), then decide what to say."""
+        self._changes += 1
         if self.waiting_for_power_answer() or not self.agent_lock.acquire(blocking=False):
             with self._auto_guard:  # a check is running: it sees the board anyway,
                 if self._auto_running:  # and an automatic one runs once more after
@@ -538,6 +558,12 @@ class App:
 
     def _act(self, result, cut, found, event):
         self.building = {"parts_in": found["parts_in"], "parts": found["parts"]}
+        if not found["any_driven"] and not cut:
+            # An empty board (cleared): nothing to say, start again from here.
+            self.instant_mistake = None
+            self._auto_context = None
+            self.board.clear_lights()
+            return
         if cut:  # safety came first: say why, at once
             self.instant_mistake = found
             self._say("I switched the power off to keep your parts safe. " + found["text"],
@@ -552,16 +578,26 @@ class App:
             if found["rows"]:
                 self.board.set_lights(found["rows"], "yellow")  # careful: look here
             self._say(found["text"], "curious")
+            # The automatic check explains this trigger first, and while the
+            # build is not finished, empty rows are not mistakes.
+            building = found["parts_in"] < found["parts"] or bool(found["empty"])
+            self._auto_context = {
+                "trigger": {"fact": found["fact"], "rows": found["rows"], "text": found["text"]},
+                "building": self.building if building else None,
+                "empty_rows": list(found["empty"])}
             self.trigger_auto()  # then Zip explains it, hint first
             return
         if self.instant_mistake is not None:
+            # The trigger is gone, and something is still plugged in: fixed.
             self.instant_mistake = None
+            self._auto_context = None
             self.board.clear_lights()
             self._say("That fixed it.", "happy")
             if found["kind"] == "complete" and result.get("status") in ("ok", "step_ok"):
                 self.trigger_auto()  # complete and right: the normal praise and pass
             return
         if found["kind"] == "complete":
+            self._auto_context = None
             self.trigger_auto()  # every part is in: a normal check decides
 
     def _say(self, text, mood):
@@ -585,14 +621,23 @@ class App:
     def _auto_loop(self):
         try:
             while True:
-                if not self.waiting_for_power_answer() and self.agent_lock.acquire(blocking=False):
+                if self._passed_at is not None and self._passed_at == self._changes:
+                    pass  # an automatic check passed a lesson and the board has not
+                    # changed since: never pass the next lesson on the same board
+                elif not self.waiting_for_power_answer() and self.agent_lock.acquire(blocking=False):
+                    lesson = self.session.lesson_id
+                    self.session.instant_context = self._auto_context
                     try:
                         self._auto_last = self._turn(
                             self.CHECK_TEXT,
                             lambda: self.replies.ask(self.agent, self.chat, self.CHECK_TEXT),
                             auto=True)
                     finally:
+                        self.session.instant_context = None
                         self.agent_lock.release()
+                    if self.session.lesson_id != lesson:
+                        self._passed_at = self._changes  # passed: wait for a board change
+                        self.watch_new_lesson()
                 # (else the student pressed Check: that check sees the same board)
                 with self._auto_guard:
                     if not self._auto_again:
@@ -686,8 +731,11 @@ class App:
                          "celebrate": bool(result and result.get("status") == "ok"),
                          "offline": offline, "auto": auto})
         if self.is_sim and self.session.lesson_id != before:
-            # New lesson: the pretend student starts with a correct build.
+            # New lesson: the pretend student starts with a correct build, or,
+            # with instant help, with an empty board (the student clears it).
             self.board.send(f"SCENARIO {self.session.lesson_id} correct")
+            if self.instant:
+                self.board.send("BUILD 0")
         return {"reply": reply, "tools": tools, "offline": offline}
 
     def hold(self, on):
@@ -706,10 +754,11 @@ class App:
         order), builds it on those rows: any spacing."""
         if not self.is_sim:
             return {"error": "only the fake board can change circuits"}
-        if parts is not None:  # build part by part: only the first n parts are in
-            answer = self.board.send(f"BUILD {'ALL' if parts == 'all' else parts}")
-            if answer.get("type") == "error":
-                return answer
+        # Build part by part (only the first n parts are in), or, when a
+        # practice circuit is picked, the whole of it.
+        answer = self.board.send(f"BUILD {'ALL' if parts in (None, 'all') else parts}")
+        if answer.get("type") == "error":
+            return answer
         if rows:
             if not isinstance(rows, list):
                 return {"type": "error", "msg": "rows must be a list like [\"T20\", \"T27\", \"T29\"]"}
