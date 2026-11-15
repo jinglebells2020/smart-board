@@ -107,6 +107,13 @@ def describe_step(step, student="the student"):
         return f"Worked out {n} fact{'s' if n != 1 else ''} from the measurements"
     if who == "diagnoser" and tool == "diagnose":
         return "Asked the diagnoser"
+    if who == "diagnoser" and tool == "answer":
+        n = args.get("causes") or 0
+        causes = f"{n} possible cause{'s' if n != 1 else ''}"
+        return {"ok": "The diagnoser answered: the circuit looks right",
+                "mistake": f"The diagnoser answered: a mistake, {causes}",
+                "unsure": f"The diagnoser answered: not sure yet, {causes}"}.get(
+            args.get("status"), f"The diagnoser answered ({causes})")
     if who == "diagnoser" and tool == "validate":
         dropped = args.get("dropped", 0)
         return ("Checked every cause against the facts" +

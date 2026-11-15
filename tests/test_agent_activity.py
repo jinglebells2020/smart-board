@@ -57,10 +57,19 @@ class TestScriptedRun(unittest.TestCase):
         self.app.answer_experiment(True)
 
         self.assertIn("Measured the rows", actions(self.app, "Zip (tutor)", "measure"))
-        self.assertIn("Asked the diagnoser", actions(self.app, "Diagnoser", "think"))
+        # One diagnosis: the facts are plain Python, then 3 steps of the diagnoser.
         python = actions(self.app, "Python safety", "check")
         self.assertTrue(any(a.startswith("Worked out") for a in python), python)
-        self.assertTrue(any(a.startswith("Checked every cause") for a in python), python)
+        diagnoser = actions(self.app, "Diagnoser")
+        self.assertIn("Asked the diagnoser", actions(self.app, "Diagnoser", "think"))
+        self.assertIn("The diagnoser answered: not sure yet, 0 possible causes",
+                      actions(self.app, "Diagnoser", "think"))
+        self.assertTrue(any(a.startswith("Checked every cause")
+                            for a in actions(self.app, "Diagnoser", "check")), diagnoser)
+        asked = diagnoser.count("Asked the diagnoser")
+        self.assertEqual(asked, 2)  # the check, and measuring again after the experiment
+        self.assertEqual(len(diagnoser), 3 * asked)
+        self.assertFalse(any(a.startswith("Worked out") for a in diagnoser))
         self.assertIn("Asked you to turn around the LED in rows 10 and 12",
                       actions(self.app, "Zip (tutor)", "ask student"))
         self.assertTrue(any(a.startswith("Measured again: row 10 changed")
@@ -89,7 +98,8 @@ class TestScriptedRun(unittest.TestCase):
         self.assertGreaterEqual(count["power_cuts"], 2)  # Python's cut and Zip's
         self.assertEqual(set(count["by_agent"]), {"Zip (tutor)", "Diagnoser", "Python safety"})
         for item in state["activity"]:
-            self.assertEqual(set(item), {"time", "agent", "action", "kind"})
+            self.assertEqual(set(item), {"time", "agent", "action", "kind", "tag"})
+            self.assertIsNone(item["tag"])  # every step here was asked for
             self.assertIn(item["agent"], AGENTS)
             self.assertIn(item["kind"], KINDS)
         times = [i["time"] for i in state["activity"]]
@@ -116,7 +126,7 @@ class TestInstant(InstantApp):
         count = self.app.state()["activity_count"]
         self.assertEqual(count["replies"], 1)
         self.assertGreaterEqual(count["lights_set"], 1)
-        self.assertNotIn("Zip (tutor)", count["by_agent"])  # nobody asked: automatic
+        self.assertNotIn("Zip (tutor)", count["by_agent"])  # only the guide turn ran
 
     def test_mistake_said_at_once(self):
         self.make("stray_part")
@@ -126,8 +136,16 @@ class TestInstant(InstantApp):
         self.assertIn("Said at once: Something is connected in row 30, which is not in the plan.",
                       said)
         self.assertIn("Lit row 30 yellow", actions(self.app, "Instant help", "act on board"))
-        # Then the automatic check: Zip's steps are listed under instant help.
-        self.assertIn("Measured the rows", actions(self.app, "Instant help", "measure"))
+        # Then the automatic check: Zip's own steps, with a small "instant" tag.
+        measured = [i for i in items(self.app, "Zip (tutor)", "measure")
+                    if i["action"] == "Measured the rows"]
+        self.assertTrue(measured)
+        self.assertTrue(all(i["tag"] == "instant" for i in measured))
+        # Instant help is only the change detector's own lines.
+        for i in items(self.app, "Instant help"):
+            self.assertTrue(i["action"].startswith(("Saw the board change", "Said at once",
+                                                    "Lit row")), i["action"])
+            self.assertIsNone(i["tag"])
 
     def test_instant_safety_cut(self):
         self.make("no_resistor", built=None)
@@ -168,7 +186,10 @@ class TestActivity(unittest.TestCase):
     def test_every_helper_has_its_agent_and_kind(self):
         cases = [
             ({"who": "tutor", "tool": "read_rows"}, "reply", ("Zip (tutor)", "measure")),
-            ({"who": "tutor", "tool": "read_rows"}, "check", ("Instant help", "measure")),
+            ({"who": "tutor", "tool": "read_rows"}, "check", ("Zip (tutor)", "measure")),
+            ({"who": "diagnoser", "tool": "answer"}, "reply", ("Diagnoser", "think")),
+            ({"who": "diagnoser", "tool": "validate"}, "check", ("Diagnoser", "check")),
+            ({"who": "diagnoser", "tool": "compare"}, "reply", ("Python safety", "check")),
             ({"who": "tutor", "tool": "light_row"}, "guide", ("Build guide", "act on board")),
             ({"who": "tutor", "tool": "run_experiment"}, "reply", ("Zip (tutor)", "ask student")),
             ({"who": "tutor", "tool": "log_mistake"}, "reply", ("Zip (tutor)", "memory")),
@@ -182,7 +203,6 @@ class TestActivity(unittest.TestCase):
             ({"who": "lesson writer", "tool": "write_file"}, "reply", ("Lesson writer", "memory")),
             ({"who": "grader", "tool": "grade"}, "reply", ("Grader", "check")),
             ({"who": "diagnoser", "tool": "diagnose"}, "reply", ("Diagnoser", "think")),
-            ({"who": "diagnoser", "tool": "validate"}, "reply", ("Python safety", "check")),
             ({"who": "physics", "tool": "facts"}, "reply", ("Python safety", "check")),
             ({"who": "tutor", "tool": "skip_detective"}, "reply", ("Python safety", "check")),
         ]
@@ -205,9 +225,16 @@ class TestPage(unittest.TestCase):
         # One colour per agent, from the palette.
         for agent in AGENTS:
             self.assertIn(f'"{agent}"' if " " in agent or "(" in agent else agent, HTML)
-        colours = re.findall(r"\.ag-(\d) \{ background: var\(--([\w-]+)\); \}", HTML)
-        self.assertEqual(len(colours), len(AGENTS))
-        self.assertEqual(len({c for _, c in colours}), len(AGENTS))
+        rules = dict(re.findall(r"\.ag-(\d) \{ background: ([^;]+); \}", HTML))
+        self.assertEqual(sorted(rules), [str(n) for n in range(len(AGENTS))])
+        colours = {n: tuple(re.findall(r"var\(--([\w-]+)\)", v)) for n, v in rules.items()}
+        self.assertEqual(len(set(colours.values())), len(AGENTS))  # all different
+        for n, used in colours.items():  # real colours, never a grey
+            self.assertTrue(used, n)
+            self.assertEqual(set(used) - {"blue", "sky", "ink", "green", "yellow", "coral"},
+                             set(), n)
+        # Zip's steps in an automatic check carry a small "instant" tag.
+        self.assertIn('tag.className = "ag-tag"', HTML)
         # New items slide in, but not with reduced motion.
         self.assertIn("@keyframes slide-in", HTML)
         calm = HTML[HTML.index("@media (prefers-reduced-motion: reduce)"):]

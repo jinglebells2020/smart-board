@@ -392,6 +392,10 @@ class Session:
         except Exception as e:  # no answer: the check goes on as before
             result["diagnosis_error"] = f"{type(e).__name__}: {str(e)[:120]}"
             return result
+        raw_causes = (raw.get("causes") if isinstance(raw, dict) else None) or []
+        self.trace.append({"who": "diagnoser", "tool": "answer",
+                           "args": {"status": raw.get("status") if isinstance(raw, dict) else None,
+                                    "causes": len(raw_causes)}})
         accept_passed = result["status"] in ("ok", "step_ok")
         diagnosis, dropped = validate_diagnosis(raw, facts, valid_rows, accept_passed)
         self.trace.append({"who": "diagnoser", "tool": "validate",

@@ -402,14 +402,17 @@
              border-radius: 999px; background: var(--page); color: var(--ink);
              font-size: 16px; font-weight: 700; white-space: nowrap; }
   .ag-dot { width: 16px; height: 16px; border-radius: 50%; flex: none; display: inline-block; }
+  /* One real colour per agent (never grey); two agents get two halves. */
   .ag-0 { background: var(--blue); }    /* Zip (tutor) */
   .ag-1 { background: var(--sky); }     /* Diagnoser */
   .ag-2 { background: var(--ink); }     /* Detective */
   .ag-3 { background: var(--green); }   /* Lesson writer */
-  .ag-4 { background: var(--ink-2); }   /* Grader */
+  .ag-4 { background: linear-gradient(90deg, var(--green) 50%, var(--ink) 50%); }   /* Grader */
   .ag-5 { background: var(--yellow); }  /* Build guide */
-  .ag-6 { background: var(--line); }    /* Instant help */
+  .ag-6 { background: linear-gradient(90deg, var(--yellow) 50%, var(--blue) 50%); } /* Instant help */
   .ag-7 { background: var(--coral); }   /* Python safety */
+  .ag-tag { padding: 0 8px; border-radius: 999px; background: var(--yellow); color: var(--ink);
+            font-size: 16px; font-weight: 700; }
   .activity-list { list-style: none; margin: 0; padding: 0; font-size: 16px; }
   .activity-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
                       padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -994,7 +997,7 @@
     const chip = document.createElement("span");
     chip.className = "ag-chip";
     const dot = document.createElement("span");
-    dot.className = "ag-dot ag-" + (AGENT_CLASS[name] ?? 6);
+    dot.className = "ag-dot ag-" + (AGENT_CLASS[name] ?? 0);
     dot.setAttribute("aria-hidden", "true");
     chip.append(dot, count === undefined ? name : name + " " + count);
     return chip;
@@ -1033,7 +1036,14 @@
       when.className = "when";
       when.textContent = new Date(item.time * 1000).toLocaleTimeString([],
         { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      li.append(agentChip(item.agent), act, icon, when);
+      li.append(agentChip(item.agent));
+      if (item.tag) {  // e.g. "instant": Zip's steps in an automatic check
+        const tag = document.createElement("span");
+        tag.className = "ag-tag";
+        tag.textContent = item.tag;
+        li.append(tag);
+      }
+      li.append(act, icon, when);
       list.append(li);
     });
     activitySeen = keys;
