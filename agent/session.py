@@ -18,7 +18,9 @@ from agent.diagnoser import compare_with_rules, lights_from, validate_diagnosis
 from agent.lessons import (FREE_ID, FREE_LESSON, SAFETY_MAX_MA, calculate_current, check,
                            free_check, load_lessons, summarize)
 from agent.notebook import entry_start, mistake_label
+from agent.feedback import feedback_items, main_problem
 from agent.physics import circuit_facts, extra_rows_fact, free_facts, number, power_fact
+from agent.reader import measured_of, read_and_check, reader_payload
 from agent.placement import (HOME, ROW, describe, driven_rows, find_all_placements,
                              find_placement, is_row_map, shift_lesson, shift_name)
 from protocol import is_row, power_cut_words, row_label
@@ -55,8 +57,11 @@ class Session:
         if free_build:  # Free build comes after the lessons in the path
             self.lessons[FREE_ID] = FREE_LESSON
         # The parts tray: what the student says they used, and what the
-        # circuit should do (free build). The AI reads it in phase 2.
+        # circuit should do (free build). The circuit reader reads it.
         self.tray = None
+        # Free build: the circuit reader (agent/reader.py), a function
+        # payload -> CircuitGuess, set per agent like the diagnoser. None: off.
+        self.reader = None
         self.history_path = Path(history_path) if history_path else None
         self.history = {"mistakes": [], "passes": {}, "quiz": []}
         if self.history_path and self.history_path.exists():
@@ -336,9 +341,12 @@ class Session:
                 self._safety(f"No power switch: asked for the power to be switched off by "
                              f"hand ({what})")
         if self.is_free():
-            # The facts that need no plan (plain Python). The AI reader that
-            # works out what was built comes in phase 2.
+            # The facts that need no plan (plain Python), then the circuit
+            # reader and the physics check, then the feedback list. After the
+            # safety cut above, so reading never delays it.
             result["facts"] = free_facts(summary, safety_cut)
+            if result["status"] == "free":
+                self._read_circuit(summary, result)
         elif self.diagnoser is not None and not self.is_explore():
             # Claude is available: physics facts + the diagnoser. Only after
             # the safety cut above, so a slow answer never delays it.
@@ -741,6 +749,34 @@ class Session:
         return next((m for m in lesson["mistakes"] if m["id"] == mistake_id), None)
 
     # --- Lesson 0: explore, then answer the quiz ------------------------------
+    def _read_circuit(self, summary, result):
+        """Free build: physics facts -> circuit reader -> physics check (plain
+        Python) -> feedback. Adds circuit_guess, guess_score, mismatches,
+        feedback and main_problem to result. Never raises."""
+        measured = measured_of(summary)
+        usable = self.board.usable_rows
+        reading = None
+        if self.reader is not None and summary.get("power_on"):
+            payload = reader_payload(measured, usable, self.tray, result.get("facts"))
+            reading = read_and_check(self.reader, payload, measured, usable, self.trace)
+        try:
+            items = feedback_items(reading, measured, usable, self.tray)
+        except Exception as e:  # feedback must never stop a check
+            items = [{"kind": "not_sure", "level": "maybe", "rows": [], "light": None,
+                      "text": f"I am not sure what you built ({type(e).__name__})."}]
+        if reading is not None:
+            guess = reading.get("guess")
+            result["circuit_guess"] = ({"parts": guess["parts"], "notes": guess["notes"]}
+                                       if guess else None)
+            result["guess_score"] = reading["score"]
+            result["guess_matched"] = f"{reading['matched']} of {reading['total']}"
+            result["mismatches"] = reading["mismatches"]
+            result["reader_tries"] = reading["tries"]
+            if reading.get("error"):
+                result["reader_error"] = reading["error"]
+        result["feedback"] = items
+        result["main_problem"] = main_problem(items)
+
     def is_free(self, lesson_id=None):
         lesson = self.lessons.get(self.lesson_id if lesson_id is None else lesson_id, {})
         return lesson.get("kind") == "free"

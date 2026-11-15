@@ -40,6 +40,8 @@ CHANGED_MA = 1.0      # a current that moved more than this "changed"
 def _part_words(lesson):
     """{word: part name}: every layout part's full name and its kind word
     (led, resistor, wire, button)."""
+    if lesson.get("kind") == "free":  # free build: no plan, any part of these kinds
+        return {"led": "LED", "resistor": "resistor", "wire": "wire", "button": "push button"}
     words = {}
     for part in lesson.get("layout", []):
         name = part["part"]

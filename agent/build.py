@@ -19,6 +19,7 @@ from agent.lesson_writer import ScriptedGraderModel, ScriptedLessonWriterModel, 
 from agent.mock_model import ScriptedTutorModel
 from agent.notebook import notebook_tools_backend
 from agent.prompts import SYSTEM_PROMPT
+from agent.reader import HeuristicReaderModel, make_reader
 from agent.tools import make_tools
 from agent.trace import DetectiveGuard, TraceMiddleware
 
@@ -43,7 +44,7 @@ POWER_QUESTION = ("Turn the power back on? I will measure your circuit right awa
 
 
 def build_agent(session, model=None, detective_model=None, ask_before_power=False,
-                writer_model=None, grader_model=None, diagnoser_model=None):
+                writer_model=None, grader_model=None, diagnoser_model=None, reader_model=None):
     """The deep agent for one session.
 
     ask_before_power: pause before restore_power and ask the student (deepagents
@@ -103,6 +104,12 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
     # offline tutor works exactly as before. Tests can pass diagnoser_model.
     if diagnoser_model is None and real_claude:
         diagnoser_model = model
+    # Free build's circuit reader (agent/reader.py): Claude when available,
+    # the plain-Python reader offline. Only used in free build.
+    if reader_model is None:
+        reader_model = model if real_claude else (HeuristicReaderModel() if offline else None)
+    agent.smart_board_reader = (make_reader(session, reader_model)
+                                if reader_model is not None else None)
     agent.smart_board_diagnoser = (make_diagnoser(session, diagnoser_model)
                                    if diagnoser_model is not None else None)
     return agent
@@ -121,6 +128,7 @@ def ask(agent, history, text, timeout=None):
     session = getattr(agent, "smart_board_session", None)
     if session is not None:
         session.diagnoser = getattr(agent, "smart_board_diagnoser", None)  # this agent's own
+        session.reader = getattr(agent, "smart_board_reader", None)
         session.hear(text)
         session.trace = []  # a new reply: a new "How Zip worked"
         session.experiments_done = 0  # at most 2 experiments per reply
@@ -144,6 +152,7 @@ def answer_power(agent, history, yes, timeout=None):
         raise ValueError("nothing is waiting for an answer about the power")
     session = agent.smart_board_session
     session.diagnoser = getattr(agent, "smart_board_diagnoser", None)
+    session.reader = getattr(agent, "smart_board_reader", None)
     session.trace.append({"who": "you", "tool": "approval", "args": {"yes": bool(yes)}})
     session.restore_allowed = bool(yes)  # pressing Yes is asking for power
     decision = ({"type": "approve"} if yes else
@@ -163,6 +172,7 @@ def answer_experiment(agent, history, done, timeout=None):
         raise ValueError("no experiment is waiting for an answer")
     session = agent.smart_board_session
     session.diagnoser = getattr(agent, "smart_board_diagnoser", None)
+    session.reader = getattr(agent, "smart_board_reader", None)
     result = run_with_timeout(
         lambda: agent.invoke(Command(resume={"done": bool(done)}), pending["config"]), timeout)
     return _finish(agent, history, pending["before"], result, pending["config"])

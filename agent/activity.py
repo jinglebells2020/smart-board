@@ -23,7 +23,8 @@ from collections import Counter, deque
 from agent.trace import describe_step
 
 AGENTS = ["Zip (tutor)", "Diagnoser", "Detective", "Lesson writer", "Grader",
-          "Build guide", "Instant help", "Python safety"]
+          "Build guide", "Instant help", "Python safety", "Circuit reader",
+          "Physics check (Python)"]
 KINDS = ["think", "measure", "act on board", "ask student", "check", "memory"]
 KEEP = 50  # items shown on the page (the counts cover the whole session)
 
@@ -58,6 +59,10 @@ def classify(step, mode="reply"):
     who, tool = step.get("who"), step.get("tool")
     if (who, tool) in PYTHON:
         return "Python safety", PYTHON[(who, tool)]
+    if who == "reader":  # free build: works out what was built
+        return "Circuit reader", "check" if tool == "error" else "think"
+    if who == "physics_check":  # plain Python: the solver checks the reader's guess
+        return "Physics check (Python)", "check"
     if who == "safety":
         return "Python safety", "act on board" if tool == "cut" else "check"
     if tool == "experiment_result":

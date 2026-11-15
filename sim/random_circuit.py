@@ -132,8 +132,22 @@ def random_circuit(seed=None, parts=3, usable_rows=None, mistake="random"):
     elif mistake == "led_backwards":
         mistake = None
     if mistake is None:
+        _lights_work(netlist)
         _make_safe(netlist)
     return {"seed": seed, "parts": solver.clean(netlist), "mistake": mistake}
+
+
+def _lights_work(netlist):
+    """A circuit with no mistake lights every LED: two LEDs in a row whose
+    voltages add up to the whole supply (blue + yellow) would both stay
+    dark, so recolour them red until every LED is on."""
+    for _ in range(5):
+        on = solver.solve(netlist)["leds_on"]
+        dark = [i for i, lit in on.items() if not lit]
+        if not dark:
+            return
+        for i in dark:
+            netlist[i]["color"] = "red"
 
 
 def _make_safe(netlist):
