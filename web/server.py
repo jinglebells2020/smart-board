@@ -21,12 +21,20 @@ server sits in between. It uses only Python's built-in http.server.
     POST /api/hold    {"on": true|false}   -> fake board only: hold the breadboard's push button (lesson 4)
     POST /api/instant {"on": true|false}   -> instant help: react when the board changes, without Check
     POST /api/experiment {"done": true|false} -> answer Zip's experiment card ("done" or "can't")
+    POST /api/netlist {"parts": [...]}   -> fake board only (free build): build exactly these
+                      parts, e.g. {"kind": "resistor", "rows": ["T5", "T10"], "ohms": 220}
+    POST /api/random-circuit {"seed": n, "parts": 2..5} -> fake board only: a random judge
+                      circuit on usable rows. The answer has the true netlist (for testing;
+                      it is never sent to the tutor)
+    POST /api/tray    {"parts": [{"name": "red LED", "count": 1}, ...], "goal": "..."}
+                      -> the parts tray: what the student used, what it should do
     GET  /api/notebook the student's notebook, as plain text
 """
 
 import argparse
 import copy
 import json
+import os
 import sys
 import threading
 import time
@@ -42,15 +50,19 @@ from agent.fallback import OFFLINE_NOTE, STATE, SafeReplies  # noqa: E402
 from agent.live import ChangeDetector, classify  # noqa: E402
 from agent.physics import observations  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
-from agent.lessons import summarize  # noqa: E402
+from agent.lessons import FREE_ID, summarize  # noqa: E402
+from agent.tray import TRAY_PARTS, clean_tray  # noqa: E402
 from agent.notebook import Notebook  # noqa: E402
 from agent.activity import Activity  # noqa: E402
 from agent.trace import describe_step, describe_steps  # noqa: E402
 from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E402
 from agent.session import Session  # noqa: E402
 from protocol import (BUTTON_LABELS, COLORS, DEFAULT_BAUD, SCREEN_CHARS,  # noqa: E402
-                      SCREEN_LINES, power_cut_words, row_label)
+                      SCREEN_LINES, USABLE_ROWS_ENV, is_row, parse_usable, power_cut_words,
+                      row_label)
 from sim.fake_board import SCENARIOS, SIM_EXTRA, FakeBoard  # noqa: E402
+from sim.random_circuit import random_circuit  # noqa: E402
+from sim.solver import NetlistError  # noqa: E402
 
 PAGE = Path(__file__).resolve().parent / "index.html"
 
@@ -58,8 +70,11 @@ PAGE = Path(__file__).resolve().parent / "index.html"
 class App:
     def __init__(self, board, lesson=1, history_path=None, model=None, notebook=None,
                  confirm_power=False, log=None, timeout=CLAUDE_TIMEOUT, demo=None,
-                 instant=False):
+                 instant=False, usable_rows=None, free_build=False):
         self.is_sim = isinstance(board, FakeBoard)
+        # Free build (--free-build): a lesson-like mode with no plan, after lesson 4.
+        self.free_build = bool(free_build)
+        self.tray = None  # the parts tray: what the student used (free build)
         # Instant help (agent/live.py): react the moment the board changes.
         # The server turns it on (--no-instant turns it off); off by default
         # here, so a test or a script decides.
@@ -83,7 +98,7 @@ class App:
         self._auto_current = None  # the kind of the automatic turn running now
         self.raw_board = board
         # One shared handle (with a lock) for the page, the tutor and buttons.
-        self.board = BoardLink(board)
+        self.board = BoardLink(board, usable_rows)  # only the usable rows (default: all)
         self.start_lesson = lesson
         self.history_path = history_path
         self.notebook = notebook  # the student's notebook (agent/notebook.py) or None
@@ -109,7 +124,8 @@ class App:
 
     def _new_session(self, lesson):
         self.session = Session(self.board, lesson=lesson, history_path=self.history_path,
-                               notebook=self.notebook)
+                               notebook=self.notebook, free_build=self.free_build)
+        self.session.tray = self.tray
         self.agent = build_agent(self.session, self.model, ask_before_power=self.confirm_power)
         # Claude's reply, or the offline tutor's when Claude fails or is slow.
         self.replies = SafeReplies(self.session, ask_before_power=self.confirm_power,
@@ -167,8 +183,10 @@ class App:
 
     def _welcome(self):
         l = self.session.lesson
-        what = "Tap the holes!" if l.get("kind") == "explore" else "Press 3 to start."
-        self.board.show(f"Genesis|Lesson {l['id']}: {l['title']}|{what}")
+        what = {"explore": "Tap the holes!", "free": "Build anything!"}.get(l.get("kind"),
+                                                                         "Press 3 to start.")
+        name = l["title"] if l.get("kind") == "free" else f"Lesson {l['id']}: {l['title']}"
+        self.board.show(f"Genesis|{name}|{what}")
 
     # --- Board buttons -------------------------------------------------
     def press(self, button_id):
@@ -348,7 +366,10 @@ class App:
         voltage and light, the screen, the buttons, what the board has."""
         b = self.board
         rows = []
-        for name in self.session.lesson["rows"]:
+        names = self.session.lesson["rows"]
+        if self.session.is_free():  # no plan: every usable row the board measures
+            names = [r for r in self.board.usable_rows if r in reading["rows"]]
+        for name in names:
             measured = name in reading["rows"]
             rows.append({"name": name, "label": row_label(name), "measured": measured,
                          "volts": self._clean(reading["rows"][name]) if measured else None,
@@ -419,6 +440,7 @@ class App:
             quizzes = [s.quiz_result(i, ai=True) or s.quiz_result(i) for i, _ in mistakes]
             quiz_right = passed and all(q is not None and q["correct"] for q in quizzes)
             out.append({"id": lid, "title": s.lessons[lid]["title"],
+                        "kind": s.lessons[lid].get("kind"),
                         "current": lid == s.lesson_id, "passed": passed,
                         "no_repeat": no_repeat, "quiz_right": quiz_right,
                         "stars": int(passed) + int(no_repeat) + int(quiz_right)})
@@ -494,6 +516,12 @@ class App:
             "asks_power": self.waiting_for_power_answer(),
             # Zip asks the student to do one thing, then measures again.
             "experiment": self.waiting_for_experiment(),
+            # Rows that work on this board (--usable-rows; default every row).
+            "usable_rows": self.board.usable_rows,
+            "free_build": self.free_build,
+            # The parts tray (free build): what the student used, what it should do.
+            "tray": self.tray,
+            "tray_parts": TRAY_PARTS,
             # The judges' panel: the last 50 things the agents did, and counts.
             **self._activity_view(),
         }
@@ -546,8 +574,8 @@ class App:
     def instant_tick(self, reading=None):
         """Give instant help one reading (the server's own, or a new one).
         Returns the change event, if this reading completed one."""
-        if not self.instant or self.session.is_explore():
-            return None
+        if not self.instant or self.session.is_explore() or self.session.is_free():
+            return None  # (free build: instant help comes with the AI reader, phase 2)
         if self.session.lesson_id != self._watching:
             self.watch_new_lesson()
         if reading is None:
@@ -828,6 +856,50 @@ class App:
                 self.board.send("BUILD 0")
         return {"reply": reply, "tools": tools, "offline": offline}
 
+    # --- Free build ------------------------------------------------------------
+    def netlist(self, parts):
+        """Fake board only: the pretend student built exactly these parts."""
+        if not self.is_sim:
+            return {"error": "only the fake board can build a netlist"}
+        try:
+            with self.board.lock:
+                self.raw_board.set_netlist(parts)
+        except (NetlistError, ValueError) as e:
+            return {"error": str(e)}
+        bad = sorted({r for p in self.raw_board.netlist for r in p["rows"]
+                      if is_row(r) and not self.board.is_usable(r)})
+        return {"ok": True, "parts": len(self.raw_board.netlist),
+                **({"not_usable": bad} if bad else {})}
+
+    def random_circuit(self, seed=None, parts=3):
+        """Fake board only: a random judge circuit on usable rows. The answer
+        carries the true netlist for testing: it never goes to the tutor."""
+        if not self.is_sim:
+            return {"error": "only the fake board can build a random circuit"}
+        try:
+            n = int(parts)
+            if not 2 <= n <= 5:
+                raise ValueError
+        except (TypeError, ValueError):
+            return {"error": "parts must be 2 to 5"}
+        try:
+            made = random_circuit(seed, n, self.board.usable_rows)
+        except ValueError as e:
+            return {"error": str(e)}
+        with self.board.lock:
+            self.raw_board.set_netlist(made["parts"])
+        return {"ok": True, "seed": made["seed"], "mistake": made["mistake"],
+                "netlist": made["parts"], "note": "for testing only: never sent to the tutor"}
+
+    def set_tray(self, parts, goal=""):
+        """The parts tray: what the student says they used, and the goal."""
+        try:
+            self.tray = clean_tray(parts, goal)
+        except ValueError as e:
+            return {"error": str(e)}
+        self.session.tray = self.tray
+        return {"ok": True, "tray": self.tray}
+
     def hold(self, on):
         """Fake board only: hold (or let go of) the push button on the
         breadboard, like the student's finger (lesson 4)."""
@@ -929,6 +1001,18 @@ def make_handler(app):
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})
                 self._send(200, app.hold(bool(body.get("on"))))
+            elif self.path == "/api/netlist":
+                if not isinstance(body, dict):
+                    return self._send(400, {"error": "bad request"})
+                self._send(200, app.netlist(body.get("parts")))
+            elif self.path == "/api/random-circuit":
+                if not isinstance(body, dict):
+                    return self._send(400, {"error": "bad request"})
+                self._send(200, app.random_circuit(body.get("seed"), body.get("parts", 3)))
+            elif self.path == "/api/tray":
+                if not isinstance(body, dict):
+                    return self._send(400, {"error": "bad request"})
+                self._send(200, app.set_tray(body.get("parts", []), body.get("goal", "")))
             elif self.path == "/api/restart-demo":
                 self._send(200, app.restart_demo())
             else:
@@ -970,6 +1054,13 @@ def open_board(args):
         return None
 
 
+def usable_rows_setting(flag, environ=None):
+    """The usable rows: --usable-rows if given, else SMART_BOARD_USABLE_ROWS,
+    else None (every row)."""
+    environ = os.environ if environ is None else environ
+    return flag if flag is not None else (environ.get(USABLE_ROWS_ENV) or None)
+
+
 def make_server(app, port=8000, host="127.0.0.1"):
     return ThreadingHTTPServer((host, port), make_handler(app))
 
@@ -992,6 +1083,11 @@ def main(argv=None):
                    help="folder for the student notebooks")
     p.add_argument("--fresh", action="store_true", help="forget the old mistake history")
     p.add_argument("--rows", default="all", help='rows the fake board measures, e.g. "T1-T16"')
+    p.add_argument("--usable-rows", default=None,
+                   help='rows that work on this board, e.g. "T3-T8,T20-T24,B40-B45" (default: '
+                        f'all, or the {USABLE_ROWS_ENV} environment variable)')
+    p.add_argument("--free-build", action="store_true",
+                   help="free build: build anything, no plan (after lesson 4 in the path)")
     p.add_argument("--no-current", action="store_true", help="fake board has no current sensor")
     p.add_argument("--no-power-switch", action="store_true",
                    help="fake board cannot switch power")
@@ -1001,6 +1097,14 @@ def main(argv=None):
     p.add_argument("--baud", type=int, default=DEFAULT_BAUD,
                    help=f"serial speed for --serial (default {DEFAULT_BAUD})")
     args = p.parse_args(argv)
+    args.usable_rows = usable_rows_setting(args.usable_rows)
+    try:
+        usable = parse_usable(args.usable_rows)
+    except ValueError as e:
+        print(f"--usable-rows: {e}")
+        return 2
+    if args.free_build and args.lesson is None:
+        args.lesson = FREE_ID  # start in free build
     if args.demo:
         # One command for the demo: Maya, lesson 1, a fresh start.
         args.student = args.student or DEMO_STUDENT
@@ -1023,7 +1127,7 @@ def main(argv=None):
     app = App(board, lesson="start" if args.lesson is None else args.lesson,
               history_path=args.history, notebook=notebook,
               confirm_power=True, log=lambda line: print(line, flush=True), demo=demo,
-              instant=not args.no_instant)
+              instant=not args.no_instant, usable_rows=usable, free_build=args.free_build)
     if app.is_sim and app.session.lesson_id != board.lesson:
         # A new student starts at lesson 0: the pretend board shows that lesson.
         board.send(f"SCENARIO {app.session.lesson_id} correct")
@@ -1031,6 +1135,8 @@ def main(argv=None):
     server = make_server(app, args.port)
     caps = app.board.capabilities()
     where = f"real board on {board.port}" if args.serial else "fake board"
+    if app.board.usable is not None:
+        print(f"Usable rows: {args.usable_rows} ({len(app.board.usable_rows)} rows).")
     print(f"Tutor: {app.model_name}. Board: {where}, {caps['rows']} rows measured, "
           f"current sensor {'yes' if caps['has_current'] else 'no'}, "
           f"power switch {'yes' if caps['has_power_switch'] else 'no'}.")

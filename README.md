@@ -27,6 +27,7 @@ written at about a 6th grade reading level.
 | `agent/live.py` | Done. Instant help (on by default; `--no-instant` or the "Instant help" switch turns it off): Zip reacts the moment the board changes, without Check. A change counts after it stays 1.5 s. While building it stays quiet ("2 of 4 parts in" under the plan); a mistake that is already clear (a part outside the plan, a shorted LED, joined rows, a loose leg, far too much current) is said at once, then Zip explains it with a normal check; a fix gets "That fixed it."; a finished circuit is checked and passed as usual. After a pass, instant help waits for the board to change (the pretend board starts the next lesson empty), so it never passes two lessons on the same board. |
 | `agent/experiments.py` | Done. Zip acts: when two causes look the same to the board, Zip can ask you to do ONE thing with your hands ("Turn around the LED in rows 10 and 12"), with two buttons ("Done" / "I can't"), then measures again and sees what changed. Python checks the instruction first (one action from: pull out, push in, turn around, move, press, let go, wait; a part of the lesson; a row; never anything about power) and allows at most 2 per reply. While you build, each part you add makes Zip light the next part's rows blue and write the step on the board screen, without a chat message. Zip may switch the power off at any time and must say why; it can never switch power on by itself (that still asks "Turn the power back on?"). |
 | `agent/activity.py` | Done. Agent activity: a live panel for judges (closed for the student, opens with the Teacher view) listing the last 50 actions of Zip's agents, newest first, with who did it, the kind of action and the time, and counts per agent. Built from the same recorded steps as "How Zip worked", plus instant help and plain-Python safety cuts. It only reads: nothing about what Zip does changes. |
+| `sim/solver.py`, free build (phase 1) | Done. **Usable rows**: `--usable-rows "T3-T8,T20-T24,B40-B45"` (or the `SMART_BOARD_USABLE_ROWS` environment variable; default every row) for a board where only some rows work: the others are never measured, never called empty, never lit, and are grey in the drawing. **Circuit solver**: the fake board works out any circuit (wires, resistors, LEDs of 5 colours, push buttons) with nodal analysis, so a free build reads like a real board. **Random judge circuits** (`/api/random-circuit`), sometimes with a typical mistake (LED backwards, missing link, short, LED with no resistor: the safety cut still works). **Parts tray** ("What parts did you use?" and "What should it do?"). **Free build** (`--free-build`): after lesson 4 in the path, no plan, the check reports every measured row, the current and plain facts. The AI that works out what was built comes in phase 2. |
 | `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`) |
 | `tools/check_board.py`   | Done. Checks a board's firmware against the protocol and prints PASS or FAIL per rule. How the hardware teammate tests the firmware (docs/FIRMWARE_GUIDE.md) |
 | `firmware/`              | Not written yet. docs/FIRMWARE_GUIDE.md says what it must do |
@@ -74,7 +75,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (564 tests; it says `OK (skipped=1)` on a
+The last line should say `OK` (592 tests; it says `OK (skipped=1)` on a
 computer without Node.js and Playwright, which the page-layout browser
 check needs). They never call Claude, so
 they work without an API key.
@@ -86,6 +87,29 @@ python web/server.py --fresh
 ```
 
 Then open http://localhost:8000.
+
+## Free build (phase 1)
+
+Build anything with random parts, on a board where only some rows work:
+
+```bash
+python web/server.py --free-build --usable-rows "T3-T8,T20-T24,B40-B45" --fresh
+```
+
+- The page opens on **Free build** (the last stop in the lesson path,
+  after lesson 4). The drawing shows only the rows that work; the others
+  are grey.
+- To give a judge a random circuit on the pretend board, run this in a
+  second Command Prompt window (any seed number, 2 to 5 parts):
+
+  ```bash
+  curl -X POST http://localhost:8000/api/random-circuit -H "Content-Type: application/json" -d "{\"seed\": 7, \"parts\": 4}"
+  ```
+
+  The answer shows the true circuit, for you only: Zip never sees it.
+  Then press **Check my circuit**: Zip says what the board measured.
+- Fill in **What parts did you use?** and **What should it do?**, then
+  press **Save my parts**. (Zip uses this in phase 2.)
 
 ## Start the demo (one command)
 
@@ -161,6 +185,21 @@ scroll by, about 10 per second (the rate is not fixed: each reading has
 `t_ms`). While they scroll, type a command and press Enter, for example
 `LED T10 red`, `LED CLEAR`, `SHOW Hello|world`, `PRESS 1`, `CUT`,
 `RESTORE` or `SCENARIO 1 correct`. Press Ctrl+C to stop.
+
+Free build: any circuit, given as a list of parts (a netlist). The LED's
+long leg is its first row:
+
+```bash
+python3 sim/fake_board.py --lesson 5
+```
+
+then type (all on one line) and press Enter:
+
+```
+NETLIST [{"kind": "wire", "rows": ["PT+", "T5"]}, {"kind": "resistor", "rows": ["T5", "T10"], "ohms": 220}, {"kind": "led", "rows": ["T10", "T12"], "color": "red"}, {"kind": "wire", "rows": ["T12", "PT-"]}]
+```
+
+The readings now show about 13.2 mA. `NETLIST CLEAR` empties the board again.
 
 Try a board with only 16 rows, no current sensor and no power switch:
 

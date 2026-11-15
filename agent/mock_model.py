@@ -11,6 +11,7 @@ import json
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from protocol import row_label
 
 
 def _this_turn(messages):
@@ -168,6 +169,27 @@ class ScriptedTutorModel(BaseChatModel):
                 return reply("Power is off. When you have fixed the circuit, press button 4 "
                              "or tell me you fixed it, and the power will come back on.")
             # Power came on and was measured at once: carry on from that check.
+
+        if status == "free":
+            # Free build: no plan, so no right or wrong yet. Say what the board
+            # measured (the AI reader that works out the circuit is phase 2).
+            if check.get("action") == "cut_power":
+                if "show_on_board" not in called:
+                    return call("show_on_board", text="Power OFF:|too much current.")
+                return reply(f"I switched the power off to keep your parts safe: "
+                             f"{check.get('danger', 'too much current')}. Look for an LED with "
+                             "no resistor, or a wire straight from + to -.")
+            rows = check.get("measured_rows", {})
+            said = ", ".join(f"{row_label(r)} {max(v, 0):.1f} V" for r, v in list(rows.items())[:6])
+            more = f" and {len(rows) - 6} more" if len(rows) > 6 else ""
+            current = check.get("current_ma")
+            amps = ("" if current is None else f" The current is {max(current, 0):.1f} mA.")
+            if not rows:
+                return reply("Free build: nothing is plugged into a row I can measure yet. "
+                             "Build something, then press Check.")
+            return reply(f"Free build: I measured {len(rows)} row{'s' if len(rows) != 1 else ''} "
+                         f"with something in {'them' if len(rows) != 1 else 'it'}: {said}{more}."
+                         f"{amps} Tell me what it should do, and press Check after each change.")
 
         if status == "mistake":
             if check["action"] == "cut_power" and "cut_power" not in called:

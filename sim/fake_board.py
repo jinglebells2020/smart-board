@@ -36,6 +36,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # for "python sim/fake_board.py"
 
 import protocol as P  # noqa: E402
+from sim import solver  # noqa: E402
 
 # --- Board constants -------------------------------------------------
 SUPPLY_V = 5.0  # docs/LESSONS.md uses 5 V for every lesson.
@@ -71,6 +72,9 @@ def _circuit(lesson, scenario, held=False):
         supply, current, circuit = _circuit(lesson, "correct")
         middle = STRAY[lesson]
         return supply, current, dict(circuit, **{f"T{int(middle[1:]) + 20}": circuit[middle]})
+    if lesson == FREE_LESSON and scenario == "correct":
+        # Free build starts empty; NETLIST builds whatever the student built.
+        return v, 0.0, {}
     if lesson == 0:
         # "How a breadboard connects": nothing to build. An empty board.
         if scenario == "correct":
@@ -194,6 +198,11 @@ SCENARIOS = {
     4: ["correct", "button_always_on", "button_not_connecting", "led_backwards",
         "no_resistor"] + UNLISTED[4],
 }
+# Free build (not a lesson file, so not in SCENARIOS): any circuit, given as
+# a netlist (NETLIST <json>) and worked out by sim/solver.py.
+FREE_LESSON = 5
+FREE_SCENARIOS = ["correct"]
+
 # Every lesson's parts in build order (as in lessons/*.json "layout"), for the
 # sim-only BUILD <n>: only the first n parts are in.
 PARTS = {
@@ -294,19 +303,44 @@ class FakeBoard:
         self.lights = {}   # row -> color
         self.screen = []   # lines on the screen
         self._events = []
+        self.netlist = None  # free build: the parts the pretend student put in
+        self._solved = None  # (key, solution): the netlist worked out once
         self.set_scenario(lesson, scenario)
 
     def set_scenario(self, lesson, scenario):
         """Change which circuit the pretend student has built."""
-        if (lesson not in SCENARIOS
-                or scenario not in SCENARIOS[lesson] + SIM_EXTRA.get(lesson, [])):
+        names = (FREE_SCENARIOS if lesson == FREE_LESSON
+                 else SCENARIOS.get(lesson, []) + SIM_EXTRA.get(lesson, []))
+        if scenario not in names:
             raise ValueError(f"unknown lesson/scenario: {lesson} {scenario}")
+        self.netlist = None  # a lesson's circuit again
         if lesson != getattr(self, "lesson", lesson):
             self.copies = None  # a new lesson: one circuit again
             self.built = None   # and all of it is built
             self.held = False   # and nobody is holding a button
         self.lesson = lesson
         self.scenario = scenario
+
+    def set_netlist(self, parts):
+        """Sim only (free build): the circuit is exactly these parts, on these
+        rows (see sim/solver.py). None: back to the lesson's circuit."""
+        if parts is None:
+            self.netlist = None
+            return
+        self.netlist = solver.clean(parts)  # raises NetlistError (a ValueError)
+        self.built, self.copies = None, None
+
+    def _netlist_circuit(self):
+        """(supply, current, {row: volts or FLOATING}) from the solver. A push
+        button with no "closed" in the netlist follows HOLD."""
+        parts = [dict(p, closed=self.held) if p["kind"] == "button" and p.get("closed") is None
+                 else p for p in self.netlist]
+        key = json.dumps(parts, sort_keys=True)
+        if not self._solved or self._solved[0] != key:
+            self._solved = (key, solver.solve(parts, SUPPLY_V, CURRENT_LIMIT_MA))
+        sol = self._solved[1]
+        rows = {r: (FLOATING if v is None else v) for r, v in sol["rows"].items()}
+        return sol["supply_v"], sol["current_ma"], rows
 
     def set_place(self, half="T", offset=0):
         """Build the same circuit somewhere else: half "T" (top) or "B"
@@ -392,6 +426,10 @@ class FakeBoard:
             self._wobble = not getattr(self, "_wobble", False)
         places = getattr(self, "copies", None) or [getattr(self, "place", ("T", 0))]
         nodes, supply, current = {}, SUPPLY_V, 0.0
+        if self.netlist is not None:  # free build: worked out by the solver
+            supply, current, nodes = self._netlist_circuit()
+            nodes.update({"PT+": supply, "PB+": supply, "PT-": 0.0, "PB-": 0.0})
+            places = []
         for i, place in enumerate(places):
             # The scenario is the last copy; any others are built correctly.
             scenario = self.scenario if i == len(places) - 1 else "correct"
@@ -552,6 +590,17 @@ class FakeBoard:
                 return error(str(e))
             return ack("COPIES " + " ".join("/".join(p[1]) if p[0] == "ROWS" else f"{p[0]}{p[1]}"
                                             for p in self.copies))
+        if cmd == "NETLIST" and len(parts) >= 2:  # simulator only: NETLIST <json> | CLEAR
+            body = text[len(parts[0]):].strip()
+            if body.upper() == "CLEAR":
+                self.set_netlist(None)
+                return ack("NETLIST CLEAR")
+            try:
+                data = json.loads(body)
+                self.set_netlist(data.get("parts") if isinstance(data, dict) else data)
+            except ValueError as e:  # bad JSON, or a part the solver cannot use
+                return error(f"bad netlist: {e}")
+            return ack(f"NETLIST {len(self.netlist)} parts")
         if cmd == "SCENARIO" and len(parts) == 3:  # simulator only
             try:
                 self.set_scenario(int(parts[1]), parts[2])

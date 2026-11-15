@@ -29,6 +29,41 @@ VOLTAGE_TOLERANCE = 0.3   # volts
 LOW_SUPPLY_V = 4.5        # every lesson runs from 5 V
 
 
+# Free build (--free-build): a lesson-like mode with no plan. The student
+# builds anything; the check reports what the board measured (agent/session.py).
+# Not a lessons/*.json file, so lessons 0-4 stay exactly as they are.
+FREE_ID = 5
+FREE_LESSON = {"id": FREE_ID, "kind": "free", "title": "Free build",
+               "circuit": "Build anything you like with your parts",
+               "rows": [], "layout": [], "expected": {"rows": {}}, "accept": {},
+               "mistakes": []}
+
+
+def free_check(summary):
+    """The check in free build: no plan, so no mistakes and no PASS. What
+    the board measured, plus the safety a plan is not needed for: too much
+    current, or the + line pulled down (a big current even with no sensor)."""
+    if not summary["power_on"]:
+        return {"status": "power_off"}
+    floating = set(summary["floating"])
+    out = {"status": "free",
+           "measured_rows": {r: v for r, v in summary["rows"].items() if r not in floating},
+           "empty_rows": [r for r in summary["rows"] if r in floating],
+           "supply_v": summary["supply_v"], "current_ma": summary.get("current_ma"),
+           "current_source": summary.get("current_source")}
+    current = summary.get("current_ma")
+    if summary.get("current_source") == "measured" and current is not None \
+            and current > SAFETY_MAX_MA:
+        out.update(action="cut_power",
+                   danger=f"{current:.0f} mA flows, and more than {SAFETY_MAX_MA:.0f} mA is "
+                          "too much")
+    elif summary["supply_v"] < LOW_SUPPLY_V:
+        out.update(action="cut_power",
+                   danger=f"the + line dropped to {summary['supply_v']:.1f} volts, so "
+                          "something takes far too much current")
+    return out
+
+
 def load_lessons(folder=LESSONS_DIR):
     """Return {lesson_id: lesson_dict} for every lessons/lesson*.json."""
     lessons = {}

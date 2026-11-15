@@ -10,7 +10,7 @@
      colours, one job each; type 16/20/28/36 px at weights 400/700; spacing
      on an 8 px grid; one soft shadow; 1 px lines.
      contrast-pairs: ink/white, ink-2/white, ink/page, ink-2/page, white/blue,
-     blue/white, ink/yellow, ink/green, white/ink */
+     blue/white, ink/yellow, ink/green, white/ink, ink/sky */
   :root {
     --blue: #2F5FE8;    /* top bar and main buttons */
     --yellow: #FFC93C;  /* highlights, stars, Zip's accents */
@@ -135,6 +135,8 @@
   .pill .source:empty { display: none; }
   .drawing { flex: 1 1 auto; min-height: 0; position: relative; margin-top: 16px; }
   #bb { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* Free build with many usable rows: the drawing scrolls sideways. */
+  .drawing.wide { overflow-x: auto; overflow-y: hidden; }
   .legend { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 16px; color: var(--ink-2);
             min-height: 24px; margin-top: 8px; }
   .legend .chip { display: inline-flex; align-items: center; gap: 8px; }
@@ -155,6 +157,9 @@
              dominant-baseline: central; }
   .bb-num { font-size: 16px; font-weight: 400; fill: var(--ink-2); text-anchor: middle; }
   .bb-num.used { font-weight: 700; fill: var(--ink); }
+  /* A row that does not work on this board (--usable-rows): greyed out. */
+  .bb-off { fill: var(--line); }
+  .bb-num.off { fill: var(--line); }
   .bb-volt { font-size: 16px; font-weight: 700; fill: var(--ink); text-anchor: middle; }
   .bb-volt.empty { font-weight: 400; fill: var(--ink-2); }
   .bb-mark { fill: transparent; }
@@ -386,12 +391,28 @@
   td.nowrap { white-space: nowrap; }
   td.given-full, td.quiz-right, td.quiz-wrong { font-weight: 700; }
 
+  /* ---- Free build: the parts tray ---- */
+  .tray { flex: none; margin-top: 16px; padding: 16px; border-radius: 16px; background: var(--page); }
+  .tray h3 { margin: 0 0 8px; font-size: 20px; font-weight: 700; }
+  .tray p { margin: 0 0 8px; }
+  .tray-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .tray-chip { background: var(--white); color: var(--ink); }
+  .tray-chip.on { background: var(--sky); color: var(--ink); }
+  .tray input {
+    width: 100%; height: 56px; padding: 0 24px; border: 1px solid var(--line); border-radius: 999px;
+    font-size: 20px; color: var(--ink); background: var(--white); margin-bottom: 8px;
+  }
+  .tray input::placeholder { color: var(--ink-2); }
+  .tray-label { display: block; margin: 8px 0; font-size: 16px; font-weight: 700; }
+  .tray-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+
   /* ---- Agent activity: the judges' live panel, under the plan ---- */
   .activity { flex: none; margin-top: 16px; }
   /* Open: the drawing keeps its size and the plan scrolls to the list. */
   @media (min-width: 1000px) {
-    .stage.activity-open { overflow-y: auto; }
-    .stage.activity-open .drawing { flex: none; height: max(300px, calc(100vh - 560px)); }
+    .stage.activity-open, .stage.free-build { overflow-y: auto; }
+    .stage.activity-open .drawing, .stage.free-build .drawing {
+      flex: none; height: max(300px, calc(100vh - 560px)); }
   }
   .activity-toggle { max-width: 100%; }
   .activity-body { margin-top: 16px; max-height: 320px; overflow-y: auto; }
@@ -527,7 +548,7 @@
     <section class="zone stage" id="tile-rows" aria-label="The plan: where each part goes">
       <div class="stage-head">
         <div class="stage-title">
-          <h2>The plan: where each part goes</h2>
+          <h2 id="stage-heading">The plan: where each part goes</h2>
           <div class="circuit" id="lesson-circuit"></div>
           <div class="copies-note" id="copies-note" hidden></div>
           <div class="build-progress" id="build-progress" hidden></div>
@@ -553,6 +574,23 @@
       <div class="legend" id="legend"></div>
       <div class="join-note" id="join-note" hidden></div>
       <div class="rows-note" id="rows-note" hidden></div>
+
+      <!-- Free build: the parts tray -->
+      <div class="tray" id="tray" hidden>
+        <h3>What parts did you use?</h3>
+        <p class="small muted">Tap a part once for each one you used.</p>
+        <div class="tray-chips" id="tray-chips"></div>
+        <input type="text" id="tray-other" maxlength="80" aria-label="Other parts"
+               placeholder="Other parts, for example a buzzer">
+        <label class="tray-label" for="tray-goal">What should it do?</label>
+        <input type="text" id="tray-goal" maxlength="200"
+               placeholder="For example: the LED lights up when I press the button">
+        <div class="tray-row">
+          <button class="btn btn-blue btn-small" type="button" id="tray-save">Save my parts</button>
+          <button class="btn btn-soft btn-small" type="button" id="tray-clear">Start again</button>
+          <span class="small muted" id="tray-saved" role="status"></span>
+        </div>
+      </div>
 
       <div class="device" id="tile-board" hidden>
         <div class="device-face">
@@ -986,6 +1024,73 @@
     });
   }
 
+  // ---- Free build: the parts tray ---------------------------------------------
+  let trayCounts = null;  // {part name: count}, edited here until saved
+  let trayDirty = false;
+  function trayLabel(name) {
+    return name.replace(/^(\d+k?) ohm/, "$1 \u03A9").replace("push button", "Push button")
+      .replace("wire", "Wire");
+  }
+  function renderTray(state) {
+    const show = state.lesson.kind === "free";
+    $("tray").hidden = !show;
+    $("tile-rows").classList.toggle("free-build", show);
+    if (!show) return;
+    if (trayCounts === null || !trayDirty) {
+      trayCounts = {};
+      ((state.tray && state.tray.parts) || []).forEach((p) => { trayCounts[p.name] = p.count; });
+      if (!trayDirty && state.tray) {
+        if (document.activeElement !== $("tray-other")) $("tray-other").value = state.tray.other || "";
+        if (document.activeElement !== $("tray-goal")) $("tray-goal").value = state.tray.goal || "";
+      }
+    }
+    const key = JSON.stringify([state.tray_parts, trayCounts]);
+    const box = $("tray-chips");
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.replaceChildren();
+    (state.tray_parts || []).forEach((name) => {
+      const b = document.createElement("button");
+      const n = trayCounts[name] || 0;
+      b.type = "button";
+      b.className = "btn btn-small tray-chip" + (n ? " on" : "");
+      b.textContent = trayLabel(name) + (n ? " \u00D7" + n : "");
+      b.setAttribute("aria-label", trayLabel(name) + ": " + n);
+      b.addEventListener("click", () => {
+        trayCounts[name] = Math.min(20, (trayCounts[name] || 0) + 1);
+        trayDirty = true;
+        $("tray-saved").textContent = "";
+        renderTray(state);
+      });
+      box.append(b);
+    });
+  }
+  $("tray-clear").addEventListener("click", () => {
+    trayCounts = {};
+    trayDirty = true;
+    $("tray-other").value = "";
+    $("tray-goal").value = "";
+    $("tray-chips").dataset.key = "";
+    $("tray-saved").textContent = "";
+  });
+  ["tray-other", "tray-goal"].forEach((id) => $(id).addEventListener("input", () => {
+    trayDirty = true;
+    $("tray-saved").textContent = "";
+  }));
+  $("tray-save").addEventListener("click", async () => {
+    const parts = Object.entries(trayCounts || {}).filter(([, n]) => n > 0)
+      .map(([name, count]) => ({ name, count }));
+    const other = $("tray-other").value.trim();
+    if (other) parts.push({ name: "other", text: other });
+    try {
+      const out = await post("/api/tray", { parts, goal: $("tray-goal").value.trim() });
+      $("tray-saved").textContent = out.error ? out.error : "Saved.";
+      if (!out.error) trayDirty = false;
+    } catch (e) {
+      $("tray-saved").textContent = "Could not save. Is the server running?";
+    }
+  });
+
   // ---- Agent activity (the judges' panel): live, newest first ----------------
   const AGENT_CLASS = { "Zip (tutor)": 0, "Diagnoser": 1, "Detective": 2, "Lesson writer": 3,
                         "Grader": 4, "Build guide": 5, "Instant help": 6, "Python safety": 7 };
@@ -1080,11 +1185,15 @@
       }
       const stop = document.createElement("div");
       stop.className = "stop" + (p.passed ? " passed" : "") + (p.current ? " current" : "");
-      stop.title = `Lesson ${p.id}: ${p.title}. ${p.stars} of 3 stars.`;
+      const freeStop = p.kind === "free";
+      stop.title = freeStop ? `${p.title}: build anything you like.`
+        : `Lesson ${p.id}: ${p.title}. ${p.stars} of 3 stars.`;
       stop.setAttribute("aria-label", stop.title);
       const dot = document.createElement("div");
       dot.className = "dot";
-      if (p.passed) {
+      if (freeStop) {
+        dot.append(star(true, false));  // free build: no stars to win, just build
+      } else if (p.passed) {
         const tick = svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, dot);
         svg("path", { d: "M5 12.5l4.5 4.5L19 7.5", fill: "none", stroke: "#1D2742",
           "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" }, tick);
@@ -1094,7 +1203,7 @@
       const stars = document.createElement("div");
       stars.className = "stars";
       const before = lastStars ? (lastStars[p.id] || 0) : p.stars;
-      for (let s = 1; s <= 3; s++) stars.append(star(s <= p.stars, s <= p.stars && s > before));
+      if (!freeStop) for (let s = 1; s <= 3; s++) stars.append(star(s <= p.stars, s <= p.stars && s > before));
       stop.append(dot, stars);
       nav.append(stop);
     });
@@ -1191,7 +1300,10 @@
     lastState = state;
     const L = state.lesson;
     const r = state.reading;
-    $("lesson-title").textContent = `Lesson ${L.id}: ${L.title}`;
+    $("lesson-title").textContent = L.kind === "free" ? L.title : `Lesson ${L.id}: ${L.title}`;
+    // Free build has no plan: the drawing shows every row that works.
+    $("stage-heading").textContent = L.kind === "free" ? "Your board: every row that works"
+      : "The plan: where each part goes";
     $("lesson-circuit").textContent = L.circuit;
     // Instant help: the switch, and how far the build is ("2 of 4 parts in").
     const inst = $("instant-toggle");
@@ -1234,6 +1346,7 @@
     $("model").textContent = "Tutor: " + state.model;
     renderLog(state.log);
     renderActivity(state.activity, state.activity_count);
+    renderTray(state);
     renderMini(state.mini_lesson);
     $("ask-power").hidden = !state.asks_power || busy;
     // Zip's experiment: one thing to do, then "done" or "can't".
@@ -1315,17 +1428,51 @@
     const layout = L.layout || [];
     const names = new Set([...(L.rows || []), ...(L.explore || [])]);
     layout.forEach((p) => p.legs.forEach((leg) => names.add(leg.row)));
-    const rows = [...names].map(splitRow).filter(Boolean);
+    // Usable rows (a board where only some rows work): the others are grey
+    // and never lit. Free build has no plan: every usable row is drawn, and
+    // the gaps between groups of usable rows are squeezed to a small gap.
+    const usable = L.usable ? new Set(L.usable) : null;
+    const works = (row) => !usable || usable.has(row);
+    const freeBuild = L.kind === "free";
+    let rows = [...names].map(splitRow).filter(Boolean);
+    if (freeBuild) rows = (L.usable || []).map(splitRow).filter(Boolean);
     const usesBottom = rows.some((r) => r.half === "B") ||
       layout.some((p) => p.legs.some((leg) => leg.row.startsWith("PB")));
     const nums = rows.map((r) => r.n);
-    const lo = Math.max(1, (nums.length ? Math.min(...nums) : 1) - 1);
-    const hi = Math.min(63, (nums.length ? Math.max(...nums) : 10) + 1);
-    const cols = hi - lo + 1;
+    let colNums;
+    if (freeBuild) {
+      colNums = [...new Set(nums)].sort((a, b) => a - b);
+      if (!colNums.length) colNums = [1];
+    } else {
+      const lo = Math.max(1, (nums.length ? Math.min(...nums) : 1) - 1);
+      const hi = Math.min(63, (nums.length ? Math.max(...nums) : 10) + 1);
+      colNums = [];
+      for (let n = lo; n <= hi; n++) colNums.push(n);
+    }
+    const cols = colNums.length;
+    const breaks = colNums.filter((n, i) => i > 0 && n !== colNums[i - 1] + 1);
     const X0 = 56;                                     // room for + and -
-    const CW = Math.min(96, (W - X0 - 16) / cols);     // column width
-    const left = X0 + Math.max(0, (W - X0 - 16 - CW * cols) / 2);
-    const x = (n) => left + (n - lo) * CW + CW / 2;
+    // Free build with many rows: keep the holes big enough and let the
+    // drawing scroll sideways instead.
+    const CW = Math.max(freeBuild ? 32 : 0,
+                        Math.min(96, (W - X0 - 16) / (cols + breaks.length * 0.75)));
+    const GAP = CW * 0.75;                             // a squeezed gap of unusable rows
+    const fullW = X0 + 16 + CW * cols + GAP * breaks.length;
+    if (fullW > W) {  // wider than the box: scroll, starting at the left
+      box.style.width = Math.ceil(fullW) + "px";
+      box.setAttribute("preserveAspectRatio", "xMinYMid meet");
+      W = Math.ceil(fullW);
+    } else {
+      box.style.width = "";
+      box.removeAttribute("preserveAspectRatio");
+    }
+    const left = X0 + Math.max(0, (W - fullW) / 2);
+    const colX = {};
+    colNums.forEach((n, i) => {
+      colX[n] = left + i * CW + CW / 2 + GAP * breaks.filter((b) => b <= n).length;
+    });
+    const x = (n) => colX[n] ?? left + CW / 2;
+    box.setAttribute("viewBox", `0 0 ${W} ${H}`);
     const lr = Math.max(8, Math.min(20, CW * 0.26));   // light radius
     // Heights in px. The board fills its whole box (no empty band): the
     // holes grow with the box, and the rest is room for the parts above them.
@@ -1352,12 +1499,14 @@
 
     svg("rect", { x: 0, y: 0, width: W, height: Math.max(H, bottom), rx: 16, class: "bb-board" }, box);
     const lesson = new Set(L.rows || []);
-    for (let n = lo; n <= hi; n++) {
+    breaks.forEach((n) => svg("text", { x: x(n) - CW / 2 - GAP / 2, y: Y.num, class: "bb-num" },
+      box, "\u22EF"));
+    colNums.forEach((n) => {
       if (lesson.has("T" + n)) svg("rect", { x: x(n) - CW / 2 + 4, y: Y.top[0] - 16,
         width: CW - 8, height: Y.num - Y.top[0] + 24, rx: 12, class: "bb-band" }, box);
       if (usesBottom && lesson.has("B" + n)) svg("rect", { x: x(n) - CW / 2 + 4, y: Y.bot[0] - 16,
         width: CW - 8, height: Y.voltB - Y.bot[0] + 24, rx: 12, class: "bb-band" }, box);
-    }
+    });
     // Each hole knows its group: the holes one metal clip joins. A row half
     // (a-e: "T5", f-j: "B5") or a whole + or - line ("PT+", ...).
     const hole = (cx, cy, group) => svg("rect", { x: cx - 3, y: cy - 3, width: 6, height: 6, rx: 2,
@@ -1366,7 +1515,7 @@
     const strip = (y, sign, group) => {
       svg("line", { x1: X0 - 8, x2: W - 16, y1: y - 12, y2: y - 12, class: "bb-strip" }, box);
       svg("text", { x: 24, y, class: "bb-sign" }, box, sign);
-      for (let n = lo; n <= hi; n++) hole(x(n), y, group);
+      colNums.forEach((n) => hole(x(n), y, group));
       hits.push({ x: X0 - 8, y: y - 12, width: W - X0 - 8, height: 24, group });
     };
     strip(Y.plus, "+", "PT+");
@@ -1375,30 +1524,41 @@
 
     // Narrow columns (a phone): voltages without the "V", so they never touch.
     const refs = { lights: {}, volts: {}, marks: {}, leds: [], caps: [], points: {}, narrow: CW < 48 };
-    for (let n = lo; n <= hi; n++) {
+    // A row that does not work: grey, no light, never measured.
+    const off = (row, top, bottom) => svg("rect", { x: x(Number(row.slice(1))) - CW / 2 + 2,
+      y: top - 12, width: CW - 4, height: bottom - top + 24, rx: 8, class: "bb-off" }, box);
+    const showVolts = (row) => lesson.has(row) || (freeBuild && works(row));
+    colNums.forEach((n) => {
+      if (!works("T" + n)) off("T" + n, Y.top[0], Y.light);
       Y.top.forEach((y) => hole(x(n), y, "T" + n));
       hits.push({ x: x(n) - CW / 2 + 2, y: Y.top[0] - 12, width: CW - 4,
                   height: Y.top[4] - Y.top[0] + 24, group: "T" + n });
       const used = lesson.has("T" + n) || lesson.has("B" + n);
-      svg("text", { x: x(n), y: Y.num, class: "bb-num" + (used ? " used" : "") }, box, String(n));
-      refs.lights["T" + n] = svg("circle", { cx: x(n), cy: Y.light, r: lr, class: "bb-light" }, box);
-      if (lesson.has("T" + n)) {
+      const numCls = !works("T" + n) && (!usesBottom || !works("B" + n)) ? " off" : used ? " used" : "";
+      svg("text", { x: x(n), y: Y.num, class: "bb-num" + numCls }, box, String(n));
+      if (works("T" + n)) {
+        refs.lights["T" + n] = svg("circle", { cx: x(n), cy: Y.light, r: lr, class: "bb-light" }, box);
+      }
+      if (showVolts("T" + n)) {
         refs.volts["T" + n] = svg("text", { x: x(n), y: Y.volt, class: "bb-volt" }, box, "");
         refs.marks["T" + n] = svg("rect", { x: x(n) - 12, y: Y.volt + 4, width: 24, height: 4,
           rx: 2, class: "bb-mark" }, box);
       }
       if (usesBottom) {
+        if (!works("B" + n)) off("B" + n, Y.bot[0], Y.lightB);
         Y.bot.forEach((y) => hole(x(n), y, "B" + n));
         hits.push({ x: x(n) - CW / 2 + 2, y: Y.bot[0] - 12, width: CW - 4,
                     height: Y.bot[4] - Y.bot[0] + 24, group: "B" + n });
-        refs.lights["B" + n] = svg("circle", { cx: x(n), cy: Y.lightB, r: lr, class: "bb-light" }, box);
-        if (lesson.has("B" + n)) {
+        if (works("B" + n)) {
+          refs.lights["B" + n] = svg("circle", { cx: x(n), cy: Y.lightB, r: lr, class: "bb-light" }, box);
+        }
+        if (showVolts("B" + n)) {
           refs.volts["B" + n] = svg("text", { x: x(n), y: Y.voltB, class: "bb-volt" }, box, "");
           refs.marks["B" + n] = svg("rect", { x: x(n) - 12, y: Y.voltB + 4, width: 24, height: 4,
             rx: 2, class: "bb-mark" }, box);
         }
       }
-    }
+    });
 
     // Parts, where the lesson layout puts them. Each leg takes the next
     // free hole in its row, so parts never sit on top of each other.
@@ -1556,11 +1716,14 @@
   }
 
   function updateBreadboard(state, noBoard) {
-    const L = state.lesson, b = state.board;
+    const usable = state.usable_rows || null;
+    const L = Object.assign({}, state.lesson, { usable }), b = state.board;
     const area = $("drawing");
+    area.classList.toggle("wide", L.kind === "free");
     const W = Math.round(area.clientWidth), H = Math.round(area.clientHeight);
     if (W < 40 || H < 40) return;
-    const key = [L.id, JSON.stringify(L.layout), JSON.stringify(L.rows), b.step, W, H].join("|");
+    const key = [L.id, JSON.stringify(L.layout), JSON.stringify(L.rows), b.step, W, H,
+                 usable ? usable.join(",") : ""].join("|");
     if (key !== bbKey || !bbRefs) {
       if (bbRefs && bbKey.split("|")[0] !== String(L.id)) {  // a new lesson: nothing lit
         joinedGroup = null;
@@ -1592,7 +1755,7 @@
       let text, cls = "bb-volt", mark = "bb-mark";
       if (noBoard) text = "?";
       else if (!row.measured) { text = "–"; cls += " empty"; }
-      else if (row.floating) { text = "empty"; cls += " empty"; }
+      else if (row.floating) { text = L.kind === "free" ? "" : "empty"; cls += " empty"; }
       else {
         text = fmt(row.volts, 2) + (bbRefs.narrow ? "" : " V");
         const rng = ranges[row.name];
