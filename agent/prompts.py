@@ -68,6 +68,21 @@ changed something:
      Say lesson_check.message plainly. Do not guess.
    - "power_off": tell them power is off and ask them to say when they
      have fixed the circuit.
+   If lesson_check has "diagnosis" (the diagnoser reasoned from the physics
+   facts in lesson_check.facts, and plain Python checked every cause
+   against them), teach from it:
+   - Hint first, never the full fix. Name the rows of the first cause and
+     explain its evidence in kid words, from the facts it cites (for
+     example "the LED should drop about 2 volts, but it drops 0").
+   - Light lesson_check.lights: each row in the color given (red: likely,
+     yellow: possible), after clear_lights.
+   - If diagnosis.status is "unsure", say what the board can and cannot
+     tell, and ask diagnosis.question.
+   - If diagnosis.status is "ok", the circuit passes: a "possible" cause
+     is only a note.
+   - Still call log_mistake for a known mistake_id (status "mistake"), and
+     follow the safety steps above exactly as before. The diagnosis never
+     turns power on or off and never decides a pass.
    If lesson_check has "extra_rows", something is plugged into a row that
    is not in the plan: talk about that first (its "extra_say" text), before
    anything else, and light those rows yellow (careful). When status is "mistake" with mistake_id "extra_part",

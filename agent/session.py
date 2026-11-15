@@ -13,8 +13,11 @@ import time
 from pathlib import Path
 
 from agent.boardlink import BoardLink
+from agent.deadline import RunAbandoned
+from agent.diagnoser import compare_with_rules, lights_from, validate_diagnosis
 from agent.lessons import SAFETY_MAX_MA, calculate_current, check, load_lessons, summarize
 from agent.notebook import entry_start, mistake_label
+from agent.physics import circuit_facts, extra_rows_fact, number, power_fact
 from agent.placement import (HOME, ROW, describe, driven_rows, find_all_placements,
                              find_placement, is_row_map, shift_lesson, shift_name)
 from protocol import is_row, power_cut_words, row_label
@@ -97,6 +100,9 @@ class Session:
         # pressed step only reminds the student to hold the button.
         self.button_step = self._first_step(self.lesson_id)
         self.press_reminded = False
+        # The AI diagnoser for this reply: a function payload -> Diagnosis,
+        # set by agent/build.py when the tutor is Claude; None offline.
+        self.diagnoser = None
 
     # --- Lessons -------------------------------------------------------
     @property
@@ -293,6 +299,10 @@ class Session:
             else:
                 result["manual_power_off"] = True
                 board.show(MANUAL_OFF_SCREEN)
+        if self.diagnoser is not None and not self.is_explore():
+            # Claude is available: physics facts + the diagnoser. Only after
+            # the safety cut above, so a slow answer never delays it.
+            result = self._diagnose(data, summary, result, copies, safety_cut)
         if safety_cut:
             summary["power_on"] = False  # it is off now
         self.last_check = (summary, result)
@@ -300,6 +310,66 @@ class Session:
         if entry is not None:
             self.pending_entry = entry
         return summary, result, safety_cut
+
+    # --- The AI diagnoser (agent/physics.py, agent/diagnoser.py) ---------------
+    NO_DIAGNOSIS = ("power_off", "missing_rows", "quiz_first")
+
+    def _diagnose(self, readings, summary, result, copies, safety_cut):
+        """Physics facts from the measurements, then the diagnoser's answer,
+        checked by plain Python. The rule check's status (and so PASS, the
+        lights' meaning and the power) is not changed; this adds
+        result["facts"], ["diagnosis"], ["lights"] and ["rule_match"]."""
+        lesson_file = self.lessons[self.lesson_id]
+        if copies:
+            lessons = [shift_lesson(lesson_file, p) for p in copies]
+        else:
+            lessons = [self._step_lesson(self.lesson) if self.button_step else self.lesson]
+        facts = [power_fact(summary, safety_cut)]
+        if summary.get("power_on") or safety_cut:
+            for i, lesson in enumerate(lessons):
+                s = summarize(readings, lesson) if copies else summary
+                label = f"LED circuit {i + 1}" if len(lessons) > 1 else ""
+                facts += circuit_facts(s, lesson, label)
+            if result.get("extra_rows"):
+                facts.append(extra_rows_fact(result["extra_rows"]))
+        number(facts)
+        result["facts"] = facts
+        self.trace.append({"who": "physics", "tool": "facts", "args": {"count": len(facts)}})
+        if result["status"] in self.NO_DIAGNOSIS:
+            return result
+        valid_rows = {f_row for f in facts for f_row in f["rows"]}
+        for lesson in lessons:
+            valid_rows |= set(lesson.get("rows", []))
+            valid_rows |= {leg["row"] for part in lesson.get("layout", []) for leg in part["legs"]}
+        payload = {
+            "lesson": {k: lessons[0].get(k) for k in ("id", "title", "circuit", "rows", "layout",
+                                                      "expected")},
+            "copies": len(lessons) if copies else None,
+            "step": result.get("step"),
+            "facts": facts,
+            "rule_match": result.get("mistake_id"),
+            "rule_status": result["status"],
+            "recent_mistakes": [m["mistake"] for m in self.history["mistakes"][-3:]],
+        }
+        self.trace.append({"who": "diagnoser", "tool": "diagnose"})
+        try:
+            raw = self.diagnoser(payload)
+        except RunAbandoned:
+            raise  # this reply was given up on: stop here
+        except Exception as e:  # no answer: the check goes on as before
+            result["diagnosis_error"] = f"{type(e).__name__}: {str(e)[:120]}"
+            return result
+        accept_passed = result["status"] in ("ok", "step_ok")
+        diagnosis, dropped = validate_diagnosis(raw, facts, valid_rows, accept_passed)
+        self.trace.append({"who": "diagnoser", "tool": "validate",
+                           "args": {"kept": len(diagnosis["causes"]), "dropped": dropped}})
+        result["diagnosis"] = diagnosis
+        result["lights"] = lights_from(diagnosis)
+        result["rule_match"] = compare_with_rules(result, diagnosis)
+        if not result["rule_match"]["agrees"]:
+            self.trace.append({"who": "diagnoser", "tool": "compare",
+                               "args": {"rule": result.get("mistake_id") or result["status"]}})
+        return result
 
     def _check_copies(self, readings, lesson, places):
         """Check every copy of a lesson with "copies" (lesson 3).

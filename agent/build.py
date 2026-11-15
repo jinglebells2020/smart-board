@@ -14,6 +14,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from agent.detective import ScriptedDetectiveModel, detective_spec
+from agent.diagnoser import make_diagnoser
 from agent.lesson_writer import ScriptedGraderModel, ScriptedLessonWriterModel, lesson_writer_spec
 from agent.mock_model import ScriptedTutorModel
 from agent.notebook import notebook_tools_backend
@@ -42,7 +43,7 @@ POWER_QUESTION = ("Turn the power back on? I will measure your circuit right awa
 
 
 def build_agent(session, model=None, detective_model=None, ask_before_power=False,
-                writer_model=None, grader_model=None):
+                writer_model=None, grader_model=None, diagnoser_model=None):
     """The deep agent for one session.
 
     ask_before_power: pause before restore_power and ask the student (deepagents
@@ -50,6 +51,7 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
     it on; answer_power() gives the student's yes or no."""
     if model is None:
         model, _ = make_model()
+    real_claude = isinstance(model, str)
     if isinstance(model, str):
         # Claude: each call gives up after CALL_TIMEOUT seconds (so the
         # offline tutor can answer) and is tried at most twice.
@@ -95,6 +97,13 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
     # ask() tells the session what the student said, so plain Python (not
     # the AI) decides whether this message may turn power on.
     agent.smart_board_session = session
+    # The AI diagnoser (agent/diagnoser.py): with real Claude it runs on every
+    # check; offline (and for the offline fallback) there is none, so the
+    # offline tutor works exactly as before. Tests can pass diagnoser_model.
+    if diagnoser_model is None and real_claude:
+        diagnoser_model = model
+    agent.smart_board_diagnoser = (make_diagnoser(session, diagnoser_model)
+                                   if diagnoser_model is not None else None)
     return agent
 
 
@@ -110,6 +119,7 @@ def ask(agent, history, text, timeout=None):
     is then left as it was."""
     session = getattr(agent, "smart_board_session", None)
     if session is not None:
+        session.diagnoser = getattr(agent, "smart_board_diagnoser", None)  # this agent's own
         session.hear(text)
         session.trace = []  # a new reply: a new "How Zip worked"
     before = len(history)
@@ -130,6 +140,7 @@ def answer_power(agent, history, yes, timeout=None):
     if pending is None:
         raise ValueError("nothing is waiting for an answer")
     session = agent.smart_board_session
+    session.diagnoser = getattr(agent, "smart_board_diagnoser", None)
     session.trace.append({"who": "you", "tool": "approval", "args": {"yes": bool(yes)}})
     session.restore_allowed = bool(yes)  # pressing Yes is asking for power
     decision = ({"type": "approve"} if yes else
