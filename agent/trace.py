@@ -58,7 +58,8 @@ def _rows(rows):
     return "rows " + ", ".join(words[:-1]) + " and " + words[-1]
 
 
-SUBAGENTS = {"detective": "the detective", "lesson_writer": "the lesson writer"}
+SUBAGENTS = {"detective": "the detective", "lesson_writer": "the lesson writer",
+             "diagnoser": "the diagnoser"}
 
 
 def describe_step(step, student="the student"):
@@ -70,6 +71,18 @@ def describe_step(step, student="the student"):
     if who == "you":
         return ("Asked you: turn the power back on? You said yes" if args.get("yes")
                 else "Asked you: turn the power back on? You said no")
+    if who == "physics":
+        n = args.get("count", 0)
+        return f"Worked out {n} fact{'s' if n != 1 else ''} from the measurements"
+    if who == "diagnoser" and tool == "diagnose":
+        return "Asked the diagnoser"
+    if who == "diagnoser" and tool == "validate":
+        dropped = args.get("dropped", 0)
+        return ("Checked every cause against the facts" +
+                (f" (left out {dropped} that the facts do not show)" if dropped else ""))
+    if who == "diagnoser" and tool == "compare":
+        return ("Kept both answers: the diagnoser and the lesson's own rules "
+                f"({str(args.get('rule', '')).replace('_', ' ')}) disagree")
     if who == "grader":
         verdict = {"satisfied": "it passes every rule",
                    "needs_revision": "it needs another try",
@@ -104,6 +117,8 @@ def describe_step(step, student="the student"):
         return f"Asked {SUBAGENTS.get(sub, 'a helper (' + sub + ')')}"
     if tool in ("DetectiveAnswer",):
         return "Answered with at most two questions"
+    if tool in ("Diagnosis",):
+        return "Answered with a diagnosis"
     return f"Used {tool}"
 
 
