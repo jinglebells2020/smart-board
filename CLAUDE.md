@@ -80,6 +80,10 @@ The software must work with any of those answers.
 - Free build (--free-build, agent/lessons.py FREE_LESSON, id 5): after
   lesson 4, no plan and no PASS; the check reports the measured rows,
   current and plain facts. Parts tray: agent/tray.py, /api/tray.
+  Phase 2 (agent/reader.py, agent/feedback.py): every free build check
+  runs facts -> circuit_reader subagent (CircuitGuess) -> physics check
+  (sim/solver.py, max 2 tries, best kept) -> feedback list (hint first,
+  usable rows only). tools/eval_free_build.py measures accuracy.
 - agent/serial_board.py : SerialBoard, a real board on a USB serial
   port (pyserial), same methods as the fake board. Server and
   python -m agent take --serial <port|auto> and --baud.

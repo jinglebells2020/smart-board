@@ -522,6 +522,8 @@ class App:
             # The parts tray (free build): what the student used, what it should do.
             "tray": self.tray,
             "tray_parts": TRAY_PARTS,
+            # Free build: what Zip thinks was built, and how well physics agreed.
+            "circuit_guess": self._guess_view(),
             # The judges' panel: the last 50 things the agents did, and counts.
             **self._activity_view(),
         }
@@ -857,6 +859,21 @@ class App:
         return {"reply": reply, "tools": tools, "offline": offline}
 
     # --- Free build ------------------------------------------------------------
+    def _guess_view(self):
+        """For the page: the circuit reader's guess from the latest check
+        (part words, and a check mark when the physics check matched it)."""
+        s = self.session
+        if not s.is_free() or not s.last_check:
+            return None
+        result = s.last_check[1] or {}
+        guess = result.get("circuit_guess")
+        if not guess:
+            return None
+        return {"parts": [{"words": p["words"], "ok": bool(p.get("ok")), "sure": p["sure"]}
+                          for p in guess["parts"]],
+                "score": result.get("guess_score"), "matched": result.get("guess_matched"),
+                "not_sure": (result.get("main_problem") or {}).get("kind") == "not_sure"}
+
     def netlist(self, parts):
         """Fake board only: the pretend student built exactly these parts."""
         if not self.is_sim:

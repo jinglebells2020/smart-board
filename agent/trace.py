@@ -105,6 +105,18 @@ def describe_step(step, student="the student"):
     if who == "physics":
         n = args.get("count", 0)
         return f"Worked out {n} fact{'s' if n != 1 else ''} from the measurements"
+    if who == "reader" and tool == "read":
+        return ("Asked the circuit reader what you built" if (args.get("try") or 1) == 1
+                else "Asked the circuit reader again, with what did not match")
+    if who == "reader" and tool == "answer":
+        n, sure = args.get("parts", 0), args.get("sure", 0)
+        return f"The circuit reader guessed {n} part{'s' if n != 1 else ''} ({sure} sure)"
+    if who == "reader" and tool == "error":
+        return "The circuit reader could not answer"
+    if who == "physics_check":
+        m, t = args.get("matched", 0), args.get("total", 0)
+        return ("Checked the guess with a circuit solver: everything matches" if m == t and t
+                else f"Checked the guess with a circuit solver: {m} of {t} match")
     if who == "diagnoser" and tool == "diagnose":
         return "Asked the diagnoser"
     if who == "diagnoser" and tool == "answer":

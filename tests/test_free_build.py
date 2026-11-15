@@ -277,7 +277,8 @@ class TestFreeBuild(unittest.TestCase):
         self.assertEqual(kinds[-1], "current")
         self.assertFalse({"part_drop", "led_state", "extra_rows", "same_voltage"} & set(kinds))
         self.assertTrue(board.power_on)
-        self.assertIn("I measured 3 rows", out["reply"])
+        self.assertIn("Your circuit works!", out["reply"])  # phase 2: the reader read it
+        self.assertIn("red LED in row 21 and row 22 is on", out["reply"])
         self.assertFalse(a.session.passed_current)  # free build has no PASS
         self.assertEqual(a.session.next_lesson()["lesson"], FREE_ID)  # stays: nothing to pass
         self.assertIn("Free build", a.session.hint()["say"])

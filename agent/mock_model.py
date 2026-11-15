@@ -171,8 +171,9 @@ class ScriptedTutorModel(BaseChatModel):
             # Power came on and was measured at once: carry on from that check.
 
         if status == "free":
-            # Free build: no plan, so no right or wrong yet. Say what the board
-            # measured (the AI reader that works out the circuit is phase 2).
+            # Free build: no plan. Phase 2: the circuit reader's physics-checked
+            # guess gives a feedback list (agent/feedback.py), most important first.
+            items = check.get("feedback")
             if check.get("action") == "cut_power":
                 if "show_on_board" not in called:
                     return call("show_on_board", text="Power OFF:|too much current.")
@@ -180,13 +181,39 @@ class ScriptedTutorModel(BaseChatModel):
                              f"{check.get('danger', 'too much current')}. Look for an LED with "
                              "no resistor, or a wire straight from + to -.")
             rows = check.get("measured_rows", {})
+            if not rows:
+                return reply("Free build: nothing is plugged into a row I can measure yet. "
+                             "Build something, then press Check.")
+            if items is not None:
+                # Lights: green = working part, yellow = possible, red = likely problem
+                # (a row gets the most serious colour). Usable rows only.
+                colour_of = {}
+                for colour in ("green", "yellow", "red"):
+                    for item in items:
+                        if item.get("light") == colour:
+                            colour_of.update({r: colour for r in item["rows"]})
+                groups = [(c, [r for r, k in colour_of.items() if k == c])
+                          for c in ("red", "yellow", "green")]
+                groups = [(c, rs) for c, rs in groups if rs]
+                if groups and "clear_lights" not in called:
+                    return call("clear_lights")
+                lit = called.count("light_row")
+                if lit < len(groups):
+                    return call("light_row", rows=groups[lit][1], color=groups[lit][0])
+                main = next((i for i in items if i["level"] in ("problem", "maybe")), None)
+                good = [i["text"] for i in items if i["level"] == "good"]
+                info = [i["text"] for i in items if i["level"] == "info"]
+                if main:
+                    text = main["text"]  # the hint: where to look, not the whole fix
+                    if main["kind"] != "not_sure" and good:
+                        text += " " + good[0]
+                else:
+                    text = "Your circuit works! " + " ".join(good[:2])
+                return reply(" ".join([text] + info[:1]).strip())
             said = ", ".join(f"{row_label(r)} {max(v, 0):.1f} V" for r, v in list(rows.items())[:6])
             more = f" and {len(rows) - 6} more" if len(rows) > 6 else ""
             current = check.get("current_ma")
             amps = ("" if current is None else f" The current is {max(current, 0):.1f} mA.")
-            if not rows:
-                return reply("Free build: nothing is plugged into a row I can measure yet. "
-                             "Build something, then press Check.")
             return reply(f"Free build: I measured {len(rows)} row{'s' if len(rows) != 1 else ''} "
                          f"with something in {'them' if len(rows) != 1 else 'it'}: {said}{more}."
                          f"{amps} Tell me what it should do, and press Check after each change.")

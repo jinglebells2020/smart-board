@@ -28,6 +28,7 @@ written at about a 6th grade reading level.
 | `agent/experiments.py` | Done. Zip acts: when two causes look the same to the board, Zip can ask you to do ONE thing with your hands ("Turn around the LED in rows 10 and 12"), with two buttons ("Done" / "I can't"), then measures again and sees what changed. Python checks the instruction first (one action from: pull out, push in, turn around, move, press, let go, wait; a part of the lesson; a row; never anything about power) and allows at most 2 per reply. While you build, each part you add makes Zip light the next part's rows blue and write the step on the board screen, without a chat message. Zip may switch the power off at any time and must say why; it can never switch power on by itself (that still asks "Turn the power back on?"). |
 | `agent/activity.py` | Done. Agent activity: a live panel for judges (closed for the student, opens with the Teacher view) listing the last 50 actions of Zip's agents, newest first, with who did it, the kind of action and the time, and counts per agent. Built from the same recorded steps as "How Zip worked", plus instant help and plain-Python safety cuts. It only reads: nothing about what Zip does changes. |
 | `sim/solver.py`, free build (phase 1) | Done. **Usable rows**: `--usable-rows "T3-T8,T20-T24,B40-B45"` (or the `SMART_BOARD_USABLE_ROWS` environment variable; default every row) for a board where only some rows work: the others are never measured, never called empty, never lit, and are grey in the drawing. **Circuit solver**: the fake board works out any circuit (wires, resistors, LEDs of 5 colours, push buttons) with nodal analysis, so a free build reads like a real board. **Random judge circuits** (`/api/random-circuit`), sometimes with a typical mistake (LED backwards, missing link, short, LED with no resistor: the safety cut still works). **Parts tray** ("What parts did you use?" and "What should it do?"). **Free build** (`--free-build`): after lesson 4 in the path, no plan, the check reports every measured row, the current and plain facts. The AI that works out what was built comes in phase 2. |
+| `agent/reader.py`, `agent/feedback.py`, free build (phase 2) | Done. In free build, every check reads ANY circuit: plain Python works out the facts, the **circuit reader** (a Claude subagent; offline, a plain-Python reader for one chain of parts) guesses which parts are on which rows, and a **physics check** in plain Python works the guess out with `sim/solver.py` and compares it with every measured row (within 0.3 V) and the current (within 20 % or 2 mA). If it does not match, the reader is told what did not match and tries once more; the best guess is kept. Then Zip gives feedback, hint first: is each LED on and why, shorts, parts doing nothing, open paths, the current, and whether the circuit does what the student wanted. Red, yellow and green lights only on usable rows. When the guess does not fit, Zip says honestly that it is not sure and asks about the parts tray. The page shows **"Zip thinks you built:"** with a check mark for each part the physics check confirmed. |
 | `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`) |
 | `tools/check_board.py`   | Done. Checks a board's firmware against the protocol and prints PASS or FAIL per rule. How the hardware teammate tests the firmware (docs/FIRMWARE_GUIDE.md) |
 | `firmware/`              | Not written yet. docs/FIRMWARE_GUIDE.md says what it must do |
@@ -75,7 +76,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (593 tests; it says `OK (skipped=1)` on a
+The last line should say `OK` (615 tests; it says `OK (skipped=1)` on a
 computer without Node.js and Playwright, which the page-layout browser
 check needs). They never call Claude, so
 they work without an API key.
@@ -109,7 +110,25 @@ python web/server.py --free-build --usable-rows "T3-T8,T20-T24,B40-B45" --fresh
   The answer shows the true circuit, for you only: Zip never sees it.
   Then press **Check my circuit**: Zip says what the board measured.
 - Fill in **What parts did you use?** and **What should it do?**, then
-  press **Save my parts**. (Zip uses this in phase 2.)
+  press **Save my parts**. Zip uses them to tell apart circuits that read
+  the same, and says whether the circuit does what you wanted.
+- Under the drawing, **Zip thinks you built:** lists the parts Zip worked
+  out, with a check mark for each one a circuit solver confirmed.
+
+How well does Zip read random circuits? Run (no API key: the offline
+reader; with `ANTHROPIC_API_KEY` set: Claude):
+
+```bash
+python tools/eval_free_build.py --n 40
+```
+
+It prints, for N random circuits: how often the guess passes the physics
+check, how often the guessed parts are exactly right, and how often the
+main problem was found. Add `--tray` to fill the parts tray like a
+student would. Offline (plain Python, 80 circuits): 89% pass the physics
+check, 49% exactly the right parts (54% with the tray), 82% main problem
+found. Two LEDs side by side can read like one chain to the board, so
+"passes physics" does not always mean "right parts".
 
 ## Start the demo (one command)
 
