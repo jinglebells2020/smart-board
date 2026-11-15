@@ -8,7 +8,8 @@ server sits in between. It uses only Python's built-in http.server.
     GET  /            the page
     GET  /api/state   lesson, latest reading, mistake history (polled ~4x a second)
     POST /api/ask     {"text": "..."}      -> the tutor's reply
-    POST /api/build   {"scenario": "...", "place": "T 15"} -> fake board only: change the circuit
+    POST /api/build   {"scenario": "...", "place": "T 15", "parts": 2} -> fake board only: change the circuit
+                      ("parts": only the first n parts are in, or "all")
                       (place, optional: build it in other rows, top T or bottom B;
                       or "copies": ["T 0", "T 15"]: the circuit at each place, lesson 3;
                       or "rows": ["T20", "T27", "T29"]: on these rows, any spacing)
@@ -18,10 +19,12 @@ server sits in between. It uses only Python's built-in http.server.
     POST /api/restart-demo  start the demo again: Maya, lesson 1, fresh history and notebook
     POST /api/power-answer {"yes": true|false} -> answer "Turn the power back on?"
     POST /api/hold    {"on": true|false}   -> fake board only: hold the breadboard's push button (lesson 4)
+    POST /api/instant {"on": true|false}   -> instant help: react when the board changes, without Check
     GET  /api/notebook the student's notebook, as plain text
 """
 
 import argparse
+import copy
 import json
 import sys
 import threading
@@ -34,7 +37,9 @@ sys.path.insert(0, str(ROOT))  # so "python web/server.py" can import agent and 
 
 from agent.boardlink import BoardLink  # noqa: E402
 from agent.build import CLAUDE_TIMEOUT, POWER_QUESTION, build_agent, make_model  # noqa: E402
-from agent.fallback import OFFLINE_NOTE, SafeReplies  # noqa: E402
+from agent.fallback import OFFLINE_NOTE, STATE, SafeReplies  # noqa: E402
+from agent.live import ChangeDetector, classify  # noqa: E402
+from agent.physics import observations  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
 from agent.lessons import summarize  # noqa: E402
 from agent.notebook import Notebook  # noqa: E402
@@ -50,8 +55,24 @@ PAGE = Path(__file__).resolve().parent / "index.html"
 
 class App:
     def __init__(self, board, lesson=1, history_path=None, model=None, notebook=None,
-                 confirm_power=False, log=None, timeout=CLAUDE_TIMEOUT, demo=None):
+                 confirm_power=False, log=None, timeout=CLAUDE_TIMEOUT, demo=None,
+                 instant=False):
         self.is_sim = isinstance(board, FakeBoard)
+        # Instant help (agent/live.py): react the moment the board changes.
+        # The server turns it on (--no-instant turns it off); off by default
+        # here, so a test or a script decides.
+        self.instant = bool(instant)
+        self.live = ChangeDetector()
+        self.instant_inline = False  # tests: handle a change now, not in a thread
+        self.auto_inline = False     # tests: run the automatic check now, not in a thread
+        self.instant_mistake = None  # the last mistake instant help told about
+        self.building = None         # {"parts_in", "parts"} from the latest instant check
+        self._auto_guard = threading.Lock()
+        self._auto_running = False
+        self._auto_again = False
+        self._auto_done = threading.Event()
+        self._auto_done.set()
+        self._auto_last = None
         self.raw_board = board
         # One shared handle (with a lock) for the page, the tutor and buttons.
         self.board = BoardLink(board)
@@ -403,6 +424,8 @@ class App:
         except BoardError:
             reading, reading_ok = dict(self.NO_READING), False
         summary = summarize([reading], lesson)
+        if reading_ok and self.instant:
+            self.instant_tick(reading)  # instant help sees the same reading
         counts = {}
         history = []
         for i, m in enumerate(s.history["mistakes"]):
@@ -448,6 +471,9 @@ class App:
             "place": list(getattr(self.raw_board, "place", ("T", 0))) if self.is_sim else None,
             "held": bool(getattr(self.raw_board, "held", False)) if self.is_sim else None,
             "busy": self.agent_lock.locked(),
+            # Instant help: on or off, and how far the build is.
+            "instant": self.instant,
+            "building": self.building,
             # Zip is asking "Turn the power back on?" (Yes / No on the page).
             "asks_power": self.waiting_for_power_answer(),
         }
@@ -456,10 +482,145 @@ class App:
         """Is a reply paused on "Turn the power back on?"?"""
         return self.replies.paused(self.agent) is not None
 
+    # --- Instant help (agent/live.py) ------------------------------------------
+    CHECK_TEXT = "Check my circuit"
+
+    def set_instant(self, on):
+        self.instant = bool(on)
+        self.live.reset()  # start again from the board as it is now
+        self.building = None
+        return {"ok": True, "instant": self.instant}
+
+    def instant_tick(self, reading=None):
+        """Give instant help one reading (the server's own, or a new one).
+        Returns the change event, if this reading completed one."""
+        if not self.instant or self.session.is_explore():
+            return None
+        if reading is None:
+            try:
+                reading = self.board.read()
+            except BoardError:
+                return None
+        event = self.live.feed(reading)
+        if event is not None:
+            if self.instant_inline:
+                self._instant(event)
+            else:
+                threading.Thread(target=self._instant, args=(event,), daemon=True).start()
+        return event
+
+    def _instant(self, event):
+        """One steady change: a quick check in plain Python (no AI, the
+        lesson's state is put back after), then decide what to say."""
+        if self.waiting_for_power_answer() or not self.agent_lock.acquire(blocking=False):
+            with self._auto_guard:  # a check is running: it sees the board anyway,
+                if self._auto_running:  # and an automatic one runs once more after
+                    self._auto_again = True
+            return
+        try:
+            s = self.session
+            saved = {k: copy.deepcopy(getattr(s, k)) for k in STATE}
+            diagnoser, s.diagnoser = s.diagnoser, None  # instant help never waits for AI
+            try:
+                summary, result, cut = s.measure()
+                lesson = s._step_lesson(s.lesson) if s.button_step else s.lesson
+                facts = observations(summary, lesson, extra_rows=result.get("extra_rows"),
+                                     safety_cut=cut)
+                plan = dict(lesson, rows=lesson.get("accept", {}).get("driven") or lesson["rows"])
+                found = classify(result, summary, facts, plan)
+            finally:
+                for k, v in saved.items():  # instant help never logs, passes or moves on
+                    setattr(s, k, v)
+                s.diagnoser = diagnoser
+        finally:
+            self.agent_lock.release()
+        self._act(result, cut, found, event)
+
+    def _act(self, result, cut, found, event):
+        self.building = {"parts_in": found["parts_in"], "parts": found["parts"]}
+        if cut:  # safety came first: say why, at once
+            self.instant_mistake = found
+            self._say("I switched the power off to keep your parts safe. " + found["text"],
+                      "careful")
+            return
+        if found["kind"] == "mistake":
+            if self.instant_mistake and self.instant_mistake["rows"] == found["rows"] \
+                    and self.instant_mistake["text"] == found["text"]:
+                return  # already said
+            self.instant_mistake = found
+            self.board.clear_lights()
+            if found["rows"]:
+                self.board.set_lights(found["rows"], "yellow")  # careful: look here
+            self._say(found["text"], "curious")
+            self.trigger_auto()  # then Zip explains it, hint first
+            return
+        if self.instant_mistake is not None:
+            self.instant_mistake = None
+            self.board.clear_lights()
+            self._say("That fixed it.", "happy")
+            if found["kind"] == "complete" and result.get("status") in ("ok", "step_ok"):
+                self.trigger_auto()  # complete and right: the normal praise and pass
+            return
+        if found["kind"] == "complete":
+            self.trigger_auto()  # every part is in: a normal check decides
+
+    def _say(self, text, mood):
+        self.log.append({"who": "tutor", "text": text, "time": time.time(), "instant": True,
+                         "steps": [], "tools": [], "mood": mood, "celebrate": False})
+
+    def trigger_auto(self):
+        """The AI layer: the same path as the Check button, in a worker thread.
+        One at a time; a change while it runs makes it run once more after."""
+        with self._auto_guard:
+            if self._auto_running:
+                self._auto_again = True
+                return
+            self._auto_running = True
+            self._auto_done.clear()
+        if self.auto_inline:
+            self._auto_loop()
+        else:
+            threading.Thread(target=self._auto_loop, daemon=True).start()
+
+    def _auto_loop(self):
+        try:
+            while True:
+                if not self.waiting_for_power_answer() and self.agent_lock.acquire(blocking=False):
+                    try:
+                        self._auto_last = self._turn(
+                            self.CHECK_TEXT,
+                            lambda: self.replies.ask(self.agent, self.chat, self.CHECK_TEXT),
+                            auto=True)
+                    finally:
+                        self.agent_lock.release()
+                # (else the student pressed Check: that check sees the same board)
+                with self._auto_guard:
+                    if not self._auto_again:
+                        return
+                    self._auto_again = False
+        finally:
+            with self._auto_guard:
+                self._auto_running = False
+                self._auto_again = False
+                self._auto_done.set()
+
+    def wait_for_auto(self, timeout=30):
+        return self._auto_done.wait(timeout)
+
+    @staticmethod
+    def is_check(text):
+        return (text or "").strip().lower().startswith("check")
+
     def ask(self, text):
         text = (text or "").strip()[:500]
         if not text:
             return {"error": "empty message"}
+        if self.is_check(text) and not self._auto_done.is_set():
+            # An automatic check of this same board is running: its answer is
+            # this check's answer (no second reply).
+            self._auto_done.wait(60)
+            if self._auto_last is not None:
+                return dict(self._auto_last, merged=True)
         with self.agent_lock:
             if self.waiting_for_power_answer():
                 # A new message instead of Yes or No: that is a no.
@@ -476,9 +637,10 @@ class App:
                               lambda: self.replies.answer_power(self.agent, self.chat, bool(yes)),
                               resume=True)
 
-    def _turn(self, text, run, resume=False):
-        """Run one tutor reply (or the rest of a paused one) and log it."""
-        self.log.append({"who": "student", "text": text, "time": time.time()})
+    def _turn(self, text, run, resume=False, auto=False):
+        """Run one tutor reply (or the rest of a paused one) and log it.
+        auto: an automatic check started by instant help (tagged on the page)."""
+        self.log.append({"who": "student", "text": text, "time": time.time(), "auto": auto})
         if not resume:
             self._turn_start = (self.session.lesson_id, self.session.last_check)
             self.session.last_logged = None
@@ -522,7 +684,7 @@ class App:
                          "tools": tools, "mood": mood,
                          # The page shows a short celebration for this reply.
                          "celebrate": bool(result and result.get("status") == "ok"),
-                         "offline": offline})
+                         "offline": offline, "auto": auto})
         if self.is_sim and self.session.lesson_id != before:
             # New lesson: the pretend student starts with a correct build.
             self.board.send(f"SCENARIO {self.session.lesson_id} correct")
@@ -535,7 +697,7 @@ class App:
             return {"error": "only the fake board has a pretend button to hold"}
         return self.board.send(f"HOLD {'on' if on else 'off'}")
 
-    def build(self, scenario, place=None, copies=None, rows=None):
+    def build(self, scenario, place=None, copies=None, rows=None, parts=None):
         """Fake board only: change the circuit. place, like "T 15" or "B 0",
         builds it somewhere else on the board (None: leave it where it is).
         copies, like ["T 0", "T 15"] or ["T 0", "T20/T27/T29"], builds the
@@ -544,6 +706,10 @@ class App:
         order), builds it on those rows: any spacing."""
         if not self.is_sim:
             return {"error": "only the fake board can change circuits"}
+        if parts is not None:  # build part by part: only the first n parts are in
+            answer = self.board.send(f"BUILD {'ALL' if parts == 'all' else parts}")
+            if answer.get("type") == "error":
+                return answer
         if rows:
             if not isinstance(rows, list):
                 return {"type": "error", "msg": "rows must be a list like [\"T20\", \"T27\", \"T29\"]"}
@@ -597,7 +763,8 @@ def make_handler(app):
             elif self.path == "/api/build":
                 self._send(200, app.build(str(body.get("scenario", "")),
                                           body.get("place") and str(body["place"]),
-                                          body.get("copies"), body.get("rows")))
+                                          body.get("copies"), body.get("rows"),
+                                          body.get("parts")))
             elif self.path == "/api/press":
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})
@@ -611,6 +778,10 @@ def make_handler(app):
                                          body.get("written_by_zip", False)))
             elif self.path == "/api/reset":
                 self._send(200, app.reset())
+            elif self.path == "/api/instant":
+                if not isinstance(body, dict):
+                    return self._send(400, {"error": "bad request"})
+                self._send(200, app.set_instant(bool(body.get("on"))))
             elif self.path == "/api/hold":
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})
@@ -662,6 +833,8 @@ def make_server(app, port=8000, host="127.0.0.1"):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Genesis: the smart breadboard web page")
+    p.add_argument("--no-instant", action="store_true",
+                   help="turn instant help off (Zip then reacts only when you check)")
     p.add_argument("--demo", action="store_true",
                    help='start the demo: student "Maya", lesson 1, fresh history and notebook')
     p.add_argument("--port", type=int, default=8000)
@@ -706,7 +879,8 @@ def main(argv=None):
             "history": str(default_history(DEMO_STUDENT))}
     app = App(board, lesson="start" if args.lesson is None else args.lesson,
               history_path=args.history, notebook=notebook,
-              confirm_power=True, log=lambda line: print(line, flush=True), demo=demo)
+              confirm_power=True, log=lambda line: print(line, flush=True), demo=demo,
+              instant=not args.no_instant)
     if app.is_sim and app.session.lesson_id != board.lesson:
         # A new student starts at lesson 0: the pretend board shows that lesson.
         board.send(f"SCENARIO {app.session.lesson_id} correct")

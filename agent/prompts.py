@@ -55,7 +55,9 @@ changed something:
    - "unknown": the circuit is wrong in a way the lesson does not list.
      Light the rows named in lesson_check.clue.details "yellow". Then call
      the task tool with subagent_type "detective" (only for "unknown",
-     never for other statuses), describing the case in one sentence. Tell
+     never for other statuses, and NEVER when lesson_check has
+     "diagnosis": then teach from the diagnosis instead; asking both is
+     slow), describing the case in one sentence. Tell
      the student lesson_check.clue.text in a friendly way first, then the
      detective's questions, as questions. Never guess a specific fix or
      say which part to change, because we do not know it.

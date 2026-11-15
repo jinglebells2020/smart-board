@@ -47,6 +47,35 @@ class TraceMiddleware(AgentMiddleware):
         return handler(request)
 
 
+ALREADY_DIAGNOSED = "Already diagnosed: use the diagnosis in lesson_check."
+
+
+class DetectiveGuard(AgentMiddleware):
+    """Speed: when the latest check already has the diagnoser's answer, a
+    call to the detective is answered at once by plain Python, without
+    calling the model (both together took 40 s in a real test)."""
+
+    def __init__(self, session):
+        super().__init__()
+        self.session = session
+
+    @property
+    def name(self):
+        return "DetectiveGuard"
+
+    def wrap_tool_call(self, request, handler):
+        call = request.tool_call
+        args = call.get("args") or {}
+        if call.get("name") == "task" and args.get("subagent_type") == "detective":
+            last = (self.session.last_check or ({}, {}))[1] or {}
+            if last.get("diagnosis"):
+                from langchain_core.messages import ToolMessage
+                self.session.trace.append({"who": "tutor", "tool": "skip_detective"})
+                return ToolMessage(content=ALREADY_DIAGNOSED, tool_call_id=call.get("id"),
+                                   name="task")
+        return handler(request)
+
+
 def _rows(rows):
     if isinstance(rows, str):
         rows = rows.replace(",", " ").split()
@@ -103,6 +132,7 @@ def describe_step(step, student="the student"):
         "read_file": f"Read {owner} notebook",
         "write_todos": "Made a plan",
         "look_at_the_case": "Compared the rows with the plan",
+        "skip_detective": "Did not ask the detective: the diagnosis already explains it",
         "get_lesson_facts": "Read the old mini-lesson and the comparisons already used",
     }
     if tool in words:

@@ -194,6 +194,61 @@ SCENARIOS = {
     4: ["correct", "button_always_on", "button_not_connecting", "led_backwards",
         "no_resistor"] + UNLISTED[4],
 }
+# Every lesson's parts in build order (as in lessons/*.json "layout"), for the
+# sim-only BUILD <n>: only the first n parts are in.
+PARTS = {
+    0: [],
+    1: [("wire", "PT+", "T5"), ("resistor", "T5", "T10"), ("led", "T10", "T12"),
+        ("wire", "T12", "PT-")],
+    2: [("wire", "PT+", "T5"), ("resistor", "T5", "T10"), ("resistor", "T10", "T15"),
+        ("wire", "T15", "PT-")],
+    3: [("wire", "PT+", "T5"), ("resistor", "T5", "T10"), ("led", "T10", "T12"),
+        ("wire", "T12", "PT-")],
+    4: [("wire", "PT+", "T5"), ("button", "T5", "T8"), ("resistor", "T8", "T13"),
+        ("led", "T13", "T15"), ("wire", "T15", "PT-")],
+}
+
+
+def _partial_circuit(lesson, scenario, n, held=False):
+    """Only the first n parts are in (BUILD n). The loop is not closed, so no
+    current flows: every row joined to the + line by wires, resistors (and a
+    pressed button) reads the supply, every row joined to the - line reads
+    0 V, and the rest are empty. An LED does not let current through, unless
+    the scenario is led_bypassed (then it is like a wire)."""
+    parts = PARTS.get(lesson, [])[:n]
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    joined_button = scenario == "button_always_on" or (held and scenario != "button_not_connecting")
+    for kind, a, b in parts:
+        find(a), find(b)
+        if kind in ("wire", "resistor") or (kind == "button" and joined_button) or \
+                (kind == "led" and scenario == "led_bypassed"):
+            parent[find(a)] = find(b)
+    if "PT+" in parent and "PT-" in parent and find("PT+") == find("PT-"):
+        return _circuit(lesson, scenario, held)  # a closed path: as if it were all built
+    circuit = {}
+    for row in parent:
+        if row.startswith("P"):
+            continue
+        if "PT+" in parent and find(row) == find("PT+"):
+            circuit[row] = SUPPLY_V
+        elif "PT-" in parent and find(row) == find("PT-"):
+            circuit[row] = 0.0
+        else:
+            circuit[row] = FLOATING
+    middle = STRAY.get(lesson)
+    if scenario == "stray_part" and middle and circuit.get(middle) not in (None, FLOATING):
+        circuit[f"T{int(middle[1:]) + 20}"] = circuit[middle]
+    return SUPPLY_V, 0.0, circuit
+
+
 # Sim only: the correct circuit plus a part from the middle row (named here)
 # to the row 20 below it, which is not in the plan ("extra_part").
 STRAY = {1: "T10", 2: "T10", 3: "T10"}
@@ -235,6 +290,7 @@ class FakeBoard:
         self.firmware_cut_ma = firmware_cut_ma if (has_current and has_power_switch) else None
         self.power_on = True
         self.held = False  # lesson 4: the push button on the breadboard (HOLD on|off)
+        self.built = None  # BUILD n: only the first n parts are in (None: all)
         self.lights = {}   # row -> color
         self.screen = []   # lines on the screen
         self._events = []
@@ -247,6 +303,7 @@ class FakeBoard:
             raise ValueError(f"unknown lesson/scenario: {lesson} {scenario}")
         if lesson != getattr(self, "lesson", lesson):
             self.copies = None  # a new lesson: one circuit again
+            self.built = None   # and all of it is built
             self.held = False   # and nobody is holding a button
         self.lesson = lesson
         self.scenario = scenario
@@ -343,6 +400,10 @@ class FakeBoard:
                 if self._wobble:  # the leg lets go: that row is empty, no current
                     circuit = dict(circuit, **{LOOSE[scenario]: FLOATING})
                     c = 0.0
+            elif getattr(self, "built", None) is not None and \
+                    self.built < len(PARTS.get(self.lesson, [])):
+                s, c, circuit = _partial_circuit(self.lesson, scenario, self.built,
+                                                 getattr(self, "held", False))
             else:
                 s, c, circuit = _circuit(self.lesson, scenario, getattr(self, "held", False))
             stray = None
@@ -350,9 +411,10 @@ class FakeBoard:
                 # The extra part goes from the REAL middle row to 20 rows below
                 # it, wherever (and however spaced) the circuit is built.
                 middle = STRAY[self.lesson]
-                value = circuit.pop(f"T{int(middle[1:]) + 20}")
+                value = circuit.pop(f"T{int(middle[1:]) + 20}", None)
                 real = self._moved(middle, place)
-                stray = (f"{real[0]}{int(real[1:]) + 20}", value)
+                if value is not None:  # (not yet, while only some parts are in)
+                    stray = (f"{real[0]}{int(real[1:]) + 20}", value)
             supply, current = min(supply, s), current + c
             nodes.update({self._moved(k, place): v
                           for k, v in dict(circuit, **{"PT+": s, "PT-": 0.0}).items()})
@@ -456,6 +518,14 @@ class FakeBoard:
             except ValueError as e:
                 return error(str(e))
             return ack(f"PLACE {self.place[0]} {self.place[1]}")
+        if cmd == "BUILD" and len(parts) == 2:  # simulator only: BUILD 2 (the first 2 parts)
+            if parts[1].upper() == "ALL":
+                self.built = None
+            elif parts[1].isdigit():
+                self.built = int(parts[1])
+            else:
+                return error("BUILD needs a number of parts, or ALL")
+            return ack(f"BUILD {'ALL' if self.built is None else self.built}")
         if cmd == "HOLD" and len(parts) == 2 and parts[1].lower() in ("on", "off"):
             # simulator only: is the push button on the breadboard held down (lesson 4)
             self.held = parts[1].lower() == "on"
