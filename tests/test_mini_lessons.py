@@ -78,6 +78,9 @@ def visible_page_text():
     html = re.sub(r"<style>.*?</style>", " ", html, flags=re.S)
     scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.S)
     body = re.sub(r"<script>.*?</script>", " ", html, flags=re.S)
+    # The "Agent activity" panel is for the judges and the teacher (closed for
+    # the student): it names the agents. Only that block is left out.
+    body = re.sub(r"<!-- judges: start.*?<!-- judges: end -->", " ", body, flags=re.S)
     body = re.sub(r"<!--.*?-->", " ", body, flags=re.S)
     tag_text = re.sub(r"<[^>]+>", " ", body)
     # attributes that are shown: placeholder, title, aria-label

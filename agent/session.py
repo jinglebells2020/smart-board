@@ -81,6 +81,9 @@ class Session:
         self.last_check = None
         # What Zip did in the current reply, as it happens (agent/trace.py).
         self.trace = []
+        # Told about every safety cut plain Python makes (the judges' "Agent
+        # activity" panel, agent/activity.py). It only listens: fn(text).
+        self.on_safety = None
         # The mistake a new mini-lesson is wanted for (set by plain Python:
         # the same mistake a second time, or its quiz answered wrong), and the
         # occurrence a lesson was just accepted for (for the page's card).
@@ -225,6 +228,8 @@ class Session:
                     and board.has_power_switch):
                 board.cut()
                 safety_cut = True
+                self._safety(f"Switched the power off at once: {current:.0f} mA is more "
+                             f"than {SAFETY_MAX_MA:.0f} mA")
                 break
         board.poll()
         # Judge the circuit from readings taken while power was on. If the
@@ -292,6 +297,10 @@ class Session:
                       "message": "Before we go on: answer the question about which holes "
                                  "are joined. Press Learn on the laptop to see it."}
         if board_cut is not None:
+            if not board_cut.get("logged") and not board_cut.get("explained"):
+                ma = board_cut.get("current_ma")
+                self._safety("The board switched the power off by itself" +
+                             (f" ({ma:.0f} mA)" if isinstance(ma, (int, float)) else ""))
             board_cut["explained"] = True
             result["board_cut"] = {"reason": board_cut.get("reason"),
                                    "current_ma": board_cut.get("current_ma"),
@@ -301,12 +310,16 @@ class Session:
             self.passed_current = True
             self.open_mistake = None  # nothing left to give hints about
         if result.get("action") == "cut_power" and summary["power_on"] and not safety_cut:
+            what = str(result.get("mistake_id") or "a dangerous mistake").replace("_", " ")
             if board.has_power_switch:
                 board.cut()
                 safety_cut = True
+                self._safety(f"Switched the power off: {what} is not safe")
             else:
                 result["manual_power_off"] = True
                 board.show(MANUAL_OFF_SCREEN)
+                self._safety(f"No power switch: asked for the power to be switched off by "
+                             f"hand ({what})")
         if self.diagnoser is not None and not self.is_explore():
             # Claude is available: physics facts + the diagnoser. Only after
             # the safety cut above, so a slow answer never delays it.
@@ -322,6 +335,14 @@ class Session:
         if entry is not None:
             self.pending_entry = entry
         return summary, result, safety_cut
+
+    def _safety(self, text):
+        """Tell the listener (if any) about a safety step. Never changes it."""
+        if self.on_safety is not None:
+            try:
+                self.on_safety(text)
+            except Exception:
+                pass  # the panel must never stop a safety cut
 
     # --- The AI diagnoser (agent/physics.py, agent/diagnoser.py) ---------------
     NO_DIAGNOSIS = ("power_off", "missing_rows", "quiz_first")

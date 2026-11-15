@@ -26,6 +26,7 @@ written at about a 6th grade reading level.
 | `agent/physics.py`, `agent/diagnoser.py` | Done. AI diagnoser: plain Python works out physics facts from each check (row voltages, the voltage across each part, the current through each resistor, LED on/blocked/shorted, rows that read the same, extra rows, loose legs, power). With Claude, the diagnoser subagent reasons from those facts and names the facts behind every cause; plain Python drops any cause the facts do not show. Safety, power and passing are still decided by plain Python and the lesson's rules. Offline, nothing changes. |
 | `agent/live.py` | Done. Instant help (on by default; `--no-instant` or the "Instant help" switch turns it off): Zip reacts the moment the board changes, without Check. A change counts after it stays 1.5 s. While building it stays quiet ("2 of 4 parts in" under the plan); a mistake that is already clear (a part outside the plan, a shorted LED, joined rows, a loose leg, far too much current) is said at once, then Zip explains it with a normal check; a fix gets "That fixed it."; a finished circuit is checked and passed as usual. After a pass, instant help waits for the board to change (the pretend board starts the next lesson empty), so it never passes two lessons on the same board. |
 | `agent/experiments.py` | Done. Zip acts: when two causes look the same to the board, Zip can ask you to do ONE thing with your hands ("Turn around the LED in rows 10 and 12"), with two buttons ("Done" / "I can't"), then measures again and sees what changed. Python checks the instruction first (one action from: pull out, push in, turn around, move, press, let go, wait; a part of the lesson; a row; never anything about power) and allows at most 2 per reply. While you build, each part you add makes Zip light the next part's rows blue and write the step on the board screen, without a chat message. Zip may switch the power off at any time and must say why; it can never switch power on by itself (that still asks "Turn the power back on?"). |
+| `agent/activity.py` | Done. Agent activity: a live panel for judges (closed for the student, opens with the Teacher view) listing the last 50 actions of Zip's agents, newest first, with who did it, the kind of action and the time, and counts per agent. Built from the same recorded steps as "How Zip worked", plus instant help and plain-Python safety cuts. It only reads: nothing about what Zip does changes. |
 | `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`) |
 | `tools/check_board.py`   | Done. Checks a board's firmware against the protocol and prints PASS or FAIL per rule. How the hardware teammate tests the firmware (docs/FIRMWARE_GUIDE.md) |
 | `firmware/`              | Not written yet. docs/FIRMWARE_GUIDE.md says what it must do |
@@ -73,7 +74,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (554 tests; it says `OK (skipped=1)` on a
+The last line should say `OK` (564 tests; it says `OK (skipped=1)` on a
 computer without Node.js and Playwright, which the page-layout browser
 check needs). They never call Claude, so
 they work without an API key.
@@ -288,6 +289,7 @@ deepagents loop, so every test exercises the real machinery.
 | **Ask before power comes back on** | Human in the loop: `interrupt_on={"restore_power": ...}` with a checkpointer (`InMemorySaver`) | `agent/build.py` (`ask`, `answer_power`), `web/server.py` | Before Zip switches the power on, the run pauses and Zip asks "Turn the power back on?" with **Yes** / **No** (board button 4 = Yes). The student stays in charge of the power. Yes still measures at once and cuts again if the circuit is unsafe (plain Python); No means the tool never runs. |
 | **Lesson writer with a grader** | A subagent (`task` tool) whose agent runs `RubricMiddleware`: a grader agent checks the new lesson against a rubric and sends it back for revision | `agent/lesson_writer.py` | When the same mistake comes back, or the quiz was answered wrong, the old explanation did not stick. The lesson writer writes a new mini-lesson with a **different everyday comparison** (a bike tire valve instead of a one-way door). The grader checks: at most 3 short sentences, 6th grade words, never says what to change on the board, exactly 3 options with 1 right. Then plain Python checks it again; only then is it shown, tagged **Written by Zip for you**. Otherwise the built-in card stays. The notebook notes which comparison was used, so it is never repeated. |
 | **"How Zip worked"** | A middleware (`wrap_tool_call`) on the tutor and on each subagent, the memory backend, and the grader's `on_evaluation` | `agent/trace.py` | In Teacher view, every reply is listed step by step in plain words, built from what really ran, never guessed. Subagent steps carry a badge (detective, lesson writer, grader). Teachers and judges see the agent think. |
+| **Agent activity panel** | Reads the same recorded steps, live, plus instant help and plain-Python safety cuts | `agent/activity.py`, `web/server.py` (`activity` in `/api/state`) | Under the plan, a button **"Zip's agents: 37 actions"** opens a live list: the last 50 things the agents did, newest first, each with who did it (Zip (tutor), Diagnoser, Detective, Lesson writer, Grader, Build guide, Instant help, Python safety), what kind of action it was, and the time. Coloured chips count each agent, plus replies, experiments, lights set and power cuts. "Python safety" is plain Python with no AI (facts, checks, safety cuts), so judges see what the AI does and what plain Python does. Closed for the student; it opens with the Teacher view. Nothing changes what happens. |
 
 The subagents see only what they need (one read-only tool each) and run
 in their own context, so the tutor's conversation stays short. Tests:
@@ -308,7 +310,9 @@ each Claude reply prints how long it took. If one answer says "Zip is
 in offline mode for this answer", keep going (see "Start the demo"
 above). Between judges: **Teacher → Restart demo**. To pick a circuit: **Teacher**
 (top right) → **Practice mode** → the circuit → **Close**. To show what
-Zip did: **Teacher** → **How Zip worked**.
+Zip did: **Teacher** → **How Zip worked**. To show judges every agent at
+work, live: click **Zip's agents: N actions** under the plan (it opens by
+itself with the Teacher view).
 
 1. **0:00 The detective.** Pick **Not on the list: 150 ohm resistor**,
    click **Check my circuit**. Zip gives a clue and the detective's

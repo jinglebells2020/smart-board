@@ -44,7 +44,8 @@ from agent.physics import observations  # noqa: E402
 from agent.buttons import handle_button  # noqa: E402
 from agent.lessons import summarize  # noqa: E402
 from agent.notebook import Notebook  # noqa: E402
-from agent.trace import describe_steps  # noqa: E402
+from agent.activity import Activity  # noqa: E402
+from agent.trace import describe_step, describe_steps  # noqa: E402
 from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E402
 from agent.session import Session  # noqa: E402
 from protocol import (BUTTON_LABELS, COLORS, DEFAULT_BAUD, SCREEN_CHARS,  # noqa: E402
@@ -114,6 +115,10 @@ class App:
         self.replies = SafeReplies(self.session, ask_before_power=self.confirm_power,
                                    timeout=self.timeout, log=self.log_line)
         self.chat = []  # agent message history
+        # The judges' "Agent activity" panel: everything the agents do, live
+        # (agent/activity.py). It only reads what happens.
+        self.activity = Activity()
+        self.session.on_safety = self._on_safety
         self.log = []   # what the page shows: [{"who", "text", "time"}]
         # The mistake whose mini-lesson card is on the page, or None:
         # {"lesson", "mistake", "occurrence"}. Set after a reply that logged a
@@ -191,6 +196,8 @@ class App:
                     cut["logged"] = True
                     self.log.append({"who": "tutor", "text": power_cut_words(cut),
                                      "time": time.time(), "tools": []})
+                    self.activity.add("Python safety", "The board switched the power off by "
+                                      "itself", "act on board", "cut")
         self.button_threads = [t for t in self.button_threads if t.is_alive()]
         for ev in events:
             t = threading.Thread(target=self.on_button, args=(ev["id"],), daemon=True)
@@ -487,7 +494,23 @@ class App:
             "asks_power": self.waiting_for_power_answer(),
             # Zip asks the student to do one thing, then measures again.
             "experiment": self.waiting_for_experiment(),
+            # The judges' panel: the last 50 things the agents did, and counts.
+            **self._activity_view(),
         }
+
+    # --- Agent activity (agent/activity.py): only reads what happens ----------
+    def _collect(self):
+        """Add the steps recorded so far in this reply (live, while it runs)."""
+        self.activity.read_trace(self.session.trace, self._auto_current or "reply",
+                                 self.student_name())
+
+    def _activity_view(self):
+        self._collect()
+        return self.activity.view()
+
+    def _on_safety(self, text):
+        self._collect()  # what led to it comes first
+        self.activity.add("Python safety", text, "act on board", "cut")
 
     def waiting_for_power_answer(self):
         """Is a reply paused on "Turn the power back on?"?"""
@@ -582,6 +605,9 @@ class App:
     def _act(self, result, cut, found, event):
         before = (self.building or {}).get("parts_in", 0)
         self.building = {"parts_in": found["parts_in"], "parts": found["parts"]}
+        if found["any_driven"] or cut:
+            self.activity.add("Instant help", "Saw the board change and checked it: "
+                              f"{found['parts_in']} of {found['parts']} parts in", "check")
         if not found["any_driven"] and not cut:
             # An empty board (cleared): nothing to say, start again from here.
             self.instant_mistake = None
@@ -601,6 +627,10 @@ class App:
             self.board.clear_lights()
             if found["rows"]:
                 self.board.set_lights(found["rows"], "yellow")  # careful: look here
+                self.activity.add("Instant help", describe_step(
+                    {"who": "tutor", "tool": "light_row",
+                     "args": {"rows": found["rows"], "color": "yellow"}}), "act on board",
+                    "light_row")
             self._say(found["text"], "curious")
             # The automatic check explains this trigger first, and while the
             # build is not finished, empty rows are not mistakes.
@@ -627,6 +657,7 @@ class App:
             self.trigger_auto("guide")  # a part went in: Zip shows where the next one goes
 
     def _say(self, text, mood):
+        self.activity.add("Instant help", f"Said at once: {text}", "check")
         self.log.append({"who": "tutor", "text": text, "time": time.time(), "instant": True,
                          "steps": [], "tools": [], "mood": mood, "celebrate": False})
 
@@ -734,6 +765,7 @@ class App:
         if not silent:
             self.log.append({"who": "student", "text": text, "time": time.time(), "auto": auto})
         if not resume:
+            self.activity.reply()
             self._turn_start = (self.session.lesson_id, self.session.last_check)
             self.session.last_logged = None
         before, check_before = getattr(self, "_turn_start", (self.session.lesson_id, None))
@@ -742,6 +774,7 @@ class App:
         except Exception as e:  # show the problem on the page, keep running
             reply, new = f"Sorry, the tutor hit an error: {e}", []
             self.replies.forget_pause(self.agent)
+        self._collect()  # every step of this reply, before the next one starts
         # The offline tutor answered because Claude failed or was slow.
         offline = self.replies.offline
         tools = [c["name"] for m in new for c in (getattr(m, "tool_calls", None) or [])]
