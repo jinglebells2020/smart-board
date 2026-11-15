@@ -56,11 +56,12 @@ NOISE_MA_REL = 0.01  # 1 % of the reading
 FLOATING = None  # a row nothing drives (empty, or connected to nothing)
 
 
-def _circuit(lesson, scenario):
+def _circuit(lesson, scenario, held=False):
     """Noise-free (supply_v, current_ma, {row: volts or FLOATING}).
 
     Rows in the dict are the lesson's rows (docs/LESSONS.md). Every other
     row is empty, so it floats. PT+ is the supply and PT- is ground.
+    held: lesson 4 only, is the breadboard's push button held down (HOLD).
     """
     v = SUPPLY_V
     if scenario == "stray_part" and lesson in STRAY:
@@ -123,6 +124,26 @@ def _circuit(lesson, scenario):
         if scenario == "led_bypassed":
             # 5 / 330 = 15.2 mA.
             return v, v / r * 1000, {"T5": v, "T10": 0.0, "T12": 0.0}
+    if lesson == 4:
+        # "Button switch": red wire PT+ -> T5; push button T5-T8; 220 ohm
+        # T8-T13; LED long leg T13, short leg T15; black wire T15 -> PT-.
+        r = 220.0
+        released = {"T5": v, "T8": FLOATING, "T13": FLOATING, "T15": 0.0}  # the path is broken
+        joined = scenario == "button_always_on" or (held and scenario != "button_not_connecting")
+        if scenario in ("correct", "button_always_on", "button_not_connecting"):
+            if not joined:
+                return v, 0.0, released
+            return v, (v - LED_VF) / r * 1000, {"T5": v, "T8": v, "T13": LED_VF, "T15": 0.0}
+        if scenario == "led_backwards":
+            # Button held: the 5 V reaches the LED, which blocks it.
+            return (v, 0.0, {"T5": v, "T8": v, "T13": v, "T15": 0.0}) if held else (v, 0.0, released)
+        if scenario == "no_resistor":
+            # Button held: the LED straight from the button to ground.
+            if held:
+                return (LED_VF_AT_LIMIT, CURRENT_LIMIT_MA,
+                        {"T5": LED_VF_AT_LIMIT, "T8": LED_VF_AT_LIMIT, "T13": LED_VF_AT_LIMIT,
+                         "T15": 0.0})
+            return v, 0.0, released
     if lesson == 2:
         # Red wire PT+ -> T5; top resistor T5-T10; bottom resistor
         # T10-T15; black wire T15 -> PT-.
@@ -159,6 +180,7 @@ UNLISTED = {
     1: ["resistor_150"],
     2: ["bottom_4k7"],
     3: [],
+    4: [],
 }
 SCENARIOS = {
     0: ["correct"],
@@ -168,6 +190,9 @@ SCENARIOS = {
         "bottom_missing", "top_missing", "loose_resistor_leg"] + UNLISTED[2],
     3: ["correct", "led_backwards", "no_resistor", "open_circuit",
         "resistor_too_big", "led_bypassed", "loose_led_leg"] + UNLISTED[3],
+    # Lesson 4: what the board reads depends on HOLD (is the button held).
+    4: ["correct", "button_always_on", "button_not_connecting", "led_backwards",
+        "no_resistor"] + UNLISTED[4],
 }
 # Sim only: the correct circuit plus a part from the middle row (named here)
 # to the row 20 below it, which is not in the plan ("extra_part").
@@ -209,6 +234,7 @@ class FakeBoard:
         # switch, cut power by itself above this current (None = never).
         self.firmware_cut_ma = firmware_cut_ma if (has_current and has_power_switch) else None
         self.power_on = True
+        self.held = False  # lesson 4: the push button on the breadboard (HOLD on|off)
         self.lights = {}   # row -> color
         self.screen = []   # lines on the screen
         self._events = []
@@ -221,6 +247,7 @@ class FakeBoard:
             raise ValueError(f"unknown lesson/scenario: {lesson} {scenario}")
         if lesson != getattr(self, "lesson", lesson):
             self.copies = None  # a new lesson: one circuit again
+            self.held = False   # and nobody is holding a button
         self.lesson = lesson
         self.scenario = scenario
 
@@ -317,7 +344,7 @@ class FakeBoard:
                     circuit = dict(circuit, **{LOOSE[scenario]: FLOATING})
                     c = 0.0
             else:
-                s, c, circuit = _circuit(self.lesson, scenario)
+                s, c, circuit = _circuit(self.lesson, scenario, getattr(self, "held", False))
             stray = None
             if scenario == "stray_part" and self.lesson in STRAY:
                 # The extra part goes from the REAL middle row to 20 rows below
@@ -429,6 +456,10 @@ class FakeBoard:
             except ValueError as e:
                 return error(str(e))
             return ack(f"PLACE {self.place[0]} {self.place[1]}")
+        if cmd == "HOLD" and len(parts) == 2 and parts[1].lower() in ("on", "off"):
+            # simulator only: is the push button on the breadboard held down (lesson 4)
+            self.held = parts[1].lower() == "on"
+            return ack(f"HOLD {'on' if self.held else 'off'}")
         if cmd == "MAP" and len(parts) >= 2:  # simulator only: MAP T20 T27 T29
             try:
                 self.set_map(parts[1:])

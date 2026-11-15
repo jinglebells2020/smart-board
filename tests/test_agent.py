@@ -79,6 +79,8 @@ class TestEveryLessonAndMistake(unittest.TestCase):
 
     def test_correct_circuits(self):
         for lesson_id in LESSONS:
+            if LESSONS[lesson_id].get("states"):
+                continue  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             with self.subTest(lesson=lesson_id):
                 board, session, agent = setup(lesson_id, "correct")
                 if session.is_explore():
@@ -97,6 +99,8 @@ class TestEveryLessonAndMistake(unittest.TestCase):
 
     def test_each_mistake(self):
         for lesson_id in LESSONS:
+            if LESSONS[lesson_id].get("states"):
+                continue  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             for scenario in SCENARIOS[lesson_id]:
                 if scenario == "correct" or scenario in UNLISTED[lesson_id]:
                     continue  # unlisted circuits get a clue: test_unknown_mistakes.py
@@ -130,6 +134,8 @@ class TestEveryLessonAndMistake(unittest.TestCase):
 class TestHintsFirst(unittest.TestCase):
     def test_second_time_explains(self):
         for lesson_id in LESSONS:
+            if LESSONS[lesson_id].get("states"):
+                continue  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             for m in LESSONS[lesson_id]["mistakes"]:
                 with self.subTest(lesson=lesson_id, mistake=m["id"]):
                     board, session, agent = setup(lesson_id, m["id"])
@@ -179,6 +185,10 @@ class TestNextLesson(unittest.TestCase):
         session.board.board.set_scenario(lesson_id, "correct")  # the fake board
         if session.is_explore(lesson_id):
             session.record_quiz(lesson_id, "intro", 0, "intro")  # lesson 0: its question
+        if LESSONS[lesson_id].get("states"):  # lesson 4: hold the button, then let go
+            session.board.board.send("HOLD on")
+            session.measure()
+            session.board.board.send("HOLD off")
         session.measure()
         return session.next_lesson()
 
@@ -215,7 +225,8 @@ class TestNextLesson(unittest.TestCase):
         session.log_mistake("bottom_1k")
         session.log_mistake("middle_floating")
         self.assertEqual(self.pass_lesson(session, 2)["lesson"], 3)
-        self.assertEqual(self.pass_lesson(session, 3)["lesson"], 0)  # skipped: comes now
+        self.assertEqual(self.pass_lesson(session, 3)["lesson"], 4)
+        self.assertEqual(self.pass_lesson(session, 4)["lesson"], 0)  # skipped: comes now
         result = self.pass_lesson(session, 0)
         self.assertEqual(result["lesson"], 2)
         self.assertIn("most mistakes", result["reason"])
@@ -224,7 +235,8 @@ class TestNextLesson(unittest.TestCase):
         session = Session(FakeBoard(1, "correct"), lesson=1)
         self.pass_lesson(session, 1)
         self.assertEqual(self.pass_lesson(session, 2)["lesson"], 3)
-        self.assertEqual(self.pass_lesson(session, 3)["lesson"], 0)  # lesson 0 was skipped
+        self.assertEqual(self.pass_lesson(session, 3)["lesson"], 4)
+        self.assertEqual(self.pass_lesson(session, 4)["lesson"], 0)  # lesson 0 was skipped
         self.assertIsNone(self.pass_lesson(session, 0)["lesson"])
 
     def test_agent_switches_lesson(self):

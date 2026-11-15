@@ -146,6 +146,8 @@ class TestNoCurrentSensor(unittest.TestCase):
 
     def test_every_mistake_except_resistor_too_big_is_still_found(self):
         for lid, scenarios in SCENARIOS.items():
+            if LESSONS[lid].get("states"):
+                continue  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             for scenario in scenarios:
                 if scenario == "correct" or scenario in UNLISTED[lid] or scenario == "resistor_too_big":
                     continue
@@ -214,7 +216,8 @@ class TestSixteenRows(unittest.TestCase):
     OPTS = {"rows": "T1-T16"}
 
     def test_both_lessons_work(self):
-        for lid in [l for l in LESSONS if LESSONS[l].get("kind") != "explore"]:
+        for lid in [l for l in LESSONS if LESSONS[l].get("kind") != "explore"
+                    and not LESSONS[l].get("states")]:  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             with self.subTest(lesson=lid):
                 _, session, _, reply, _ = run(lid, "correct", **self.OPTS)
                 self.assertIn("correct", reply)

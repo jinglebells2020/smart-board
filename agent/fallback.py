@@ -31,7 +31,8 @@ OFFLINE_NOTE = "Zip is in offline mode for this answer"
 
 # The teaching state a failed Claude reply might have changed.
 STATE = ("history", "lesson_id", "passed_current", "step", "open_mistake", "last_logged",
-         "last_check", "lesson_request", "new_ai_lesson", "pending_entry", "placement")
+         "last_check", "lesson_request", "new_ai_lesson", "pending_entry", "placement",
+         "button_step", "press_reminded")
 
 
 def why_failed(error, timeout=CLAUDE_TIMEOUT):

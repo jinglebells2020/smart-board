@@ -16,7 +16,7 @@ from agent.boardlink import BoardLink
 from agent.lessons import SAFETY_MAX_MA, calculate_current, check, load_lessons, summarize
 from agent.notebook import entry_start, mistake_label
 from agent.placement import (HOME, ROW, describe, driven_rows, find_all_placements,
-                             find_placement, is_row_map, shift_lesson)
+                             find_placement, is_row_map, shift_lesson, shift_name)
 from protocol import is_row, power_cut_words, row_label
 
 WINDOW = 10  # readings per measurement (about 1 second on the fake board)
@@ -91,6 +91,12 @@ class Session:
         # circuit is clearly built somewhere else on the board.
         self.placement = HOME
         self._shifted = {}
+        # A lesson with "states" (lesson 4, the button): which step the student
+        # is on, "pressed" (hold the button) then "released" (let go); None
+        # for other lessons. press_reminded: the first "nothing flows" at the
+        # pressed step only reminds the student to hold the button.
+        self.button_step = self._first_step(self.lesson_id)
+        self.press_reminded = False
 
     # --- Lessons -------------------------------------------------------
     @property
@@ -103,8 +109,62 @@ class Session:
 
     def lesson_info(self):
         l = self.lesson
-        return {"id": l["id"], "title": l["title"], "circuit": l["circuit"],
+        info = {"id": l["id"], "title": l["title"], "circuit": l["circuit"],
                 "rows": list(l["rows"]), "parts": [p["part"] for p in l["layout"]]}
+        if self.button_step:
+            info["button_step"] = self.button_step
+        return info
+
+    # --- Lessons with steps (lesson 4: press, then let go) -------------------
+    PRESS = "Press and hold the button, then check."
+    LET_GO = "Now let go of the button and check again."
+
+    def _first_step(self, lesson_id):
+        return "pressed" if self.lessons.get(lesson_id, {}).get("states") else None
+
+    def _step_lesson(self, lesson):
+        """The lesson as the current step checks it: that step's accept rules
+        and expected numbers, and only the mistakes that belong to that step
+        (or to every step)."""
+        state = lesson["states"][self.button_step]
+        return dict(lesson, accept=state["accept"], expected=state.get("expected", lesson["expected"]),
+                    check_step=self.button_step,
+                    mistakes=[m for m in lesson["mistakes"]
+                              if m.get("step") in (None, self.button_step)])
+
+    @staticmethod
+    def _current_flows(readings, placement, lesson):
+        """Does current flow (lesson 4: the button closes the loop)? With a
+        current sensor: more than 1 mA. Without: every lesson row, at that
+        place, has something connected (a let-go button leaves rows empty)."""
+        on = [r for r in readings if r.get("power_on")]
+        currents = [r.get("current_ma") for r in on]
+        if currents and all(c is not None for c in currents):
+            return sum(currents) / len(currents) > 1.0
+        driven = driven_rows(on)
+        return bool(on) and all(shift_name(n, placement) in driven for n in lesson.get("rows", []))
+
+    def _button_steps(self, result):
+        """Walk the steps: pressed ok -> let go next; released ok -> the lesson
+        passes. A mistake keeps the step. The first "nothing flows" at the
+        pressed step is most likely a button that is not held yet, so it is a
+        reminder, not a mistake; the second one in a row is the mistake."""
+        step = self.button_step
+        if step == "pressed" and result.get("mistake_id") == "button_not_connecting" \
+                and not self.press_reminded:
+            self.press_reminded = True
+            result = {"status": "press_first",
+                      "message": "No current is flowing yet. Press and hold the button down, "
+                                 "and keep holding it while I check."}
+        elif result.get("mistake_id") != "button_not_connecting":
+            self.press_reminded = False
+        if step == "pressed" and result["status"] == "ok":
+            self.button_step = "released"
+            result = {"status": "step_ok", "next_step": self.LET_GO}
+        result["step"] = step
+        if result["status"] != "ok" and "next_step" not in result:
+            result["next_step"] = self.PRESS if self.button_step == "pressed" else self.LET_GO
+        return result
 
     def set_lesson(self, lesson_id):
         if lesson_id != self.lesson_id:
@@ -117,6 +177,8 @@ class Session:
         self.lesson_id = lesson_id
         self.passed_current = False
         self.step = -1
+        self.button_step = self._first_step(lesson_id)  # lesson 4: press first
+        self.press_reminded = False
 
     # --- What the student said -----------------------------------------
     def hear(self, text):
@@ -178,9 +240,13 @@ class Session:
             if copies and tuple(copies[0]) != tuple(self.placement):
                 self.placement = copies[0]  # the drawing shows the first copy
                 board.clear_lights()
-        elif not self.is_explore():
-            # Built the same circuit somewhere else? Then check it there.
+        elif not self.is_explore() and self.button_step != "released":
+            # Built the same circuit somewhere else? Then check it there. (With
+            # the button let go no current flows, so a "released" check keeps
+            # the place found while the button was held.)
             new = find_placement(data, lesson_file, self.placement)
+            if self.button_step and not self._current_flows(data, new, lesson_file):
+                new = self.placement  # the button is not closing the loop yet: keep the place
             if tuple(new) != tuple(self.placement):
                 self.placement = new
                 board.clear_lights()  # old lights point at the old rows
@@ -190,9 +256,12 @@ class Session:
             summary, result = self._check_copies(data, lesson_file, copies)
         else:
             summary = summarize(data, self.lesson)
-            result = check(summary, self.lesson)
+            result = check(summary, self._step_lesson(self.lesson) if self.button_step
+                           else self.lesson)
         if not self.is_explore() and result["status"] != "power_off":
             result = self._extra_parts(data, result, copies)
+        if self.button_step and result["status"] != "power_off":
+            result = self._button_steps(result)
         if moved:
             if is_row_map(self.placement):  # any spacing
                 result["moved"] = (f"You built it in {moved}, with the parts spaced "

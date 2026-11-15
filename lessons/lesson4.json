@@ -1,0 +1,364 @@
+{
+  "id": 4,
+  "title": "Button switch",
+  "circuit": "5 V -> push button -> 220 ohm resistor -> red LED -> ground",
+  "layout": [
+    {
+      "part": "Red wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "PT+"
+        },
+        {
+          "leg": "other end",
+          "row": "T5"
+        }
+      ]
+    },
+    {
+      "part": "Push button",
+      "legs": [
+        {
+          "leg": "one side",
+          "row": "T5"
+        },
+        {
+          "leg": "other side",
+          "row": "T8"
+        }
+      ]
+    },
+    {
+      "part": "220 ohm resistor",
+      "legs": [
+        {
+          "leg": "one leg",
+          "row": "T8"
+        },
+        {
+          "leg": "other leg",
+          "row": "T13"
+        }
+      ]
+    },
+    {
+      "part": "Red LED",
+      "legs": [
+        {
+          "leg": "long leg (+)",
+          "row": "T13"
+        },
+        {
+          "leg": "short leg (-)",
+          "row": "T15"
+        }
+      ]
+    },
+    {
+      "part": "Black wire",
+      "legs": [
+        {
+          "leg": "one end",
+          "row": "T15"
+        },
+        {
+          "leg": "other end",
+          "row": "PT-"
+        }
+      ]
+    }
+  ],
+  "rows": [
+    "T5",
+    "T8",
+    "T13",
+    "T15"
+  ],
+  "current_from": [
+    {
+      "part": "220 ohm resistor",
+      "rows": [
+        "T8",
+        "T13"
+      ],
+      "ohms": 220
+    }
+  ],
+  "expected": {
+    "rows": {
+      "T5": 5.0,
+      "T8": 5.0,
+      "T13": 2.0,
+      "T15": 0.0
+    },
+    "current_ma": 13.6,
+    "math": "(5 - 2) / 220 = 0.0136 A = 13.6 mA"
+  },
+  "accept": {
+    "rows": {
+      "T5": {
+        "min": 4.5
+      },
+      "T8": {
+        "min": 4.5
+      },
+      "T13": {
+        "min": 1.6,
+        "max": 2.4
+      },
+      "T15": {
+        "max": 0.5
+      }
+    },
+    "driven": [
+      "T5",
+      "T8",
+      "T13",
+      "T15"
+    ],
+    "current_ma": {
+      "min": 10,
+      "max": 17
+    }
+  },
+  "states": {
+    "pressed": {
+      "accept": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T8": {
+            "min": 4.5
+          },
+          "T13": {
+            "min": 1.6,
+            "max": 2.4
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T5",
+          "T8",
+          "T13",
+          "T15"
+        ],
+        "current_ma": {
+          "min": 10,
+          "max": 17
+        }
+      },
+      "expected": {
+        "rows": {
+          "T5": 5.0,
+          "T8": 5.0,
+          "T13": 2.0,
+          "T15": 0.0
+        },
+        "current_ma": 13.6,
+        "math": "(5 - 2) / 220 = 0.0136 A = 13.6 mA"
+      }
+    },
+    "released": {
+      "accept": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T5",
+          "T15"
+        ],
+        "current_ma": {
+          "max": 1
+        }
+      },
+      "expected": {
+        "rows": {
+          "T5": 5.0,
+          "T15": 0.0
+        },
+        "current_ma": 0.0,
+        "math": "Button up: the path is broken, so no current flows (0 mA)."
+      }
+    }
+  },
+  "resistor_words": "the 220 ohm resistor",
+  "intro_lesson": {
+    "title": "Buttons are drawbridges",
+    "idea": "A button is like a drawbridge: down, cars cross; up, the road is broken. When you press the button, the bridge comes down and current can cross. When you let go, the bridge goes up and the current stops.",
+    "question": "What happens to the current when you let go of the button?",
+    "options": [
+      "It keeps flowing, only slower",
+      "It stops, like cars at a raised bridge",
+      "It flows the other way"
+    ],
+    "answer": 1,
+    "why": "Letting go opens a gap in the path, so the current cannot get across."
+  },
+  "mistakes": [
+    {
+      "id": "button_always_on",
+      "step": "released",
+      "description": "The button seems to be always on: current flows even when it is let go",
+      "rows": [
+        "T5",
+        "T8"
+      ],
+      "detect": {
+        "current_ma": {
+          "min": 5
+        }
+      },
+      "action": "hint",
+      "hint": "You let go of the button, but current is still flowing. Something keeps the two sides of the button joined all the time. Look closely at how the button sits on the breadboard.",
+      "explain": "Current flows even when the button is up, so its two rows are joined some other way. A push button has pairs of legs that are always joined inside it. If the button is turned so that a joined pair reaches both rows, it is always on. Turn the button a quarter turn, so it joins the two rows only while it is pressed.",
+      "mini_lesson": {
+        "title": "A bridge that never goes up",
+        "idea": "A button is like a drawbridge that must go up to break the road. If its two sides are always joined, the bridge never goes up. Then current flows all the time, pressed or not.",
+        "question": "The LED stays on even when you let go of the button. What is most likely?",
+        "options": [
+          "The power is too strong",
+          "The two sides of the button are always joined",
+          "The LED is broken"
+        ],
+        "answer": 1,
+        "why": "If something always joins the two sides, the button can never break the path."
+      }
+    },
+    {
+      "id": "button_not_connecting",
+      "step": "pressed",
+      "description": "The button does not join its two rows when it is pressed",
+      "rows": [
+        "T5",
+        "T8"
+      ],
+      "detect": {
+        "current_ma": {
+          "max": 1
+        },
+        "any": [
+          {
+            "floating": [
+              "T8"
+            ]
+          },
+          {
+            "rows": {
+              "T8": {
+                "max": 1.0
+              }
+            }
+          }
+        ]
+      },
+      "action": "hint",
+      "hint": "You are holding the button, but no current flows, and nothing reaches the row after the button. The current is not getting across the button. Look at where the button's legs are.",
+      "explain": "When the button is pressed, its two rows should be joined, so the 5 volts reach the resistor. Here nothing reaches the row after the button. The button may be turned so that pressing it joins two legs in the same row, or a leg may not be pushed in. One side of the button should share a row with the red wire, and the other side a row with the resistor.",
+      "mini_lesson": {
+        "title": "A bridge that never comes down",
+        "idea": "A button is like a drawbridge: current can only cross when the bridge is down. If pressing does not join the two sides, the road stays broken. Then no current reaches the LED.",
+        "question": "You press the button, but the LED stays dark and no current flows. Why?",
+        "options": [
+          "The button does not join its two sides",
+          "The LED is too bright",
+          "The resistor is too small"
+        ],
+        "answer": 0,
+        "why": "If pressing does not join the two sides, there is still a gap, so no current flows."
+      }
+    },
+    {
+      "id": "led_backwards",
+      "step": "pressed",
+      "description": "LED may be backwards, in the wrong row, or missing (the board cannot tell which)",
+      "rows": [
+        "T13",
+        "T15"
+      ],
+      "detect": {
+        "rows": {
+          "T5": {
+            "min": 4.5
+          },
+          "T13": {
+            "min": 4.5
+          },
+          "T15": {
+            "max": 0.5
+          }
+        },
+        "driven": [
+          "T13"
+        ],
+        "current_ma": {
+          "max": 1
+        }
+      },
+      "action": "hint",
+      "hint": "You are holding the button and the full 5 volts reach the LED's row, but almost no current flows. So the current is stopped at the LED: it may be backwards, in the wrong row, or missing, and the board cannot tell which. Look at the LED's long leg, the one with the + in the drawing: see which row it is in, and which way it faces.",
+      "explain": "Three things can cause this, and the board cannot tell which one: the LED may be in backwards, it may be in the wrong row (its long leg not in the same row as the resistor), or it may be missing. The long leg (+) should share a row with the resistor, and the short leg (-) should lead to ground.",
+      "mini_lesson": {
+        "title": "LEDs are one-way doors",
+        "idea": "An LED is like a one-way door. Current can only go through it in one direction, and only if the door is connected on both sides. If the door faces the wrong way or is not connected, the current stops.",
+        "question": "Current stops right at the LED. What could cause that?",
+        "options": [
+          "The resistor is the wrong color",
+          "The LED faces the wrong way, or a leg is not connected",
+          "The power is too weak to light it"
+        ],
+        "answer": 1,
+        "why": "An LED lets current through only one way, and only when both of its legs are connected."
+      },
+      "point_at": {
+        "part": "Red LED",
+        "leg": "long leg (+)"
+      }
+    },
+    {
+      "id": "no_resistor",
+      "description": "No resistor: the LED gets 5 V straight from the button",
+      "rows": [
+        "T8",
+        "T13"
+      ],
+      "detect": {
+        "supply_v": {
+          "max": 4.0
+        },
+        "rows": {
+          "T13": {
+            "min": 1.0,
+            "max": 4.0
+          },
+          "T15": {
+            "max": 0.5
+          }
+        }
+      },
+      "action": "cut_power",
+      "hint": "The current was far too high, so the power must stay off until it is fixed. What part in the circuit keeps the current small enough for the LED?",
+      "explain": "There was no resistor, so when the button was pressed the LED was connected straight to 5 volts. Nothing kept the current small, so it shot far past what the LED can handle, and that can burn it out. Put the 220 ohm resistor between the button and the LED's long leg.",
+      "mini_lesson": {
+        "title": "Resistors keep current small",
+        "idea": "A resistor slows down electric current, like a narrow pipe slows down water. Without one, a huge amount of current rushes through the LED. Too much current makes parts very hot and can burn them out.",
+        "question": "What is the job of the resistor in an LED circuit?",
+        "options": [
+          "It makes the LED change color",
+          "It stores electricity for later",
+          "It keeps the current small and safe"
+        ],
+        "answer": 2,
+        "why": "The resistor limits the current, so the LED gets only as much as it can handle."
+      }
+    }
+  ]
+}

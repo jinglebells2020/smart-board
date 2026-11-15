@@ -315,6 +315,8 @@ class TestWebMiniLesson(unittest.TestCase):
 
     def test_every_mistake_shows_its_own_card(self):
         for lesson, scenarios in SCENARIOS.items():
+            if LESSONS[lesson].get("states"):
+                continue  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             for scenario in scenarios:
                 if scenario == "correct" or scenario in UNLISTED[lesson]:
                     continue
