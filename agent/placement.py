@@ -34,7 +34,10 @@ LAST_ROW = 63
 MIN_DRIVEN = 2  # at least this many lesson rows must have something in them
 MAX_GAP = 10    # rows of one circuit are at most this many rows apart (any spacing)
 MAX_CLUSTER = 8  # a bigger group of rows is not searched part by part
-HIGH = 0.9      # a row at 90 % of the supply or more is the + end of the chain
+# A row at 85 % of the supply or more is the + end of the chain (the same
+# share as protocol.LOW_SUPPLY_SHARE: on the station a + row can read
+# about 2.8 V, as its meter tops out at 2.9-3.1 V and is good to 0.1 V).
+HIGH = 0.85
 TIE_V = 0.3     # row maps whose voltage errors differ less than this are a tie
 
 

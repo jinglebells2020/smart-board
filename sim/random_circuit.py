@@ -8,6 +8,11 @@ a typical mistake: an LED in backwards, a missing link (a leg in the wrong
 row), a short (a wire across a part) or an LED with no resistor (then the
 safety cut must switch the power off).
 
+At the station's 3.3 V (protocol.SUPPLY_V) two LEDs in a row cannot light
+(1.9 + 1.9 = 3.8 V), so that chain is only built on a bigger supply, and the
+LED with no resistor is red, yellow or green: a blue one at 3.3 V draws
+too little to be a danger. Any other LED may still be any colour.
+
 The returned netlist is the truth, for tests and for the judge only. It is
 never given to the tutor: the tutor only ever sees what the board measures.
 """
@@ -19,6 +24,8 @@ from sim import solver
 RESISTORS = [100, 220, 330, 1000, 10000]
 LED_RESISTORS = [220, 330, 1000]  # keep a correct circuit's current safe
 COLORS = ["red", "yellow", "green", "blue"]
+# The colours that light well at 3.3 V (the lessons use only these).
+BRIGHT_AT_3V3 = ["red", "yellow", "green"]
 MISTAKES = ["led_backwards", "missing_link", "short", "no_resistor"]
 MISTAKE_CHANCE = 0.4
 SAFE_MA = 25.0  # a circuit with no mistake stays below this (the cut is at 30)
@@ -33,6 +40,11 @@ def _groups(usable):
     return {h: sorted(ns) for h, ns in out.items()}
 
 
+def _two_leds_fit(supply=solver.SUPPLY_V):
+    """Can two LEDs in a row both light on this supply?"""
+    return supply > 2 * min(solver.LED_VF.values()) + 0.3
+
+
 def _chain_kinds(rng, n):
     """The parts of one chain, + side first."""
     if n == 2:
@@ -44,9 +56,12 @@ def _chain_kinds(rng, n):
         return rng.choice([["wire", "resistor", "led", "wire"],
                            ["wire", "button", "resistor", "led"],
                            ["wire", "resistor", "resistor", "wire"]])
-    return rng.choice([["wire", "button", "resistor", "led", "wire"],
-                       ["wire", "resistor", "led", "led", "wire"],
-                       ["wire", "resistor", "resistor", "led", "wire"]])
+    five = [["wire", "button", "resistor", "led", "wire"],
+            ["wire", "resistor", "led", "led", "wire"],
+            ["wire", "resistor", "resistor", "led", "wire"]]
+    if not _two_leds_fit():  # 3.3 V: two LEDs in a row would both stay dark
+        five.pop(1)
+    return rng.choice(five)
 
 
 def _part(rng, kind, a, b, led_chain):
@@ -106,6 +121,10 @@ def random_circuit(seed=None, parts=3, usable_rows=None, mistake="random"):
             kinds[-1 if kinds[-1] != "wire" or len(kinds) < 3 else -2] = "led"
         rows = sorted(rng.sample(free, n - 1))
         netlist = _chain(rng, kinds, half, rows)
+    if mistake == "no_resistor":
+        for p in netlist:
+            if p["kind"] == "led" and p["color"] not in BRIGHT_AT_3V3:
+                p["color"] = rng.choice(BRIGHT_AT_3V3)  # far too much current, at any supply
     used = {r for p in netlist for r in p["rows"]}
     leds = [p for p in netlist if p["kind"] == "led"]
     if mistake == "led_backwards" and leds:

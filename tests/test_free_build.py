@@ -26,6 +26,8 @@ from web.server import App, usable_rows_setting
 ROOT = Path(__file__).resolve().parent.parent
 HTML = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 USABLE = "T3-T8,T20-T24,B40-B45"
+V = P.SUPPLY_V  # 3.3 V, like the station
+LED_MA = (V - 1.9) / (220 + 15) * 1000  # the LED circuit below: 5.96 mA
 LED_CIRCUIT = [{"kind": "wire", "rows": ["PT+", "T5"]},
                {"kind": "resistor", "rows": ["T5", "T10"], "ohms": 220},
                {"kind": "led", "rows": ["T10", "T12"], "color": "red"},
@@ -105,9 +107,9 @@ class TestUsableRows(unittest.TestCase):
 class TestSolver(unittest.TestCase):
     def test_led_with_resistor(self):
         out = solver.solve(LED_CIRCUIT)
-        want = (5 - 1.9) / (220 + 15) * 1000  # 13.2 mA
+        want = LED_MA  # (3.3 - 1.9) / 235 = 5.96 mA
         self.assertAlmostEqual(out["current_ma"], want, delta=0.05)
-        self.assertAlmostEqual(out["rows"]["T5"], 5.0, places=2)
+        self.assertAlmostEqual(out["rows"]["T5"], V, places=2)
         self.assertAlmostEqual(out["rows"]["T10"], 1.9 + want / 1000 * 15, delta=0.01)
         self.assertAlmostEqual(out["rows"]["T12"], 0.0, places=2)
         self.assertEqual(out["leds_on"], {2: True})
@@ -115,15 +117,15 @@ class TestSolver(unittest.TestCase):
     def test_voltage_divider(self):
         out = solver.solve([{"kind": "resistor", "rows": ["PT+", "T10"], "ohms": 10000},
                             {"kind": "resistor", "rows": ["T10", "PT-"], "ohms": 10000}])
-        self.assertAlmostEqual(out["rows"]["T10"], 2.5, places=3)
-        self.assertAlmostEqual(out["current_ma"], 0.25, places=3)
+        self.assertAlmostEqual(out["rows"]["T10"], 1.65, places=3)
+        self.assertAlmostEqual(out["current_ma"], 0.165, places=3)
 
     def test_led_backwards(self):
         parts = [dict(p) for p in LED_CIRCUIT]
         parts[2] = dict(parts[2], rows=["T12", "T10"])
         out = solver.solve(parts)
         self.assertAlmostEqual(out["current_ma"], 0.0, places=6)
-        self.assertAlmostEqual(out["rows"]["T10"], 5.0, places=2)  # no current: no drop
+        self.assertAlmostEqual(out["rows"]["T10"], V, places=2)  # no current: no drop
         self.assertEqual(out["leds_on"], {2: False})
 
     def test_two_leds_in_parallel_each_with_its_own_330(self):
@@ -131,29 +133,39 @@ class TestSolver(unittest.TestCase):
                             {"kind": "led", "rows": ["T10", "PT-"], "color": "red"},
                             {"kind": "resistor", "rows": ["PT+", "T20"], "ohms": 330},
                             {"kind": "led", "rows": ["T20", "PT-"], "color": "red"}])
-        each = (5 - 1.9) / (330 + 15) * 1000  # 8.99 mA
+        each = (V - 1.9) / (330 + 15) * 1000  # 4.06 mA
         self.assertAlmostEqual(out["current_ma"], 2 * each, delta=0.01)
         self.assertAlmostEqual(out["rows"]["T10"], out["rows"]["T20"], places=6)
 
     def test_colours_buttons_and_empty_rows(self):
         blue = [dict(p) for p in LED_CIRCUIT]
         blue[2] = dict(blue[2], color="blue")
-        self.assertAlmostEqual(solver.solve(blue)["current_ma"], 2.0 / 235 * 1000, delta=0.05)
+        # At 3.3 V a blue LED (3.0 V) barely lights: 0.3 / 235 = 1.3 mA.
+        self.assertAlmostEqual(solver.solve(blue)["current_ma"], (V - 3.0) / 235 * 1000, delta=0.05)
+        self.assertEqual(solver.solve(blue)["leds_on"], {2: True})
+        two = LED_CIRCUIT[:2] + [dict(LED_CIRCUIT[2], rows=["T10", "T11"]),
+                                 dict(LED_CIRCUIT[2], rows=["T11", "T12"])] + LED_CIRCUIT[3:]
+        self.assertEqual(solver.solve(two)["current_ma"], 0.0)  # two in a row: 3.8 V > 3.3 V
         button = LED_CIRCUIT[:1] + [{"kind": "button", "rows": ["T5", "T6"], "closed": False},
                                     dict(LED_CIRCUIT[1], rows=["T6", "T10"])] + LED_CIRCUIT[2:]
         out = solver.solve(button)
         self.assertEqual(out["current_ma"], 0.0)
         self.assertIsNone(out["rows"]["T6"])  # joined to nothing that conducts: floating
         button[1]["closed"] = True
-        self.assertGreater(solver.solve(button)["current_ma"], 13)
+        self.assertGreater(solver.solve(button)["current_ma"], 5.5)
         out = solver.solve([{"kind": "resistor", "rows": ["PT+", "T5"], "ohms": 220},
                             {"kind": "led", "rows": ["T7", "T9"]}])
         self.assertEqual((out["rows"]["T7"], out["rows"]["T9"]), (None, None))
 
     def test_current_limit_and_short(self):
+        # At 3.3 V an LED straight across the supply takes (3.3 - 1.9) / 15 =
+        # 93 mA: far too much (the cut is at 30), but under the limit.
         out = solver.solve([{"kind": "led", "rows": ["PT+", "PT-"]}])
+        self.assertAlmostEqual(out["current_ma"], (V - 1.9) / 15 * 1000, delta=0.1)
+        self.assertEqual(out["supply_v"], V)
+        out = solver.solve([{"kind": "led", "rows": ["PT+", "PT-"]}], supply_v=5.0)
         self.assertAlmostEqual(out["current_ma"], solver.CURRENT_LIMIT_MA, delta=0.1)
-        self.assertLess(out["supply_v"], 5.0)  # the supply is pulled down
+        self.assertLess(out["supply_v"], 5.0)  # on 5 V the supply is pulled down
         out = solver.solve([{"kind": "wire", "rows": ["PT+", "PT-"]}])
         self.assertAlmostEqual(out["current_ma"], solver.CURRENT_LIMIT_MA, delta=0.1)
         self.assertLess(out["supply_v"], 0.1)
@@ -173,7 +185,7 @@ class TestFakeBoardNetlist(unittest.TestCase):
         board = FakeBoard(FREE_ID, "correct", seed=1, noise=False)
         self.assertEqual(board.send("NETLIST " + json.dumps({"parts": LED_CIRCUIT}))["type"], "ack")
         r = board.read()
-        self.assertAlmostEqual(r["current_ma"], 13.2, delta=0.1)
+        self.assertAlmostEqual(r["current_ma"], LED_MA, delta=0.1)
         self.assertNotIn("T10", r["floating"])
         self.assertIn("T30", r["floating"])
         self.assertEqual(board.send("NETLIST {bad")["type"], "error")
@@ -190,7 +202,7 @@ class TestFakeBoardNetlist(unittest.TestCase):
                            dict(LED_CIRCUIT[1], rows=["T6", "T10"])] + LED_CIRCUIT[2:])
         self.assertEqual(board.read()["current_ma"], 0.0)
         board.send("HOLD on")
-        self.assertGreater(board.read()["current_ma"], 13)
+        self.assertGreater(board.read()["current_ma"], 5.5)
 
 
 class TestRandomCircuits(unittest.TestCase):
@@ -270,7 +282,7 @@ class TestFreeBuild(unittest.TestCase):
         summary, result = a.session.last_check
         self.assertEqual(result["status"], "free")
         self.assertEqual(set(result["measured_rows"]), {"T5", "T21", "T22"})
-        self.assertAlmostEqual(result["current_ma"], 13.2, delta=0.3)
+        self.assertAlmostEqual(result["current_ma"], LED_MA, delta=0.3)
         kinds = [f["kind"] for f in result["facts"]]
         self.assertEqual(kinds[0], "power")
         self.assertEqual(kinds.count("row_voltage"), 3)
@@ -284,9 +296,14 @@ class TestFreeBuild(unittest.TestCase):
         self.assertIn("Free build", a.session.hint()["say"])
 
     def test_led_without_resistor_is_cut(self):
-        for sensor in (True, False):
-            with self.subTest(current_sensor=sensor):
-                a, board = app(usable=USABLE, has_current=sensor)
+        # With a current sensor it is cut at any supply. Without one only the
+        # + line being pulled down shows it: the fake supply's 100 mA limit
+        # does that on 5 V. At 3.3 V an LED alone takes about 93 mA, under the
+        # limit, so the + line holds (like the station's regulator: see "What
+        # the station cannot catch" in docs/LESSONS.md).
+        for sensor, supply in ((True, V), (True, 5.0), (False, 5.0)):
+            with self.subTest(current_sensor=sensor, supply=supply):
+                a, board = app(usable=USABLE, has_current=sensor, supply_v=supply)
                 board.set_netlist([{"kind": "wire", "rows": ["PT+", "T4"]},
                                    {"kind": "led", "rows": ["T4", "T6"], "color": "red"},
                                    {"kind": "wire", "rows": ["T6", "PT-"]}])

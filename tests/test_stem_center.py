@@ -45,7 +45,7 @@ class TestTheName(unittest.TestCase):
                           history_path=Path(tmp) / f"h{lesson}.json")
                 screen = app.state()["board"]["screen"]
                 self.assertEqual(screen[0], "Genesis")
-                self.assertTrue(screen[-1] in ("Press 3 to start.", "Tap the holes!"), screen)
+                self.assertTrue(screen[-1] in ("Press blue to start.", "Tap the holes!"), screen)
                 self.assertLessEqual(len(screen), SCREEN_LINES)
                 self.assertTrue(all(len(line) <= SCREEN_CHARS for line in screen))
 

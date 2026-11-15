@@ -24,16 +24,21 @@ from agent.physics import circuit_facts, extra_rows_fact, free_facts, number, po
 from agent.reader import measured_of, read_and_check, reader_payload
 from agent.placement import (HOME, ROW, describe, driven_rows, find_all_placements,
                              find_placement, is_row_map, shift_lesson, shift_name)
-from protocol import is_row, power_cut_words, row_label
+from protocol import (BUTTON_COLORS, MANUAL_OFF_SCREEN, MANUAL_OFF_WORDS, MANUAL_ON_WORDS,
+                      NO_SWITCH_SCREEN, SUPPLY_V, button_words, is_row, power_cut_words,
+                      row_label)
 
 WINDOW = 10  # readings per measurement (about 1 second on the fake board)
 REPEAT_IF_SEEN = 2  # same mistake this many times -> practice the lesson again
 
-# Board screen text when the student must switch power off by hand
-# (a board with no power switch). fit_screen keeps it to the screen size.
-MANUAL_OFF_SCREEN = "DANGER!|Switch the power OFF|by hand now.|Then fix the circuit."
-NO_SWITCH_SCREEN = "No power switch.|Use the switch on|the power supply."
+# Board screen text when the student must switch power off by hand (a board
+# with no power switch, like the station: pull the red wire out of the +
+# line), and when the red button is pressed on such a board. Both live in
+# protocol.py; fit_screen keeps them to the screen size.
 STILL_UNSAFE_SCREEN = "Still unsafe!|Power is off again.|Fix the circuit|first."
+# What the laptop says when the board cannot switch the power.
+NO_SWITCH_SAY = (f"This board has no power switch. To switch the power off, {MANUAL_OFF_WORDS}. "
+                 f"To switch it back on, {MANUAL_ON_WORDS}.")
 
 # A student message that asks for power to come back on: they say they
 # fixed something, or ask for the power. Only then may the AI turn power
@@ -617,7 +622,7 @@ class Session:
         self.step = min(self.step + 1, len(layout))
         self.board.clear_lights()
         if self.step >= len(layout):
-            self.board.show("All parts placed!|Press 1 to check.")
+            self.board.show(f"All parts placed!|Press the {BUTTON_COLORS[1]}|button to check.")
             return {"done": True, "step": len(layout), "of": len(layout)}
         part = layout[self.step]
         rows = [leg["row"] for leg in part["legs"] if is_row(leg["row"])]
@@ -640,9 +645,7 @@ class Session:
         is still unsafe, and says why. Returns a dict with power_on,
         recut, say, and the measurement (summary, lesson_check)."""
         if not self.board.has_power_switch:
-            return {"power_on": None, "error": "no power switch",
-                    "say": "This board cannot switch the power. Use the switch "
-                           "on the power supply."}
+            return {"power_on": None, "error": "no power switch", "say": NO_SWITCH_SAY}
         answer = self.board.restore()
         if answer.get("type") == "error":
             return {"power_on": None, "error": answer.get("msg", "error"),
@@ -674,18 +677,18 @@ class Session:
         """For the AI's restore_power tool: only when the student asked."""
         if not self.restore_allowed:
             return {"power_on": None, "error": "not allowed",
-                    "say": "Only you can turn the power on: press button 4, or "
+                    "say": f"Only you can turn the power on: press {button_words(4)}, or "
                            "say you fixed the circuit."}
         return self.turn_power_on()
 
     def toggle_power(self):
-        """Button 4: power off if on, on if off (the student is asking).
-        A board with no power switch says so on its screen instead."""
+        """Button 4 (red on the station): power off if on, on if off (the
+        student is asking). A board with no power switch (the station) says
+        on its screen how to do it by hand instead: pull the red wire out of
+        the + line, or push it back in."""
         if not self.board.has_power_switch:
             self.board.show(NO_SWITCH_SCREEN)
-            return {"error": "no power switch",
-                    "say": "This board cannot switch the power. Use the switch "
-                           "on the power supply."}
+            return {"error": "no power switch", "say": NO_SWITCH_SAY}
         if self.board.read()["power_on"]:
             answer = self.board.cut()
             self.board.show("Power is OFF.")
@@ -708,33 +711,35 @@ class Session:
             self.board.show("More help is on|the laptop.")
             return {"level": "explain", "mistake": om["mistake"], "say": spec["explain"]}
         if self.is_free():
-            return {"level": "step", "say": "Free build: build anything you like. Press 1 and "
-                                            "I will measure every row."}
+            return {"level": "step", "say": f"Free build: build anything you like. Press "
+                                            f"{button_words(1)} and I will measure every row."}
         layout = self.lesson["layout"]
         i = max(self.step, 0)
         if i >= len(layout):
-            return {"level": "step", "say": "All parts are in place. Press 1 to check "
-                                            "your circuit."}
+            return {"level": "step", "say": f"All parts are in place. Press {button_words(1)} "
+                                            "to check your circuit."}
         part = layout[i]
-        start = "" if self.step >= 0 else "Press 3 to start building. "
+        start = "" if self.step >= 0 else f"Press {button_words(3)} to start building. "
         return {"level": "step", "step": i + 1, "part": part["part"],
                 "say": f"{start}Step {i + 1} of {len(layout)}: {part['part']}. "
-                       f"Put {self.where_legs(part['legs'])}."}
+                       f"Put {self.where_legs(part['legs'], self.board.supply_v)}."}
 
     @classmethod
-    def where_legs(cls, legs):
-        """Where a part's two legs go, in plain words."""
+    def where_legs(cls, legs, supply=None):
+        """Where a part's two legs go, in plain words. supply: the board's
+        supply voltage, for "the top + line (3.3 V)"."""
         a, b = legs
         if "(" in a["leg"]:  # a part with + and - legs
-            return (f"the {a['leg']} in {cls._where(a['row'])} and the "
-                    f"{b['leg']} in {cls._where(b['row'])}")
+            return (f"the {a['leg']} in {cls._where(a['row'], supply)} and the "
+                    f"{b['leg']} in {cls._where(b['row'], supply)}")
         kind = a["leg"].split()[-1]  # "leg" or "end"
-        return (f"one {kind} in {cls._where(a['row'])} and the other "
-                f"{kind} in {cls._where(b['row'])}")
+        return (f"one {kind} in {cls._where(a['row'], supply)} and the other "
+                f"{kind} in {cls._where(b['row'], supply)}")
 
     @staticmethod
-    def _where(name):
-        return {"PT+": "the top + line (5 V)", "PT-": "the top - line (ground)"}.get(
+    def _where(name, supply=None):
+        v = supply or SUPPLY_V
+        return {"PT+": f"the top + line ({v:g} V)", "PT-": "the top - line (ground)"}.get(
             name, row_label(name))
 
     # --- Mistake history -----------------------------------------------

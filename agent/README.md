@@ -26,14 +26,19 @@ The board says what it has in its `hello` line: which rows it measures,
 whether it has a current sensor, a power switch, a screen, and how many
 buttons. Everything here works with any answer:
 
-- **No current sensor:** current is calculated from the voltage across
-  a resistor the lesson knows, for example (5 - 2) / 220 = 13.6 mA, and
-  marked "calculated". If two known resistors disagree, the current is
+- **No current sensor** (the station): current is calculated from the
+  voltage across a resistor the lesson knows, for example
+  (3.3 - 2) / 220 = 5.9 mA, and marked "calculated". If two known resistors disagree, the current is
   "unknown" instead of a guess. Mistakes that need a real current
   sensor are listed under `not_checked`, and the tutor says so.
 - **Not every row measured:** if a lesson needs a row the board does not
   measure, the check says so plainly (`missing_rows`) and does not guess.
-- **No power switch:** see below.
+- **No power switch** (the station): see below.
+- **Its supply voltage:** a hello line with `"supply_v"` (the station
+  sends 3.3) sets what "the + line is pulled down" means (0.85 of it) and
+  the "(3.3 V)" in "the top + line (3.3 V)". Without it, 3.3 V
+  (`SUPPLY_V` in `protocol.py`). BoardLink adds it to every reading as
+  `nominal_v` (laptop only).
 
 ## Safety does not depend on the AI
 
@@ -43,14 +48,17 @@ once, before the AI answers:
 - a measured current over 30 mA (`SAFETY_MAX_MA` in lessons.py) cuts
   power, when the board has a power switch;
 - a dangerous mistake found from the rows (no resistor) cuts power too;
-- on a board with **no power switch**, it puts "DANGER! Switch the power
-  OFF by hand now" on the board screen. The tutor's first words then
-  tell the student the same.
+- on a board with **no power switch** (the station), it puts "DANGER! /
+  Pull the red wire / out of the + line / right now!" on the board screen
+  (`MANUAL_OFF_SCREEN` in `protocol.py`). The tutor's first words then
+  tell the student the same: switch the power off by hand, pull the red
+  wire out of the + line. Button 4 (red) on such a board says how to do
+  it by hand, on the screen and the laptop.
 
 Turning power **on** has its own rules, also in plain Python
 (`session.turn_power_on()`, the only way power is switched on):
 
-- every time power comes on (button 4, the `restore_power` tool, a
+- every time power comes on (button 4, red on the station, the `restore_power` tool, a
   "fixed it" message) the circuit is measured at once, and power is cut
   again if it is still unsafe, with the reason ("still not safe: 100 mA
   flowed") on the laptop and the board screen;
@@ -62,7 +70,7 @@ Turning power **on** has its own rules, also in plain Python
 
 ## The hint button
 
-Button 2 (and the `get_hint` tool) never measures, never changes power
+Button 2 (white on the station; and the `get_hint` tool) never measures, never changes power
 and never adds a mistake to the history. It gives the next level of
 help for the most recent mistake not yet fixed (after the hint comes the
 full explanation), or, with no mistake, where the current build step

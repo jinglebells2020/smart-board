@@ -5,11 +5,53 @@ laptop expects, the smallest firmware that the checker accepts, how to
 test by hand, and how fast the board can talk.
 
 The full rules are in [SERIAL_PROTOCOL.md](SERIAL_PROTOCOL.md). The
-names (rows, colors, buttons, screen size, cut limit) are in
-`protocol.py`. When this page and those two disagree, they win.
+names (rows, colors, buttons, screen size, supply voltage, cut limit)
+are in `protocol.py`. When this page and those two disagree, they win.
 
 The laptop does not care which microcontroller you use. It only reads
 and writes lines of text on the USB serial port at **115200 baud**.
+
+---
+
+## 0. The station's firmware already exists
+
+Genesis runs on **the station** ([HARDWARE.md](HARDWARE.md)). Its
+firmware is written: **`firmware/smartboard_s3`** in the
+[jinglebells2020/smartboard](https://github.com/jinglebells2020/smartboard)
+repository. Its `firmware/README.md` has the Arduino IDE steps (board
+settings, libraries, upload).
+
+- At boot it is in **Genesis mode**: it sends the hello line and streams
+  `reading` lines (about 5 per second) in protocol version 2. It speaks
+  this page's protocol exactly, and must pass `tools/check_board.py`.
+- A line that starts with `{` switches it to the station's own JSON
+  protocol (its `docs/PROTOCOL.md`, for the smartboard laptop tools); a
+  Genesis command word (`LED`, `SHOW`, `CUT`, `RESTORE`, `HELLO`,
+  `SCENARIO`, `PRESS`) switches it back. Genesis never sends `{`.
+- Its hello line says `"has_current": false`, `"has_power_switch":
+  false`, `"has_screen": true`, `"buttons": 4` and **`"supply_v": 3.3`**.
+  `CUT` and `RESTORE` answer `"no power switch"`.
+- On its native USB port the baud rate does not matter, so part 5's
+  limit does not apply there. `--serial auto` picks that port by itself
+  (USB vendor id 0x303A).
+
+**Do it in this order:**
+
+1. **Mux test first.** Wire the 9 mux boards to the S3 and walk every row
+   with `tools/mux_test` (smartboard repository). It saves
+   `as_built_map.json`: which mux channel each breadboard row is on.
+2. **Make the row map:** in the smartboard repository run
+   `python3 tools/make_fw_maps.py tools/mux_test/as_built_map.json`
+   (Windows: `py tools\make_fw_maps.py tools\mux_test\as_built_map.json`).
+   It writes `rowmap.h` into `firmware/smartboard_s3`.
+3. **Flash** `firmware/smartboard_s3` from the Arduino IDE.
+4. **Check it** from this repository:
+   `python tools\check_board.py --serial auto --buttons`.
+
+Before step 2 the firmware is "unmapped": its hello line has `"rows": []`
+(it does not know which wire is which row yet). The checker can still
+check the protocol, but Genesis cannot check a lesson until the mapped
+firmware is flashed.
 
 ---
 
@@ -126,17 +168,22 @@ Hello, 4 rows and the top power strip, nothing else:
 {"type":"hello","protocol":2,"rows":["T1","T2","T3","T4","PT+","PT-"],"has_current":false,"has_power_switch":false,"has_screen":false,"buttons":4}
 ```
 
-A reading for that board (T4 is empty):
+A reading for that board on a 3.3 V supply, like the station (T4 is
+empty; T1 is at the supply):
 
 ```
-{"type":"reading","t_ms":51230,"power_on":true,"supply_v":5.00,"current_ma":null,"rows":{"T1":4.98,"T2":2.01,"T3":0.00,"T4":1.37,"PT+":5.00,"PT-":0.00},"floating":["T4"]}
+{"type":"reading","t_ms":51230,"power_on":true,"supply_v":3.30,"current_ma":null,"rows":{"T1":3.30,"T2":2.01,"T3":0.00,"T4":1.65,"PT+":3.30,"PT-":0.00},"floating":["T4"]}
 ```
 
-The same with a current sensor (13.6 mA flowing):
+The same with a current sensor (5.9 mA flowing):
 
 ```
-{"type":"reading","t_ms":51330,"power_on":true,"supply_v":4.99,"current_ma":13.6,"rows":{"T1":4.98,"T2":2.01,"T3":0.00,"T4":1.37,"PT+":4.99,"PT-":0.00},"floating":["T4"]}
+{"type":"reading","t_ms":51330,"power_on":true,"supply_v":3.29,"current_ma":5.9,"rows":{"T1":3.29,"T2":2.01,"T3":0.00,"T4":1.65,"PT+":3.29,"PT-":0.00},"floating":["T4"]}
 ```
+
+A board whose meter tops out below its supply (the station's ADC reads
+up to about 2.9-3.1 V) sends any row at or above that top as the supply
+voltage, and adds `"supply_v": 3.3` to its hello line.
 
 Answers:
 
@@ -268,20 +315,23 @@ not wait for the laptop: the laptop can be slow, busy, or unplugged.
    cut again and send another `power_cut` line.
 
 The laptop shows the student what happened in plain words and only
-turns power back on when the student asks (button 4).
+turns power back on when the student asks (button 4, red on the
+station).
 
 A board **without** a power switch cannot cut. The laptop then tells
-the student to switch the power off by hand. Nothing to do in firmware.
+the student to switch the power off by hand. On the station that means
+"pull the red wire out of the + line", on the laptop and on the screen.
+Nothing to do in firmware.
 
 **Test it safely with `--power-cut`.** Do **not** short the supply to
 test it. Instead:
 
-1. In your firmware, set the limit low for the test, for example
-   10 mA. Upload it.
+1. In your firmware, set the limit low for the test (see step 3).
+   Upload it.
 2. Run `python tools\check_board.py --serial COM3 --power-cut`.
 3. When it asks, build lesson 1 on the breadboard: the LED with the
-   220 Ω resistor (about 14 mA). That is above your 10 mA test limit,
-   so the board must cut.
+   220 Ω resistor (about 6 mA on 3.3 V, about 14 mA on 5 V). Set the
+   test limit below that, for example 3 mA, so the board must cut.
 4. The checker checks the `power_cut` line, that power stays off, and
    that `RESTORE` works.
 5. **Set the limit back to 50 mA** and upload again.

@@ -1,7 +1,7 @@
 {
   "id": 3,
   "title": "More LEDs",
-  "circuit": "5 V -> 330 ohm resistor -> red LED -> ground, 1 to 3 times",
+  "circuit": "3.3 V -> 330 ohm resistor -> red LED -> ground, 1 to 3 times",
   "copies": {
     "min": 1,
     "max": 3
@@ -77,17 +77,17 @@
   ],
   "expected": {
     "rows": {
-      "T5": 5.0,
+      "T5": 3.3,
       "T10": 2.0,
       "T12": 0.0
     },
-    "current_ma": 9.1,
-    "math": "(5 - 2) / 330 = 0.0091 A = 9.1 mA for each LED circuit"
+    "current_ma": 3.9,
+    "math": "(3.3 - 2) / 330 = 0.0039 A = 3.9 mA for each LED circuit"
   },
   "accept": {
     "rows": {
       "T5": {
-        "min": 4.5
+        "min": 2.8
       },
       "T10": {
         "min": 1.6,
@@ -103,8 +103,8 @@
       "T12"
     ],
     "current_ma": {
-      "min": 7,
-      "max": 11
+      "min": 3.0,
+      "max": 5.0
     }
   },
   "resistor_words": "the 330 ohm resistor",
@@ -143,10 +143,10 @@
       "detect": {
         "rows": {
           "T5": {
-            "min": 4.5
+            "min": 2.8
           },
           "T10": {
-            "min": 4.5
+            "min": 2.8
           },
           "T12": {
             "max": 0.5
@@ -160,7 +160,7 @@
         }
       },
       "action": "hint",
-      "hint": "Almost no current is flowing, but the row before the LED still has the full 5 volts. So the current is stopped at the LED: it may be backwards, in the wrong row, or missing, and the board cannot tell which. Look at the LED's long leg, the one marked + in the drawing: notice which row it is in, and which way it faces.",
+      "hint": "Almost no current is flowing, but the row before the LED still has the full 3.3 volts. So the current is stopped at the LED: it may be backwards, in the wrong row, or missing, and the board cannot tell which. Look at the LED's long leg, the one marked + in the drawing: notice which row it is in, and which way it faces.",
       "explain": "Three things can cause this, and the board cannot tell which one: the LED may be in backwards, it may be in the wrong row (its long leg not in the same row as the resistor), or it may be missing. The long leg (+) should share a row with the resistor, and the short leg (-) should lead to ground.",
       "mini_lesson": {
         "title": "LEDs are one-way doors",
@@ -181,19 +181,19 @@
     },
     {
       "id": "no_resistor",
-      "description": "No resistor: LED connected straight to 5 V",
+      "description": "No resistor: LED connected straight to 3.3 V",
       "rows": [
         "T5",
         "T10"
       ],
       "detect": {
         "supply_v": {
-          "max": 4.0
+          "max": 2.6
         },
         "rows": {
           "T10": {
             "min": 1.0,
-            "max": 4.0
+            "max": 2.6
           },
           "T12": {
             "max": 0.5
@@ -202,7 +202,7 @@
       },
       "action": "cut_power",
       "hint": "The current was far too high, so the power must stay off until it is fixed. What part in the circuit keeps the current small enough for the LED?",
-      "explain": "There was no resistor, so the LED was connected straight to 5 volts. Nothing kept the current small, so it shot far past what the LED can handle, and that can burn it out. Put the 330 ohm resistor between 5 V and the LED's long leg.",
+      "explain": "There was no resistor, so the LED was connected straight to 3.3 volts. Nothing kept the current small, so it shot far past what the LED can handle, and that can burn it out. Put the 330 ohm resistor between 3.3 V and the LED's long leg.",
       "mini_lesson": {
         "title": "Resistors keep current small",
         "idea": "A resistor slows down electric current, like a narrow pipe slows down water. Without one, a huge amount of current rushes through the LED. Too much current makes parts very hot and can burn them out.",
@@ -225,7 +225,7 @@
       "detect": {
         "rows": {
           "T5": {
-            "min": 4.5
+            "min": 2.8
           },
           "T12": {
             "max": 0.5
@@ -237,7 +237,7 @@
       },
       "action": "hint",
       "hint": "No current, and no voltage at the LED. Something is not connected. Check that each leg is in the row you think it is.",
-      "explain": "The circuit is not a closed loop. Each part must share a row with the next one: 5 V to the resistor, the resistor to the LED's long leg, and the LED's short leg to ground. The lit row is the measuring row, so make sure the resistor and the LED both reach it.",
+      "explain": "The circuit is not a closed loop. Each part must share a row with the next one: 3.3 V to the resistor, the resistor to the LED's long leg, and the LED's short leg to ground. The lit row is the measuring row, so make sure the resistor and the LED both reach it.",
       "mini_lesson": {
         "title": "Circuits must be closed loops",
         "idea": "Electric current only flows around a complete loop, from the power supply and back again. It is like a train track: if one piece is missing, the train cannot go around. A part in the wrong row is like a missing piece of track.",
@@ -261,7 +261,7 @@
       "detect": {
         "rows": {
           "T5": {
-            "min": 4.5
+            "min": 2.8
           },
           "T10": {
             "min": 1.5,
@@ -273,7 +273,7 @@
         },
         "current_ma": {
           "min": 0.1,
-          "max": 6.5
+          "max": 2.9
         }
       },
       "needs_current_sensor": true,
@@ -303,7 +303,7 @@
       "detect": {
         "rows": {
           "T5": {
-            "min": 4.5
+            "min": 2.8
           },
           "T10": {
             "max": 0.5
@@ -316,7 +316,7 @@
           "T10"
         ],
         "current_ma": {
-          "min": 12,
+          "min": 7,
           "max": 30
         }
       },

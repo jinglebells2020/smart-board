@@ -71,6 +71,9 @@ class TestPretendBoardState(ServerCase):
             self.assertEqual(row["light"], "off")
         self.assertEqual(b["screen_size"], [P.SCREEN_LINES, P.SCREEN_CHARS])
         self.assertEqual(b["buttons"], {str(i): P.BUTTON_LABELS[i] for i in range(1, 5)})
+        # The station's colours: yellow check, white hint, blue next, red power.
+        self.assertEqual(b["button_colors"], {"1": "yellow", "2": "white", "3": "blue", "4": "red"})
+        self.assertEqual(b["supply_v"], 3.3)
         self.assertEqual(b["colors"], P.COLORS)
         self.assertEqual(b["screen"][0], "Genesis")  # welcome text names the app
         self.assertIn("Lesson 1", b["screen"][1])
@@ -79,7 +82,7 @@ class TestPretendBoardState(ServerCase):
     def test_current_is_measured(self):
         shown = self.state()["shown"]
         self.assertEqual(shown["current_source"], "measured")
-        self.assertAlmostEqual(shown["current_ma"], 13.6, delta=0.5)
+        self.assertAlmostEqual(shown["current_ma"], 5.9, delta=0.5)  # (3.3 - 2) / 220
 
 
 class TestButtons(ServerCase):
@@ -151,7 +154,7 @@ class TestNoSwitchNoSensorSixteenRows(ServerCase):
         s = self.state()
         self.assertEqual(s["board"]["capabilities"],
                          {"rows": 16, "has_current": False, "has_power_switch": False,
-                          "has_screen": True, "buttons": 4})
+                          "has_screen": True, "buttons": 4, "supply_v": 3.3})
         self.assertEqual(s["shown"]["current_source"], "calculated")
 
     def test_danger_on_the_page_and_the_board(self):
@@ -159,14 +162,17 @@ class TestNoSwitchNoSensorSixteenRows(ServerCase):
         self.press(1)
         s = self.state()
         self.assertTrue(s["log"][-1]["text"].startswith("Switch the power off by hand"))
-        self.assertIn("by hand", " ".join(s["board"]["screen"]))
+        self.assertIn("pull the red wire out of the + line", s["log"][-1]["text"])
+        self.assertIn("Pull the red wire out of the + line", " ".join(s["board"]["screen"]))
         self.assertTrue(s["reading"]["power_on"])
 
     def test_power_button_says_it_cannot(self):
         self.press(4)
         s = self.state()
-        self.assertIn("cannot switch the power", s["log"][-1]["text"])
+        self.assertIn("has no power switch", s["log"][-1]["text"])
+        self.assertIn("pull the red wire out of the + line", s["log"][-1]["text"])
         self.assertIn("No power switch.", s["board"]["screen"])
+        self.assertIn("red wire out of +.", s["board"]["screen"])
 
     def test_unknown_current_shows_none(self):
         self.post("/api/ask", {"text": "check"})  # pass lesson 1

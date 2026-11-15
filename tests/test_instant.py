@@ -478,7 +478,8 @@ class TestClassify(unittest.TestCase):
         {"part": "Black wire", "legs": [{"row": "T12"}, {"row": "PT-"}]}]}
 
     def summary(self, rows, current=0.0):
-        return {"rows": {r: 5.0 for r in self.LESSON["rows"]}, "current_ma": current,
+        # No "supply_v": the + line counts as the station's 3.3 V.
+        return {"rows": {r: 3.3 for r in self.LESSON["rows"]}, "current_ma": current,
                 "floating": [r for r in self.LESSON["rows"] if r not in rows]}
 
     def test_same_voltage_mid_build_is_normal_without_current(self):

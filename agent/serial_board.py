@@ -31,6 +31,9 @@ except ImportError:  # pragma: no cover - only without pyserial installed
 from protocol import DEFAULT_BAUD, PROTOCOL_VERSION
 
 MAX_LINE = 65536  # longer than this is junk, not a real line
+# The station's ESP32-S3 talks over its own (native) USB port, which shows
+# up with Espressif's USB vendor id. --serial auto picks that port first.
+STATION_VID = 0x303A
 
 
 class BoardError(Exception):
@@ -43,14 +46,22 @@ def _need_pyserial():
 
 
 def list_ports():
-    """[(port name, description)] for every serial port on this computer."""
+    """[(port name, description, USB vendor id or None)] for every serial
+    port on this computer."""
     _need_pyserial()
-    return [(p.device, p.description or "") for p in serial.tools.list_ports.comports()]
+    return [(p.device, p.description or "", getattr(p, "vid", None))
+            for p in serial.tools.list_ports.comports()]
+
+
+def _vid(port):
+    return port[2] if len(port) > 2 else None
 
 
 def choose_port(name, ports=None):
-    """The port to use. "auto" picks the only port there is; with none or
-    more than one it says so, listing them."""
+    """The port to use. "auto" picks the only port there is; with several,
+    the only one with the station's USB vendor id (0x303A, the ESP32-S3's
+    own USB port). With none, or no way to choose, it says so, listing them.
+    ports: [(name, description)] or [(name, description, vid)]."""
     if name != "auto":
         return name
     ports = list_ports() if ports is None else ports
@@ -58,8 +69,19 @@ def choose_port(name, ports=None):
         return ports[0][0]
     if not ports:
         raise BoardError("No serial ports found. Plug the board in with a USB cable "
-                         "(a cable that carries data, not only power), then try again.")
-    listed = "\n".join(f"  {dev}  {desc}" for dev, desc in ports)
+                         "(a cable that carries data, not only power), then try again. "
+                         "On the station, use the S3 board's USB port.")
+    station = [p for p in ports if _vid(p) == STATION_VID]
+    if len(station) == 1:
+        return station[0][0]
+
+    def line(p):
+        tag = "  (ESP32-S3, VID 303A)" if _vid(p) == STATION_VID else ""
+        return f"  {p[0]}  {p[1]}{tag}"
+    listed = "\n".join(line(p) for p in ports)
+    if len(station) > 1:
+        raise BoardError("More than one ESP32-S3 board (USB VID 303A) is plugged in. Pick "
+                         f"one with --serial, for example --serial {station[0][0]}\n{listed}")
     raise BoardError("More than one serial port found. Pick one with --serial, "
                      f"for example --serial {ports[0][0]}\n{listed}")
 

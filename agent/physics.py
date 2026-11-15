@@ -3,10 +3,10 @@
 observations(summary, lesson) turns one check's numbers into a short list
 of facts, each one plain sentence a 6th grader can follow, for example:
 
-    F4  part_drop          The 220 ohm resistor has 3.0 volts across it
-                           (row 5 to row 10). The plan expects about 3.0 volts.
-    F5  resistor_current   3.0 volts across 220 ohm means about 13.6 mA flows
-                           through it. The board measured 13.7 mA.
+    F4  part_drop          The 220 ohm resistor has 1.3 volts across it
+                           (row 5 to row 10). The plan expects about 1.3 volts.
+    F5  resistor_current   1.3 volts across 220 ohm means about 5.9 mA flows
+                           through it. The board measured 6.0 mA.
 
 The diagnoser (agent/diagnoser.py) reasons only from these facts and must
 name the facts behind every cause, so Python can check the answer is
@@ -20,17 +20,27 @@ led_state, same_voltage, current_vs_expected, extra_rows, flicker.
 
 import re
 
-from protocol import row_label
+from protocol import SUPPLY_V, low_supply_v, row_label
 
 PLUS, MINUS = ("PT+", "PB+"), ("PT-", "PB-")
-EXPECTED_SUPPLY_V = 5.0
+# The + line's voltage when nothing pulls it down: the board's own supply
+# (summary["nominal_v"], from its hello line), else this (3.3 V, the station).
+EXPECTED_SUPPLY_V = SUPPLY_V
 LED_ON = (1.5, 2.5)      # volts across a lit red LED
 LED_BLOCKED_V = 2.5      # more than this across it, and no current: blocked
 SHORTED_V = 0.3          # less than this across a part: current goes around it
 CURRENT_FLOWS_MA = 1.0
 SAME_V = 0.15            # two rows this close read "the same"
 SHOULD_DIFFER_V = 1.0    # ...when the plan says they differ by more than this
-LOW_SUPPLY_V = 4.5       # the + line pulled below this: a big current flows
+# The + line pulled below this share of the supply (2.8 V at 3.3 V): a big
+# current flows. low_supply_v() in protocol.py.
+LOW_SUPPLY_V = low_supply_v(SUPPLY_V)
+
+
+def _supply(summary):
+    """The supply this summary's board has (its hello line), else 3.3 V."""
+    v = (summary or {}).get("nominal_v")
+    return float(v) if isinstance(v, (int, float)) and v > 0 else EXPECTED_SUPPLY_V
 
 
 def part_kind(part):
@@ -93,9 +103,9 @@ def _measured(summary, row):
     return summary["rows"][row]
 
 
-def _expected(lesson, row):
+def _expected(lesson, row, supply=EXPECTED_SUPPLY_V):
     if row in PLUS:
-        return EXPECTED_SUPPLY_V
+        return supply
     if row in MINUS:
         return 0.0
     return lesson.get("expected", {}).get("rows", {}).get(row)
@@ -109,9 +119,9 @@ def power_fact(summary, safety_cut=False):
                 "parts safe.")
     elif on:
         text = f"The power is on: the + line has {_v(supply)}."
-        if supply < 4.5:
-            text = (f"The power is on, but the + line has only {_v(supply)} instead of 5: "
-                    "something is pulling too much current.")
+        if supply < low_supply_v(_supply(summary)):
+            text = (f"The power is on, but the + line has only {_v(supply)} instead of "
+                    f"{_supply(summary):g}: something is pulling too much current.")
     else:
         text = "The power is off, so nothing can be measured."
     return {"kind": "power", "rows": [], "text": text,
@@ -132,6 +142,7 @@ def circuit_facts(summary, lesson, label=""):
     floating = set(summary.get("floating", []))
     current = summary.get("current_ma")
     source = summary.get("current_source")
+    supply = _supply(summary)
 
     def add(kind, rows, values, text):
         facts.append({"kind": kind, "rows": list(rows), "values": values, "text": pre + text})
@@ -141,7 +152,7 @@ def circuit_facts(summary, lesson, label=""):
             add("plan_row_floating", [row], {},
                 f"Nothing is connected in {row_label(row)}, but the plan uses it.")
     for row in plan:
-        m, e = _measured(summary, row), _expected(lesson, row)
+        m, e = _measured(summary, row), _expected(lesson, row, supply)
         if m is None or e is None:
             continue
         add("row_voltage", [row], {"measured": round(m, 2), "expected": e},
@@ -155,7 +166,7 @@ def circuit_facts(summary, lesson, label=""):
         the = ("the " + name[0].lower() + name[1:] if name[:1].isupper() and name[1:2].islower()
                else "the " + name)
         ma, mb = _measured(summary, a), _measured(summary, b)
-        ea, eb = _expected(lesson, a), _expected(lesson, b)
+        ea, eb = _expected(lesson, a, supply), _expected(lesson, b, supply)
         rows = [r for r in (a, b) if not r.startswith("P")]
         if ma is None or mb is None:
             empty = [r for r in (a, b) if _measured(summary, r) is None]
@@ -206,14 +217,16 @@ def circuit_facts(summary, lesson, label=""):
     # current flows (or the supply is pulled down, which needs a big current
     # even when no sensor sees it). With no current, every part has 0 V
     # across it, so the same voltage tells nothing.
-    pulled_down = (summary.get("supply_v") or EXPECTED_SUPPLY_V) < LOW_SUPPLY_V
+    pulled_down = (summary.get("supply_v") or supply) < low_supply_v(supply)
     joined = (current is not None and current > CURRENT_FLOWS_MA) or pulled_down
-    known = [r for r in plan if _measured(summary, r) is not None and _expected(lesson, r) is not None]
+    known = [r for r in plan if _measured(summary, r) is not None and
+             _expected(lesson, r, supply) is not None]
     for i, a in enumerate(known):
         for b in known[i + 1:]:
-            if abs(_expected(lesson, a) - _expected(lesson, b)) > SHOULD_DIFFER_V and \
+            ea, eb = _expected(lesson, a, supply), _expected(lesson, b, supply)
+            if abs(ea - eb) > SHOULD_DIFFER_V and \
                     abs(_measured(summary, a) - _measured(summary, b)) <= SAME_V:
-                should = _v(abs(_expected(lesson, a) - _expected(lesson, b)))
+                should = _v(abs(ea - eb))
                 same = f"{_cap(_words([a, b]))} read the same ({_v(_measured(summary, a))})"
                 text = (f"{same} but should differ by about {should}: they may be joined "
                         "together." if joined else

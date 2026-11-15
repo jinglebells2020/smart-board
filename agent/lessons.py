@@ -7,18 +7,19 @@ the same every time, whichever model is running.
 Readings are protocol version 2 (docs/SERIAL_PROTOCOL.md): a voltage for
 every row the board measures, the rows nothing drives ("floating"), and
 the supply current, which is null on a board with no current sensor.
+Every lesson is written for the station's 3.3 V supply (protocol.SUPPLY_V).
 """
 
 import json
 import statistics
 from pathlib import Path
 
-from protocol import row_label
+from protocol import SUPPLY_V, low_supply_v, row_label, volts_words
 
 LESSONS_DIR = Path(__file__).resolve().parent.parent / "lessons"
 
 # Any current above this is unsafe for every lesson, so power is cut
-# at once, without waiting for the AI. Lesson 1 normally draws 13.6 mA.
+# at once, without waiting for the AI. Lesson 1 normally draws 5.9 mA.
 SAFETY_MAX_MA = 30.0
 
 # For the clue on unknown mistakes: how far a number may be from the
@@ -26,7 +27,22 @@ SAFETY_MAX_MA = 30.0
 # no accept range for that number.
 CURRENT_TOLERANCE = 0.15  # 15 % of the expected current
 VOLTAGE_TOLERANCE = 0.3   # volts
-LOW_SUPPLY_V = 4.5        # every lesson runs from 5 V
+# The + line below this is pulled down (a big current flows). It is a share
+# of the board's own supply (protocol.low_supply_v): 2.8 V at 3.3 V. Use
+# low_supply(summary) for a board that said its supply in its hello line.
+LOW_SUPPLY_V = low_supply_v(SUPPLY_V)
+
+
+def nominal(summary):
+    """The supply voltage the board says it has (summarize() takes it from
+    the readings' "nominal_v"), else protocol.SUPPLY_V."""
+    v = (summary or {}).get("nominal_v")
+    return float(v) if isinstance(v, (int, float)) and v > 0 else SUPPLY_V
+
+
+def low_supply(summary):
+    """Below this the + line is pulled down, for this summary's board."""
+    return low_supply_v(nominal(summary))
 
 
 # Free build (--free-build): a lesson-like mode with no plan. The student
@@ -57,7 +73,7 @@ def free_check(summary):
         out.update(action="cut_power",
                    danger=f"{current:.0f} mA flows, and more than {SAFETY_MAX_MA:.0f} mA is "
                           "too much")
-    elif summary["supply_v"] < LOW_SUPPLY_V:
+    elif summary["supply_v"] < low_supply(summary):
         out.update(action="cut_power",
                    danger=f"the + line dropped to {summary['supply_v']:.1f} volts, so "
                           "something takes far too much current")
@@ -89,7 +105,7 @@ CURRENT_AGREE_ABS_MA = 0.02  # ...or be this close
 
 def calculate_current(rows, floating, current_from):
     """Current through the lesson's known resistors, from the voltage on
-    both sides: I = (V1 - V2) / R. Example: (5 - 2) / 220 = 13.6 mA.
+    both sides: I = (V1 - V2) / R. Example: (3.3 - 2) / 220 = 5.9 mA.
 
     A resistor with an end in a floating row carries no current. With two
     or more known resistors in a line, their answers must agree; if they
@@ -118,9 +134,11 @@ def summarize(readings, lesson):
     """Average a list of version 2 readings for one lesson.
 
     Returns {"rows", "spread", "floating", "flickering", "supply_v",
-    "power_on", "current_ma", "current_source", "current_note",
-    "missing_rows"}. "flickering" lists rows seen both connected and
-    empty in this window (at least twice each): a loose leg.
+    "nominal_v", "power_on", "current_ma", "current_source", "current_note",
+    "missing_rows"}. "nominal_v" is the board's own supply voltage (the
+    readings' laptop-only "nominal_v", from its hello line), else 3.3.
+    "flickering" lists rows seen both connected and empty in this window
+    (at least twice each): a loose leg.
     current_source is "measured" (a current sensor), "calculated" (from
     the rows, see calculate_current) or "unknown".
     """
@@ -141,6 +159,8 @@ def summarize(readings, lesson):
     summary = {
         "rows": rows, "spread": spread, "floating": floating, "flickering": flickering,
         "supply_v": round(statistics.mean(r["supply_v"] for r in readings), 3),
+        "nominal_v": next((r["nominal_v"] for r in readings
+                           if isinstance(r.get("nominal_v"), (int, float))), SUPPLY_V),
         "power_on": all(r["power_on"] for r in readings),
         "missing_rows": [n for n in wanted if n not in measured],
     }
@@ -242,7 +262,7 @@ def clue(summary, lesson):
     exp_rows = expected.get("rows", {})
     accept = lesson.get("accept", {}).get("rows", {})
     resistor = lesson.get("resistor_words", "the resistor")
-    supply = summary.get("supply_v", 5.0)
+    supply = summary.get("supply_v", nominal(summary))
     found = []
 
     def add(importance, number, row, direction, measured, exp, meaning):
@@ -312,10 +332,10 @@ def clue(summary, lesson):
                     "The current is a little higher than it should be. Something is "
                     f"letting it through more easily than {resistor} would.")
 
-    if supply < LOW_SUPPLY_V:
-        add(1, "power voltage", None, "lower", supply, 5.0,
-            "The power voltage is lower than 5 volts. The power supply may be "
-            "having trouble keeping up.")
+    if supply < low_supply(summary):
+        add(1, "power voltage", None, "lower", supply, nominal(summary),
+            f"The power voltage is lower than {volts_words(nominal(summary))}. The power "
+            "supply may be having trouble keeping up.")
 
     found.sort(key=lambda f: -f[0])
     details = [d for _, d in found]

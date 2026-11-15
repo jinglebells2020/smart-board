@@ -140,7 +140,8 @@ def leads(lesson, clue):
                 add(f"Could {_the(part)} be a different value than the plan says "
                     "(compare its color bands with the lesson)?")
         elif d["number"] == "power voltage":
-            add("Is the power supply plugged in well, and is it set to 5 volts?")
+            add("Is the USB cable plugged in well, and is nothing joining the + line "
+                "straight to the - line?")
     if not out:
         add("Could one part be in the row next to where the plan puts it (compare "
             "each part with the lesson layout, one at a time)?")

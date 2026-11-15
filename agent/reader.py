@@ -46,7 +46,7 @@ MAX_HYPOTHESES = 3
 MAX_PARTS = 12
 ROW_TOLERANCE_V = 0.3
 CURRENT_TOLERANCE = 0.20  # 20 %...
-CURRENT_TOLERANCE_MA = 2.0  # ...or 2 mA
+CURRENT_TOLERANCE_MA = 1.0  # ...or 1 mA (at 3.3 V a 220 and a 330 ohm LED circuit differ by 1.9 mA)
 RECURSION_LIMIT = 8
 E_SERIES = [100, 150, 220, 330, 470, 680, 1000, 1500, 2200, 3300, 4700, 6800, 10000]
 
@@ -94,9 +94,12 @@ drives it, so it has no path to + or -), the current from the + line
 Reason like an electronics teacher:
 - A row at the supply voltage is joined to + (directly, through wires, or
   through a part that carries no current). A row near 0 V is joined to -.
+  The station's supply is 3.3 V, and its meter tops out at about 2.9 to
+  3.1 V: a row at or above that reads as the full supply voltage.
 - An LED that is on drops about its color's forward voltage: red 1.9,
   yellow 2.0, green 2.1, blue or white 3.0 volts (a little more when more
-  current flows). An LED that is off carries no current.
+  current flows). An LED that is off carries no current. At 3.3 V a blue or
+  white LED barely lights, and two LEDs in a row cannot light at all.
 - A resistor carries (voltage drop / ohms). With no current, a resistor has
   no voltage across it.
 - The + lines are "PT+" (top) and "PB+" (bottom), the - lines "PT-" and
@@ -175,13 +178,15 @@ def rows_spec(rows):
 
 def measured_of(summary):
     """What the board measured, for the physics check: {"rows": {row:
-    volts, or None when floating}, "current_ma", "current_source", "supply_v"}."""
+    volts, or None when floating}, "current_ma", "current_source", "supply_v",
+    "nominal_v" (the board's own supply, from its hello line)}."""
     floating = set(summary.get("floating", []))
     return {"rows": {r: (None if r in floating else v) for r, v in summary.get("rows", {}).items()
                      if is_row(r)},
             "current_ma": summary.get("current_ma"),
             "current_source": summary.get("current_source"),
-            "supply_v": summary.get("supply_v")}
+            "supply_v": summary.get("supply_v"),
+            "nominal_v": summary.get("nominal_v") or solver.SUPPLY_V}
 
 
 def reader_payload(measured, usable, tray=None, facts=None):
@@ -194,6 +199,7 @@ def reader_payload(measured, usable, tray=None, facts=None):
             else round(measured["current_ma"], 2),
             "current_source": measured.get("current_source"),
             "supply_v": round(measured.get("supply_v") or 0.0, 2),
+            "nominal_v": measured.get("nominal_v") or solver.SUPPLY_V,
             "tray": (tray or {}).get("parts", []) if tray else [],
             "tray_other": (tray or {}).get("other", "") if tray else "",
             "goal": (tray or {}).get("goal", "") if tray else "",
@@ -293,10 +299,11 @@ def physics_check(parts, measured):
     """Work the guessed circuit out with sim/solver.py and compare with what
     the board measured. Never raises. Returns {"score", "matched", "total",
     "passed", "mismatches", "parts_ok", "predicted"}."""
+    nominal = measured.get("nominal_v") or solver.SUPPLY_V  # the board's own supply
     try:
         sparts, index = _solver_parts(parts)
-        sol = solver.solve(sparts) if sparts else {"rows": {}, "current_ma": 0.0,
-                                                   "supply_v": solver.SUPPLY_V, "leds_on": {}}
+        sol = solver.solve(sparts, nominal) if sparts else {"rows": {}, "current_ma": 0.0,
+                                                            "supply_v": nominal, "leds_on": {}}
     except Exception as e:  # a guess the solver cannot work out
         return {"score": 0.0, "matched": 0, "total": 1, "passed": False,
                 "mismatches": [f"the guess cannot be worked out: {e}"],
@@ -627,7 +634,8 @@ def heuristic_guess(payload):
                     here.append({"kind": "unknown", "rows": [a, b], "sure": False})
         options.append(here)
     measured = {"rows": dict(rows), "current_ma": current,
-                "current_source": payload.get("current_source"), "supply_v": supply}
+                "current_source": payload.get("current_source"), "supply_v": supply,
+                "nominal_v": payload.get("nominal_v") or solver.SUPPLY_V}
     checked = []
     for combo in itertools.islice(itertools.product(*options), 512):
         parts = [dict(p) for p in combo]

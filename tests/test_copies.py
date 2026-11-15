@@ -38,12 +38,12 @@ class TestLessonThree(unittest.TestCase):
         self.assertEqual(l3["title"], "More LEDs")
         self.assertEqual(l3["copies"], {"min": 1, "max": 3})
         self.assertEqual(l3["current_from"][0]["ohms"], 330)
-        self.assertEqual(l3["expected"]["current_ma"], 9.1)
-        self.assertEqual(l3["accept"]["current_ma"], {"min": 7, "max": 11})
+        self.assertEqual(l3["expected"]["current_ma"], 3.9)  # (3.3 - 2) / 330
+        self.assertEqual(l3["accept"]["current_ma"], {"min": 3.0, "max": 5.0})
         self.assertIn("330 ohm resistor", [p["part"] for p in l3["layout"]])
         self.assertEqual([m["id"] for m in l3["mistakes"]], [m["id"] for m in LESSONS[1]["mistakes"]])
         self.assertNotIn("220", json.dumps(l3))
-        self.assertLess(3 * 9.1, 30)  # three copies stay under the safety cut
+        self.assertLess(3 * 3.9, 30)  # three copies stay under the safety cut
 
     def test_one_two_or_three_correct_copies(self):
         for copies in (["T0"], ["T0", "T15"], ["T0", "T15", "B0"], ["B20"], ["T30", "B3"]):
@@ -82,7 +82,7 @@ class TestLessonThree(unittest.TestCase):
         board.send("COPIES T0 T15")
         plain = board.read
 
-        def more_current():  # something else draws 8 mA: the rows look fine
+        def more_current():  # something else draws 8 mA: the rows look fine (16 mA in all)
             r = plain()
             r["current_ma"] += 8.0
             return r
@@ -91,7 +91,7 @@ class TestLessonThree(unittest.TestCase):
         _, result, cut = Session(board, lesson=3).measure()
         self.assertNotEqual(result["status"], "ok")
         self.assertEqual(result["count"], 2)
-        self.assertFalse(cut)  # 26 mA is under the 30 mA cut
+        self.assertFalse(cut)  # 16 mA is under the 30 mA cut
 
     def test_a_too_big_resistor_shows_in_the_total_current(self):
         _, _, result, _, _ = measure(3, "resistor_too_big", ["T0", "T15"])
@@ -283,7 +283,7 @@ class TestPageAndServer(unittest.TestCase):
         self.assertEqual(board.send("COPIES X1")["type"], "error")
         self.assertEqual(board.send("COPIES Tx")["type"], "error")
         r = board.read()
-        self.assertAlmostEqual(r["current_ma"], 3 * 3 / 330 * 1000, delta=1.0)
+        self.assertAlmostEqual(r["current_ma"], 3 * 1.3 / 330 * 1000, delta=0.5)
         board.set_scenario(1, "correct")  # a new lesson: one circuit again
         self.assertIsNone(board.copies)
 

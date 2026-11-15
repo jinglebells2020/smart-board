@@ -227,8 +227,8 @@ ALT_LESSONS = {
         "comparison": "a shortcut across a park"},
     "bottom_1k": {
         "title": "Two resistors share like two kids",
-        "idea": "Two resistors in a row share the 5 volts like two kids sharing marbles. The "
-                "bigger resistor gets the bigger handful. Their shares always make 5 volts.",
+        "idea": "Two resistors in a row share the 3.3 volts like two kids sharing marbles. The "
+                "bigger resistor gets the bigger handful. Their shares always make 3.3 volts.",
         "question": "One resistor is 10k and the other is 1k. Which one gets more volts?",
         "options": ["The 10k one", "The 1k one", "Both the same"], "answer": 0,
         "why": "The bigger resistor always takes the bigger share of the voltage.",
@@ -244,11 +244,11 @@ ALT_LESSONS = {
         "comparison": "a walkie-talkie between channels"},
     "top_1k": {
         "title": "The taller hill takes more of the climb",
-        "idea": "Going from 5 volts to 0 is like walking over two hills. The taller hill takes "
+        "idea": "Going from 3.3 volts to 0 is like walking over two hills. The taller hill takes "
                 "more of the climb. A bigger resistor is the taller hill.",
         "question": "The top resistor is much bigger than the bottom one. What is the middle voltage?",
         "options": ["Lower than half", "Higher than half", "Exactly half"], "answer": 0,
-        "why": "The big top resistor takes most of the 5 volts, so the middle is low.",
+        "why": "The big top resistor takes most of the 3.3 volts, so the middle is low.",
         "comparison": "two hills"},
     "bottom_missing": {
         "title": "A toll booth with no cars takes nothing",
@@ -263,7 +263,7 @@ ALT_LESSONS = {
         "idea": "A row gets voltage only through a path to the power supply. It is like a lamp "
                 "with its cord cut. No path means no power.",
         "question": "A row has a path to ground but none to the power supply. What does it read?",
-        "options": ["0 volts", "5 volts", "2.5 volts"], "answer": 0,
+        "options": ["0 volts", "3.3 volts", "1.65 volts"], "answer": 0,
         "why": "With no path from the power supply, the row sits at ground: 0 volts.",
         "comparison": "a lamp with a cut cord"},
     "loose_led_leg": {

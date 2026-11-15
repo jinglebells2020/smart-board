@@ -20,8 +20,8 @@ tutor says them as they are.
 
 import re
 
-from agent.lessons import LOW_SUPPLY_V, SAFETY_MAX_MA
-from protocol import is_row, row_label
+from agent.lessons import SAFETY_MAX_MA
+from protocol import is_row, low_supply_v, row_label
 from sim import solver
 
 LOW_SCORE = 0.6       # a guess matching less than this: "I am not sure"
@@ -104,7 +104,9 @@ def feedback_items(reading, measured, usable, tray=None, plan=None):
         items.append({"kind": kind, "level": level, "text": text, "rows": rows,
                       "light": light if rows else None})
 
-    supply = measured.get("supply_v") or solver.SUPPLY_V
+    supply = measured.get("supply_v") or measured.get("nominal_v") or solver.SUPPLY_V
+    nominal = measured.get("nominal_v") or solver.SUPPLY_V  # the board's own supply
+    low = low_supply_v(nominal)  # 2.8 V at 3.3 V
     current = measured.get("current_ma")
     sensor = measured.get("current_source") == "measured" and current is not None
     driven = [r for r, v in measured["rows"].items() if v is not None]
@@ -115,7 +117,7 @@ def feedback_items(reading, measured, usable, tray=None, plan=None):
             f"{current:.0f} mA flowed: more than {SAFETY_MAX_MA:.0f} mA is too much, so the "
             "power was switched off. Look for an LED with no resistor, or a wire from + "
             "straight to -.")
-    elif measured.get("supply_v") is not None and supply < LOW_SUPPLY_V and driven:
+    elif measured.get("supply_v") is not None and supply < low and driven:
         add("short_supply", "problem",
             f"The + line dropped to {supply:.1f} volts: something joins + and - almost "
             "directly (a short), or an LED has no resistor.")
@@ -187,8 +189,14 @@ def feedback_items(reading, measured, usable, tray=None, plan=None):
         if p["kind"] == "led":
             vf = solver.LED_VF.get(p.get("color", "red"), 1.9)
             if leds_on.get(i) and va is not None and vb is not None:
+                dim = ""
+                if p.get("color") in ("blue", "white") and vf > 0.85 * nominal:
+                    # At 3.3 V a blue or white LED (about 3 V) is left with
+                    # almost nothing for its resistor: it only glows a little.
+                    dim = (f" It needs almost all of the {nominal:g} volts, so it only "
+                           "glows a little. Red, yellow and green LEDs are brighter here.")
                 add("led_on", "good", f"{_cap(_name(p))} in {_rows_words(p['rows'])} is on: "
-                    f"it has {va - vb:.1f} volts across it and current flows through it.",
+                    f"it has {va - vb:.1f} volts across it and current flows through it.{dim}",
                     p["rows"], "green")
             elif va is None or vb is None:
                 empty = a if va is None else b

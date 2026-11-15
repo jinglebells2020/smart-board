@@ -4,7 +4,10 @@ A board only needs four methods: hello(), read(), send(command) and
 events(). BoardLink adds what the laptop needs on top:
 
 - what this board has (from its hello line): rows, current sensor,
-  power switch, screen, buttons;
+  power switch, screen, buttons, and its supply voltage ("supply_v", the
+  station sends 3.3; protocol.SUPPLY_V when a board does not say). Every
+  reading it hands on carries that as "nominal_v" (a laptop-only field), so
+  every check judges "low supply" against this board's own supply;
 - the lights and the screen text as the laptop last set them, so the
   web page can show them for any board;
 - checks before sending: only real rows, only the 5 colors, and screen
@@ -63,6 +66,11 @@ class BoardLink:
         return [r for r in P.ALL_ROWS if r in measured and (self.usable is None or r in self.usable)]
 
     def _usable_only(self, reading):
+        """The reading with only usable rows, and this board's supply voltage
+        added as "nominal_v" (laptop only: the board never sends it)."""
+        if not isinstance(reading, dict):
+            return reading
+        reading = dict(reading, nominal_v=self.supply_v)
         if self.usable is None or not isinstance(reading.get("rows"), dict):
             return reading
         return dict(reading, rows={r: v for r, v in reading["rows"].items() if self.is_usable(r)},
@@ -84,10 +92,17 @@ class BoardLink:
     def buttons(self):
         return int(self.hello["buttons"])
 
+    @property
+    def supply_v(self):
+        """The board's supply voltage: its hello line's "supply_v", else
+        protocol.SUPPLY_V (3.3 V, the station)."""
+        return P.supply_of(self.hello)
+
     def capabilities(self):
         return {"rows": len(self.rows), "has_current": self.has_current,
                 "has_power_switch": self.has_power_switch,
-                "has_screen": self.has_screen, "buttons": self.buttons}
+                "has_screen": self.has_screen, "buttons": self.buttons,
+                "supply_v": self.supply_v}
 
     # --- Talking to the board ---------------------------------------
     def read(self):

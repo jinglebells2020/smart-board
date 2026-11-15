@@ -251,8 +251,9 @@ class TestPrivacyAndLessons(unittest.TestCase):
                                               guess(W1, R220, LED, W2)])
         first = json.loads(model.seen[0])
         self.assertEqual(set(first), {"usable_rows", "driven_rows", "floating", "current_ma",
-                                      "current_source", "supply_v", "tray", "tray_other", "goal",
-                                      "facts"})
+                                      "current_source", "supply_v", "nominal_v", "tray",
+                                      "tray_other", "goal", "facts"})
+        self.assertEqual(first["nominal_v"], 3.3)  # the board's own supply (its hello line)
         everything = "\n".join(model.seen)
         self.assertNotIn("netlist", everything)
         self.assertNotIn('"ohms": 220', everything)  # the true value: never given

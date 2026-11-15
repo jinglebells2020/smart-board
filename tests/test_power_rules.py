@@ -167,7 +167,7 @@ class TestRule3OnlyTheStudentTurnsPowerOn(unittest.TestCase):
         reply = tutor("Check my circuit")          # not "I fixed it"
         self.assertNotIn("RESTORE", board.sent)
         self.assertFalse(board.power_on)
-        self.assertIn("4", reply)                  # says how to turn it on
+        self.assertIn("red button", reply)         # says how to turn it on (button 4)
 
     def test_restore_tool_refuses_without_the_student_asking(self):
         board, session, agent, history, tutor = setup(1, "no_resistor")

@@ -9,7 +9,8 @@ instead, from a netlist: a list of parts, each with the rows its legs are in.
     {"kind": "led",      "rows": ["T10", "T12"], "color": "red"}   # long leg first
     {"kind": "button",   "rows": ["T5", "T8"], "closed": true}
 
-Every + line (PT+, PB+) is the 5 V supply, every - line (PT-, PB-) is 0 V.
+Every + line (PT+, PB+) is the supply (SUPPLY_V, 3.3 V on the station,
+protocol.py), every - line (PT-, PB-) is 0 V.
 The current sensor sits in the supply's + line, so it measures the current
 the circuit takes from the supply.
 
@@ -27,10 +28,16 @@ How it works (nodal analysis):
   cannot read anything meaningful there. Those rows are None.
 - The supply has a current limit (like a bench supply): if the circuit
   would take more, the supply's voltage drops until it gives exactly the
-  limit (found by halving the interval).
+  limit (found by halving the interval). At 3.3 V a lit LED alone across
+  the supply stays under the limit (a red one takes about 90 mA): only a
+  plain wire from + to - pulls the supply down.
+- At 3.3 V a blue or white LED (about 3.0 V) barely lights, and two LEDs in
+  a row (1.9 + 1.9 = 3.8 V) cannot light at all.
 """
 
-SUPPLY_V = 5.0
+import protocol as P
+
+SUPPLY_V = P.SUPPLY_V
 CURRENT_LIMIT_MA = 100.0
 WIRE_OHMS = 0.05
 LED_ON_OHMS = 15.0

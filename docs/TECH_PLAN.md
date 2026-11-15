@@ -15,6 +15,15 @@ must be built from scratch.
 measured. Every size, range and speed below is an estimate until a bench
 test confirms it.
 
+**Superseded by the station.** The same repository has since built a
+simpler board, **the station**, and Genesis now runs on it
+(`docs/HARDWARE.md`). Where this plan differs, the station wins: a single
+ESP32-S3 with 9 mux chips measuring every row straight (no dividers, no
+ADS1115, no bias line), a **3.3 V breadboard supply only** (no 5 V or
+adjustable rails, no rail switches, no ESP32-C3 supervisor, no INA3221
+current sensor), one LED strip per side, an M5Stack StickS3 as the screen,
+and four coloured buttons. Notes marked "Superseded" below say which parts.
+
 ---
 
 ## 1. The idea in one paragraph
@@ -42,6 +51,10 @@ decides what is wrong, and teaches.
   modelled from measurements of the actual board, not from a datasheet.
 
 ### 2.2 Measuring every row
+
+> **Superseded:** the station wires every row straight to a CD74HC4067 pad
+> (9 chips at 3.3 V) and reads it with the S3's own ADC, 0 to about 3 V;
+> floating rows are found with a 1 MΩ injector. See `docs/HARDWARE.md`.
 
 The problem: rows can see more than 5 V (12 V supplies, motors) or less than
 0 V (op-amp circuits on split supplies). The analog switch chips only accept
@@ -84,6 +97,10 @@ it can look at one row at a time but cannot drive one row and watch another.
 
 ### 2.3 Row lights
 
+> **Superseded:** the station uses the simpler fallback, one strip per side
+> (26 LEDs each); a row without its own light is shown by its two nearest
+> lit neighbours.
+
 - Addressable RGB LED strip (WS2812B, 160 LEDs per metre, so 6.25 mm apart)
   runs beside the rows. With LEDs every 6.25 mm and rows every 2.54 mm, a
   single strip leaves many rows without an LED of their own.
@@ -98,6 +115,11 @@ it can look at one row at a time but cannot drive one row and watch another.
 - Simpler fallback: one strip per side that points at a group of 2 to 3 rows.
 
 ### 2.4 Power and safety
+
+> **Superseded:** the station has one 3.3 V breadboard supply from the S3's
+> regulator, powered by the laptop's USB cable. No rail switch, no current
+> sensor, no supervisor: unplugging USB is the only off switch, and Genesis
+> tells the student to pull the red wire out of the + line instead.
 
 - **Sources.** USB-C 5 V, a 12 V adapter, or later one small protected
   lithium cell. They are combined through diodes. A fuse sits right behind
@@ -120,6 +142,10 @@ it can look at one row at a time but cannot drive one row and watch another.
   containing mercury or a laser.
 
 ### 2.5 Interaction (later)
+
+> **Superseded in part:** the station's screen is an M5Stack StickS3 reached
+> by radio, with four coloured buttons (yellow check, white hint, blue next,
+> red power) and a knob.
 
 - A small OLED with four buttons, showing rail voltages, the current step and
   any fault.
@@ -185,6 +211,12 @@ fuses, a 3 A fuse with holder, Schottky diodes, and later a cell charger and
 
 ## 4. Decisions
 
+> **Superseded:** the station decided the hardware rows of this table
+> differently (straight mux wiring, S3 ADC, 1 MΩ float injector, one strip
+> per side, 3.3 V only, no supervisor, no current sensor, no switch, a
+> StickS3 screen, no FPGA). `docs/HARDWARE_SUMMARY.md` has the decided
+> values. The AI-side rows still hold.
+
 "Old design" means it was decided in the reference repository. "Proposed"
 means this plan suggests it for this repository and needs your OK.
 
@@ -203,6 +235,12 @@ means this plan suggests it for this repository and needs your OK.
 | FPGA | Not used | The old design does not need one; `docs/HARDWARE.md` mentions one | Needs your call |
 
 ## 5. What this means for the current repository
+
+> **Done, for the station:** `docs/HARDWARE.md` is filled in from the
+> station; the protocol already has a voltage per row and floating rows
+> (version 2, with the station's own JSON protocol beside it in its
+> firmware); the lessons name their rows and run on 3.3 V; the simulator
+> measures every row. The items below are the plan as it was written.
 
 - **`docs/HARDWARE.md`.** The old design answers most blanks: ESP32-S3
   controller, USB serial, 5 V supply, about 200 mA per-rail limit enforced by

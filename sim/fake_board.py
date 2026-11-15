@@ -3,14 +3,15 @@
 Pretends to be the real board so the agent and web page can be built
 and tested without hardware. Protocol: docs/SERIAL_PROTOCOL.md.
 
-The real board is not finished, so many things are still open: how many
-rows are wired, whether there is a current sensor, whether the laptop
-can switch breadboard power, whether there is a screen. The fake board
-can be started with any of those answers:
+The real board is the station (docs/HARDWARE.md): every row measured, a
+3.3 V supply, no current sensor, no power switch, a screen and 4 buttons.
+The fake board can be started with any of those answers, so Genesis keeps
+working with other boards too:
 
     from sim.fake_board import FakeBoard
     board = FakeBoard(lesson=1, scenario="led_backwards",
                       rows="T1-T16", has_current=False, has_power_switch=False)
+    station = FakeBoard(1, has_current=False, has_power_switch=False)  # like the station
     board.hello()          # what this board has
     board.read()           # one reading (dict)
     board.send("LED T10 red")
@@ -19,6 +20,7 @@ can be started with any of those answers:
 From a terminal (readings stream; type commands and press Enter):
 
     python sim/fake_board.py --lesson 1 --scenario correct --rows T1-T16 --no-current
+    python sim/fake_board.py --supply 5     # another supply voltage (default 3.3)
 
 Voltages and currents are worked out with Ohm's law from the circuit,
 not copied from lessons/*.json, so the tests can check one against the
@@ -39,8 +41,12 @@ import protocol as P  # noqa: E402
 from sim import solver  # noqa: E402
 
 # --- Board constants -------------------------------------------------
-SUPPLY_V = 5.0  # docs/LESSONS.md uses 5 V for every lesson.
-CURRENT_LIMIT_MA = 100.0  # PLACEHOLDER: the supply's current limit.
+SUPPLY_V = P.SUPPLY_V  # 3.3 V, like the station; docs/LESSONS.md uses it for every lesson.
+# PLACEHOLDER: the supply's current limit, like a bench supply. The
+# station's 3.3 V regulator may hold its voltage instead (a hard short
+# resets the S3), so on the real board a missing resistor may not pull the
+# + line down: see "What the station cannot catch" in docs/LESSONS.md.
+CURRENT_LIMIT_MA = 100.0
 SAMPLE_MS = 100  # Average time between readings. Not fixed: see read().
 
 # --- Part values (from docs/LESSONS.md) ------------------------------
@@ -57,19 +63,19 @@ NOISE_MA_REL = 0.01  # 1 % of the reading
 FLOATING = None  # a row nothing drives (empty, or connected to nothing)
 
 
-def _circuit(lesson, scenario, held=False):
+def _circuit(lesson, scenario, held=False, v=SUPPLY_V):
     """Noise-free (supply_v, current_ma, {row: volts or FLOATING}).
 
     Rows in the dict are the lesson's rows (docs/LESSONS.md). Every other
     row is empty, so it floats. PT+ is the supply and PT- is ground.
     held: lesson 4 only, is the breadboard's push button held down (HOLD).
+    v: the supply voltage (the numbers in the comments are for 3.3 V).
     """
-    v = SUPPLY_V
     if scenario == "stray_part" and lesson in STRAY:
         # Sim only: the correct circuit plus one more part, from the middle
         # row to the row 20 below it. That row is otherwise empty, so it
         # just gets the same voltage, and no extra current flows.
-        supply, current, circuit = _circuit(lesson, "correct")
+        supply, current, circuit = _circuit(lesson, "correct", v=v)
         middle = STRAY[lesson]
         return supply, current, dict(circuit, **{f"T{int(middle[1:]) + 20}": circuit[middle]})
     if lesson == FREE_LESSON and scenario == "correct":
@@ -84,10 +90,10 @@ def _circuit(lesson, scenario, held=False):
         # leg T12; black wire T12 -> PT-.
         r = 220.0
         if scenario == "correct":
-            return v, (v - LED_VF) / r * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}  # 13.6 mA
+            return v, (v - LED_VF) / r * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}  # 5.9 mA
         if scenario == "led_backwards":
             # A backwards LED blocks current. No current, so no drop across
-            # the resistor: row 10 sits at 5 V. (Same rows if the long leg is
+            # the resistor: row 10 sits at 3.3 V. (Same rows if the long leg is
             # not in row 10: then row 10 touches only the resistor.)
             return v, 0.0, {"T5": v, "T10": v, "T12": 0.0}
         if scenario == "no_resistor":
@@ -100,18 +106,18 @@ def _circuit(lesson, scenario, held=False):
             # LED's long leg: nothing drives it. No current.
             return v, 0.0, {"T5": v, "T10": FLOATING, "T12": 0.0}
         if scenario == "resistor_too_big":
-            # 1k instead of 220: (5 - 2) / 1000 = 3.0 mA. Row 10 still 2 V.
+            # 1k instead of 220: (3.3 - 2) / 1000 = 1.3 mA. Row 10 still 2 V.
             return v, (v - LED_VF) / 1000.0 * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}
         if scenario == "led_bypassed":
             # Current skips the LED: row 10 is joined to ground.
-            # 5 / 220 = 22.7 mA.
+            # 3.3 / 220 = 15 mA.
             return v, v / r * 1000, {"T5": v, "T10": 0.0, "T12": 0.0}
         if scenario == "resistor_150":
-            # NOT a listed mistake (see UNLISTED): (5 - 2) / 150 = 20 mA.
+            # NOT a listed mistake (see UNLISTED): (3.3 - 2) / 150 = 8.7 mA.
             return v, (v - LED_VF) / 150.0 * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}
     if lesson == 3:
         # "More LEDs": lesson 1 with a 330 ohm resistor, built 1 to 3 times
-        # (COPIES). One copy: (5 - 2) / 330 = 9.1 mA.
+        # (COPIES). One copy: (3.3 - 2) / 330 = 3.9 mA.
         r = 330.0
         if scenario == "correct":
             return v, (v - LED_VF) / r * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}
@@ -123,10 +129,10 @@ def _circuit(lesson, scenario, held=False):
         if scenario == "open_circuit":
             return v, 0.0, {"T5": v, "T10": FLOATING, "T12": 0.0}
         if scenario == "resistor_too_big":
-            # 1k instead of 330: (5 - 2) / 1000 = 3.0 mA.
+            # 1k instead of 330: (3.3 - 2) / 1000 = 1.3 mA.
             return v, (v - LED_VF) / 1000.0 * 1000, {"T5": v, "T10": LED_VF, "T12": 0.0}
         if scenario == "led_bypassed":
-            # 5 / 330 = 15.2 mA.
+            # 3.3 / 330 = 10 mA.
             return v, v / r * 1000, {"T5": v, "T10": 0.0, "T12": 0.0}
     if lesson == 4:
         # "Button switch": red wire PT+ -> T5; push button T5-T8; 220 ohm
@@ -139,7 +145,7 @@ def _circuit(lesson, scenario, held=False):
                 return v, 0.0, released
             return v, (v - LED_VF) / r * 1000, {"T5": v, "T8": v, "T13": LED_VF, "T15": 0.0}
         if scenario == "led_backwards":
-            # Button held: the 5 V reaches the LED, which blocks it.
+            # Button held: the 3.3 V reaches the LED, which blocks it.
             return (v, 0.0, {"T5": v, "T8": v, "T13": v, "T15": 0.0}) if held else (v, 0.0, released)
         if scenario == "no_resistor":
             # Button held: the LED straight from the button to ground.
@@ -155,19 +161,19 @@ def _circuit(lesson, scenario, held=False):
             return v, v / (r_top + r_bot) * 1000, {
                 "T5": v, "T10": v * r_bot / (r_top + r_bot), "T15": 0.0}
         if scenario == "correct":
-            return divider(10_000, 10_000)  # 2.5 V, 0.25 mA
+            return divider(10_000, 10_000)  # 1.65 V, 0.165 mA
         if scenario == "bottom_1k":
-            return divider(10_000, 1_000)  # 5 x 1 / 11 = 0.45 V
+            return divider(10_000, 1_000)  # 3.3 x 1 / 11 = 0.3 V
         if scenario == "top_1k":
-            return divider(1_000, 10_000)  # 5 x 10 / 11 = 4.55 V
+            return divider(1_000, 10_000)  # 3.3 x 10 / 11 = 3.0 V
         if scenario == "bottom_4k7":
-            return divider(10_000, 4_700)  # NOT a listed mistake: 1.60 V
+            return divider(10_000, 4_700)  # NOT a listed mistake: 1.06 V
         if scenario == "middle_floating":
             # The resistors meet in another row, so row 10 is empty.
-            # The divider still works: 0.25 mA.
+            # The divider still works: 0.165 mA.
             return v, v / 20_000 * 1000, {"T5": v, "T10": FLOATING, "T15": 0.0}
         if scenario == "bottom_missing":
-            # Loop broken below the middle: no current, middle keeps 5 V.
+            # Loop broken below the middle: no current, middle keeps 3.3 V.
             return v, 0.0, {"T5": v, "T10": v, "T15": 0.0}
         if scenario == "top_missing":
             # Middle touches only ground (through the bottom resistor).
@@ -218,7 +224,7 @@ PARTS = {
 }
 
 
-def _partial_circuit(lesson, scenario, n, held=False):
+def _partial_circuit(lesson, scenario, n, held=False, v=SUPPLY_V):
     """Only the first n parts are in (BUILD n). The loop is not closed, so no
     current flows: every row joined to the + line by wires, resistors (and a
     pressed button) reads the supply, every row joined to the - line reads
@@ -241,13 +247,13 @@ def _partial_circuit(lesson, scenario, n, held=False):
                 (kind == "led" and scenario == "led_bypassed"):
             parent[find(a)] = find(b)
     if "PT+" in parent and "PT-" in parent and find("PT+") == find("PT-"):
-        return _circuit(lesson, scenario, held)  # a closed path: as if it were all built
+        return _circuit(lesson, scenario, held, v)  # a closed path: as if it were all built
     circuit = {}
     for row in parent:
         if row.startswith("P"):
             continue
         if "PT+" in parent and find(row) == find("PT+"):
-            circuit[row] = SUPPLY_V
+            circuit[row] = v
         elif "PT-" in parent and find(row) == find("PT-"):
             circuit[row] = 0.0
         else:
@@ -255,7 +261,7 @@ def _partial_circuit(lesson, scenario, n, held=False):
     middle = STRAY.get(lesson)
     if scenario == "stray_part" and middle and circuit.get(middle) not in (None, FLOATING):
         circuit[f"T{int(middle[1:]) + 20}"] = circuit[middle]
-    return SUPPLY_V, 0.0, circuit
+    return v, 0.0, circuit
 
 
 # Sim only: the correct circuit plus a part from the middle row (named here)
@@ -274,8 +280,13 @@ class FakeBoard:
 
     def __init__(self, lesson=1, scenario="correct", seed=None, noise=True,
                  rows=None, has_current=True, has_power_switch=True,
-                 has_screen=True, buttons=4, firmware_cut_ma=P.FIRMWARE_CUT_MA):
+                 has_screen=True, buttons=4, firmware_cut_ma=P.FIRMWARE_CUT_MA,
+                 supply_v=SUPPLY_V):
         self._rng = random.Random(seed)
+        supply_v = float(supply_v)
+        if not 0 < supply_v <= 30:
+            raise ValueError("supply_v must be more than 0 and at most 30 volts")
+        self.supply_v = supply_v  # the supply voltage (sent in hello as "supply_v")
         self._noise = noise
         self._t_ms = 0
         if rows is None:
@@ -337,7 +348,7 @@ class FakeBoard:
                  else p for p in self.netlist]
         key = json.dumps(parts, sort_keys=True)
         if not self._solved or self._solved[0] != key:
-            self._solved = (key, solver.solve(parts, SUPPLY_V, CURRENT_LIMIT_MA))
+            self._solved = (key, solver.solve(parts, self.supply_v, CURRENT_LIMIT_MA))
         sol = self._solved[1]
         rows = {r: (FLOATING if v is None else v) for r, v in sol["rows"].items()}
         return sol["supply_v"], sol["current_ma"], rows
@@ -354,7 +365,7 @@ class FakeBoard:
     def lesson_rows(self, lesson=None):
         """The lesson's rows in chain order (the first is wired to +)."""
         lesson = self.lesson if lesson is None else lesson
-        rows = _circuit(lesson, "correct")[2]
+        rows = _circuit(lesson, "correct", v=self.supply_v)[2]
         return sorted(rows, key=lambda n: int(n[1:]))
 
     def _rows_place(self, rows):
@@ -415,7 +426,8 @@ class FakeBoard:
     def hello(self):
         return {"type": "hello", "protocol": P.PROTOCOL_VERSION, "rows": list(self.rows),
                 "has_current": self.has_current, "has_power_switch": self.has_power_switch,
-                "has_screen": self.has_screen, "buttons": self.buttons}
+                "has_screen": self.has_screen, "buttons": self.buttons,
+                "supply_v": self.supply_v}
 
     def read(self):
         """One reading (docs/SERIAL_PROTOCOL.md). The time between
@@ -425,7 +437,8 @@ class FakeBoard:
         if self.scenario in LOOSE:
             self._wobble = not getattr(self, "_wobble", False)
         places = getattr(self, "copies", None) or [getattr(self, "place", ("T", 0))]
-        nodes, supply, current = {}, SUPPLY_V, 0.0
+        v = self.supply_v
+        nodes, supply, current = {}, v, 0.0
         if self.netlist is not None:  # free build: worked out by the solver
             supply, current, nodes = self._netlist_circuit()
             nodes.update({"PT+": supply, "PB+": supply, "PT-": 0.0, "PB-": 0.0})
@@ -434,16 +447,16 @@ class FakeBoard:
             # The scenario is the last copy; any others are built correctly.
             scenario = self.scenario if i == len(places) - 1 else "correct"
             if scenario in LOOSE:
-                s, c, circuit = _circuit(self.lesson, "correct")
+                s, c, circuit = _circuit(self.lesson, "correct", v=v)
                 if self._wobble:  # the leg lets go: that row is empty, no current
                     circuit = dict(circuit, **{LOOSE[scenario]: FLOATING})
                     c = 0.0
             elif getattr(self, "built", None) is not None and \
                     self.built < len(PARTS.get(self.lesson, [])):
                 s, c, circuit = _partial_circuit(self.lesson, scenario, self.built,
-                                                 getattr(self, "held", False))
+                                                 getattr(self, "held", False), v)
             else:
-                s, c, circuit = _circuit(self.lesson, scenario, getattr(self, "held", False))
+                s, c, circuit = _circuit(self.lesson, scenario, getattr(self, "held", False), v)
             stray = None
             if scenario == "stray_part" and self.lesson in STRAY:
                 # The extra part goes from the REAL middle row to 20 rows below
@@ -460,8 +473,8 @@ class FakeBoard:
                 nodes[stray[0]] = stray[1]
         if len(places) > 1:
             current = min(current, CURRENT_LIMIT_MA)  # the supply's limit
-            if supply < SUPPLY_V:  # one copy pulls the shared supply down
-                nodes = {k: (supply if v == SUPPLY_V else v) for k, v in nodes.items()}
+            if supply < v:  # one copy pulls the shared supply down
+                nodes = {k: (supply if x == v else x) for k, x in nodes.items()}
 
         def jitter(value, size=NOISE_V):
             return value + (self._rng.gauss(0, size) if self._noise else 0.0)
@@ -470,7 +483,7 @@ class FakeBoard:
         for name in self.rows:
             if name not in nodes or nodes[name] is FLOATING:
                 # Nothing drives this row: the number means nothing.
-                rows[name] = round(self._rng.uniform(0.0, SUPPLY_V) if self._noise else 0.0, 3)
+                rows[name] = round(self._rng.uniform(0.0, v) if self._noise else 0.0, 3)
                 floating.append(name)
             elif self.power_on:
                 rows[name] = round(jitter(nodes[name]), 3)
@@ -621,6 +634,9 @@ def main(argv=None):
     p.add_argument("--no-power-switch", action="store_true", help="cannot switch power")
     p.add_argument("--no-screen", action="store_true", help="no screen")
     p.add_argument("--buttons", type=int, default=4)
+    p.add_argument("--supply", type=float, default=SUPPLY_V,
+                   help=f"supply voltage in volts (default {SUPPLY_V:g}, like the station; "
+                        "the lessons are written for it)")
     p.add_argument("--count", type=int, default=0,
                    help="stop after this many readings (0 = run forever)")
     p.add_argument("--interval", type=float, default=SAMPLE_MS / 1000,
@@ -636,7 +652,8 @@ def main(argv=None):
         board = FakeBoard(args.lesson, args.scenario, seed=args.seed, rows=args.rows,
                           has_current=not args.no_current,
                           has_power_switch=not args.no_power_switch,
-                          has_screen=not args.no_screen, buttons=args.buttons)
+                          has_screen=not args.no_screen, buttons=args.buttons,
+                          supply_v=args.supply)
     except ValueError as e:
         print(e, file=sys.stderr)
         return 2

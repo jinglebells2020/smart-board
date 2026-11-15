@@ -62,7 +62,7 @@ class TestRowMaps(unittest.TestCase):
         moved = shift_lesson(LESSONS[1], SPACED)
         self.assertEqual(moved["rows"], ["T20", "T27", "T29"])
         self.assertEqual(moved["layout"][1]["legs"][1]["row"], "T27")
-        self.assertEqual(moved["expected"]["rows"], {"T20": 5.0, "T27": 2.0, "T29": 0.0})
+        self.assertEqual(moved["expected"]["rows"], {"T20": 3.3, "T27": 2.0, "T29": 0.0})
         self.assertEqual(LESSONS[1]["rows"], ["T5", "T10", "T12"])  # the original stays
         self.assertEqual(describe(SPACED, LESSONS[1]), "rows 20 to 29 (top half)")
         self.assertEqual(describe(bottom, LESSONS[1]), "rows 20 to 29 (bottom half)")

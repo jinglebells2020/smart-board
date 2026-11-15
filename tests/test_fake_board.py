@@ -21,6 +21,7 @@ from sim.fake_board import CURRENT_LIMIT_MA, SCENARIOS, UNLISTED, FakeBoard
 ROOT = Path(__file__).resolve().parent.parent
 LESSONS = load_lessons()
 WINDOW = 20
+V = P.SUPPLY_V  # 3.3 V, like the station
 
 
 def window(lesson, scenario, seed=1, **board_options):
@@ -45,6 +46,19 @@ class TestHello(unittest.TestCase):
         self.assertEqual(len(h["rows"]), 130)
         self.assertEqual((h["has_current"], h["has_power_switch"], h["has_screen"], h["buttons"]),
                          (True, True, True, 4))
+        self.assertEqual(h["supply_v"], 3.3)  # like the station
+
+    def test_another_supply(self):
+        board = FakeBoard(1, "led_backwards", noise=False, supply_v=5)
+        self.assertEqual(board.hello()["supply_v"], 5.0)
+        r = board.read()
+        self.assertAlmostEqual(r["supply_v"], 5.0)
+        self.assertAlmostEqual(r["rows"]["T10"], 5.0)  # no current: the full supply
+        r = FakeBoard(1, "correct", noise=False, supply_v=5).read()
+        self.assertAlmostEqual(r["current_ma"], (5 - 2) / 220 * 1000, places=2)
+        for bad in (0, -1, 31):
+            with self.assertRaises(ValueError):
+                FakeBoard(supply_v=bad)
 
     def test_any_answer_to_the_open_questions(self):
         h = FakeBoard(rows="T1-T16", has_current=False, has_power_switch=False,
@@ -114,12 +128,12 @@ class TestOhmsLaw(unittest.TestCase):
 
     def test_lesson_1(self):
         cases = {
-            "correct": ({"T5": 5.0, "T10": 2.0, "T12": 0.0}, (5 - 2) / 220 * 1000),
-            "led_backwards": ({"T5": 5.0, "T10": 5.0, "T12": 0.0}, 0.0),
-            "open_circuit": ({"T5": 5.0, "T10": None, "T12": 0.0}, 0.0),
-            "resistor_too_big": ({"T5": 5.0, "T10": 2.0, "T12": 0.0}, (5 - 2) / 1000 * 1000),
-            "led_bypassed": ({"T5": 5.0, "T10": 0.0, "T12": 0.0}, 5 / 220 * 1000),
-            "resistor_150": ({"T5": 5.0, "T10": 2.0, "T12": 0.0}, (5 - 2) / 150 * 1000),
+            "correct": ({"T5": V, "T10": 2.0, "T12": 0.0}, (V - 2) / 220 * 1000),  # 5.9 mA
+            "led_backwards": ({"T5": V, "T10": V, "T12": 0.0}, 0.0),
+            "open_circuit": ({"T5": V, "T10": None, "T12": 0.0}, 0.0),
+            "resistor_too_big": ({"T5": V, "T10": 2.0, "T12": 0.0}, (V - 2) / 1000 * 1000),
+            "led_bypassed": ({"T5": V, "T10": 0.0, "T12": 0.0}, V / 220 * 1000),
+            "resistor_150": ({"T5": V, "T10": 2.0, "T12": 0.0}, (V - 2) / 150 * 1000),
         }
         for scenario, (rows, current) in cases.items():
             with self.subTest(scenario=scenario):
@@ -134,23 +148,23 @@ class TestOhmsLaw(unittest.TestCase):
     def test_no_resistor_sags_the_supply(self):
         got, r = self.rows(1, "no_resistor")
         self.assertAlmostEqual(r["current_ma"], CURRENT_LIMIT_MA)
-        self.assertLess(r["supply_v"], 4.0)
+        self.assertLess(r["supply_v"], P.low_supply_v())
         self.assertAlmostEqual(got["T5"], got["T10"], places=2)
 
     def test_lesson_2(self):
         cases = {
-            "correct": (2.5, 5 / 20000 * 1000),
-            "bottom_1k": (5 * 1 / 11, 5 / 11000 * 1000),
-            "top_1k": (5 * 10 / 11, 5 / 11000 * 1000),
-            "bottom_4k7": (5 * 4.7 / 14.7, 5 / 14700 * 1000),
-            "bottom_missing": (5.0, 0.0),
+            "correct": (1.65, V / 20000 * 1000),
+            "bottom_1k": (V * 1 / 11, V / 11000 * 1000),
+            "top_1k": (V * 10 / 11, V / 11000 * 1000),
+            "bottom_4k7": (V * 4.7 / 14.7, V / 14700 * 1000),
+            "bottom_missing": (V, 0.0),
             "top_missing": (0.0, 0.0),
-            "middle_floating": (None, 0.25),
+            "middle_floating": (None, 0.165),
         }
         for scenario, (middle, current) in cases.items():
             with self.subTest(scenario=scenario):
                 got, r = self.rows(2, scenario)
-                self.assertAlmostEqual(got["T5"], 5.0, places=2)
+                self.assertAlmostEqual(got["T5"], V, places=2)
                 self.assertAlmostEqual(got["T15"], 0.0, places=2)
                 if middle is None:
                     self.assertIsNone(got["T10"])
@@ -195,7 +209,7 @@ class TestAgainstTheLessonFiles(unittest.TestCase):
     def test_calculated_current_matches_ohms_law(self):
         s = summarize(window(1, "correct", has_current=False), LESSONS[1])
         self.assertEqual(s["current_source"], "calculated")
-        self.assertAlmostEqual(s["current_ma"], 13.6, delta=0.3)
+        self.assertAlmostEqual(s["current_ma"], 5.9, delta=0.3)
 
 
 class TestCommands(unittest.TestCase):
@@ -260,7 +274,7 @@ class TestCommands(unittest.TestCase):
     def test_scenario_switch(self):
         board = FakeBoard(1, "correct", noise=False)
         self.assertEqual(board.send("SCENARIO 1 led_backwards")["type"], "ack")
-        self.assertAlmostEqual(board.read()["rows"]["T10"], 5.0)
+        self.assertAlmostEqual(board.read()["rows"]["T10"], V)
         self.assertEqual(board.send("SCENARIO 9 x")["type"], "error")
 
     def test_bad_commands(self):
@@ -290,6 +304,14 @@ class TestCommandLine(unittest.TestCase):
 
     def test_list(self):
         self.assertIn("led_backwards", self.run_sim("--list").stdout)
+
+    def test_supply_option(self):
+        out = self.run_sim("--count", "1", "--interval", "0", "--seed", "1")
+        self.assertEqual(json.loads(out.stdout.splitlines()[0])["supply_v"], 3.3)
+        out = self.run_sim("--supply", "5", "--count", "1", "--interval", "0", "--seed", "1")
+        lines = [json.loads(l) for l in out.stdout.strip().splitlines()]
+        self.assertEqual(lines[0]["supply_v"], 5.0)
+        self.assertAlmostEqual(lines[1]["supply_v"], 5.0, delta=0.1)
 
     def test_bad_scenario_fails(self):
         self.assertEqual(self.run_sim("--scenario", "nope").returncode, 2)

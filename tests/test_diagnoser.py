@@ -114,13 +114,13 @@ class TestPhysicsNumbers(unittest.TestCase):
     def test_ohms_law(self):
         lesson = {"layout": [{"part": "220 ohm resistor", "legs": [{"leg": "a", "row": "T5"},
                                                                    {"leg": "b", "row": "T10"}]}],
-                  "rows": ["T5", "T10"], "expected": {"rows": {"T5": 5.0, "T10": 2.0}}}
-        summary = {"power_on": True, "supply_v": 5.0, "rows": {"T5": 5.0, "T10": 2.0},
-                   "floating": [], "flickering": [], "current_ma": 13.6, "current_source": "measured"}
+                  "rows": ["T5", "T10"], "expected": {"rows": {"T5": 3.3, "T10": 2.0}}}
+        summary = {"power_on": True, "supply_v": 3.3, "rows": {"T5": 3.3, "T10": 2.0},
+                   "floating": [], "flickering": [], "current_ma": 5.9, "current_source": "measured"}
         facts = observations(summary, lesson)
         rc = kinds(facts, "resistor_current")[0]
-        self.assertAlmostEqual(rc["values"]["ma"], 13.64, places=2)  # 3.0 V / 220 ohm
-        self.assertIn("3.0 volts across the 220 ohm resistor means about 13.6 mA", rc["text"])
+        self.assertAlmostEqual(rc["values"]["ma"], 5.909, places=2)  # 1.3 V / 220 ohm
+        self.assertIn("1.3 volts across the 220 ohm resistor means about 5.9 mA", rc["text"])
         self.assertEqual([f["id"] for f in facts], [f"F{i}" for i in range(1, len(facts) + 1)])
         self.assertEqual(ohms_of("Top 10k resistor", {}), 10000)
         self.assertEqual(ohms_of("330 ohm resistor", {}), 330)
@@ -128,7 +128,7 @@ class TestPhysicsNumbers(unittest.TestCase):
     def test_lesson_one(self):
         f = facts_for(1)
         self.assertEqual(kinds(f, "led_state")[0]["values"]["state"], "on")
-        self.assertAlmostEqual(kinds(f, "resistor_current")[0]["values"]["ma"], 13.64, places=1)
+        self.assertAlmostEqual(kinds(f, "resistor_current")[0]["values"]["ma"], 5.91, places=1)
         self.assertEqual(kinds(f, "current_vs_expected")[0]["values"]["percent"], 0)
         self.assertEqual(kinds(f, "plan_row_floating") + kinds(f, "same_voltage"), [])
         self.assertEqual(kinds(facts_for(1, "led_backwards"), "led_state")[0]["values"]["state"],
@@ -138,7 +138,7 @@ class TestPhysicsNumbers(unittest.TestCase):
         self.assertEqual(kinds(bypassed, "same_voltage")[0]["rows"], ["T10", "T12"])
         self.assertEqual(kinds(facts_for(1, "open_circuit"), "plan_row_floating")[0]["rows"], ["T10"])
         self.assertEqual(kinds(facts_for(1, "resistor_too_big"), "current_vs_expected")[0]
-                         ["values"]["percent"], -78)  # 3.0 mA instead of 13.6
+                         ["values"]["percent"], -78)  # 1.3 mA instead of 5.9
         self.assertIn("only 2.2 volts", kinds(facts_for(1, "no_resistor", has_current=False),
                                              "power")[0]["text"])
         board = FakeBoard(1, "loose_led_leg", seed=1)
@@ -148,17 +148,17 @@ class TestPhysicsNumbers(unittest.TestCase):
     def test_lesson_two(self):
         f = facts_for(2)
         self.assertEqual([round(x["values"]["ma"], 2) for x in kinds(f, "resistor_current")],
-                         [0.25, 0.25])  # 2.5 V / 10k each
-        f = facts_for(2, "bottom_1k")  # middle 5 x 1 / 11 = 0.45 V
+                         [0.17, 0.17])  # 1.65 V / 10k each = 0.165 mA
+        f = facts_for(2, "bottom_1k")  # middle 3.3 x 1 / 11 = 0.3 V
         top, bottom = kinds(f, "resistor_current")
-        self.assertAlmostEqual(top["values"]["ma"], 0.455, places=2)
-        self.assertAlmostEqual(bottom["values"]["ma"], 0.045, places=2)  # they should be equal
+        self.assertAlmostEqual(top["values"]["ma"], 0.3, places=2)
+        self.assertAlmostEqual(bottom["values"]["ma"], 0.03, places=2)  # they should be equal
         self.assertEqual(kinds(facts_for(2, "middle_floating"), "plan_row_floating")[0]["rows"],
                          ["T10"])
 
     def test_lesson_three_and_four(self):
-        self.assertAlmostEqual(kinds(facts_for(3), "resistor_current")[0]["values"]["ma"], 9.09,
-                               places=1)  # 3.0 V / 330 ohm
+        self.assertAlmostEqual(kinds(facts_for(3), "resistor_current")[0]["values"]["ma"], 3.94,
+                               places=1)  # 1.3 V / 330 ohm
         pressed = facts_for(4, hold=True)
         drops = {f["text"].split(" has")[0]: f["values"]["drop"] for f in kinds(pressed, "part_drop")}
         self.assertAlmostEqual(drops["The push button"], 0.0, places=1)

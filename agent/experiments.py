@@ -110,7 +110,7 @@ def facts_of(session, summary, result, safety_cut=False):
 def diff_facts(before, after):
     """What changed: [{"kind", "rows", "before", "after"}] (text, or None when
     the fact is new or gone), and plain sentences for the row voltages and
-    empty rows ("row 12 changed from 5.0 V to 0.0 V")."""
+    empty rows ("row 12 changed from 3.3 V to 0.0 V")."""
     def key(f):
         return (f["kind"], tuple(f["rows"]))
 

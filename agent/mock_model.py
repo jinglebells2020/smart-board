@@ -11,7 +11,8 @@ import json
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from protocol import row_label
+from protocol import BUTTON_COLORS, MANUAL_OFF_SCREEN, MANUAL_OFF_WORDS, MANUAL_ON_WORDS, \
+    button_words, row_label
 
 
 def _this_turn(messages):
@@ -161,13 +162,15 @@ class ScriptedTutorModel(BaseChatModel):
             if "rejected" in str(restored.get("raw", "")).lower():
                 # The student said no when asked "Turn the power back on?".
                 return reply("OK, the power stays off. When you have fixed the circuit, "
-                             "press button 4 or tell me you fixed it.")
+                             f"press {button_words(4)} or tell me you fixed it.")
             if "do_instead" in restored:
                 return reply("This board cannot switch the power for you. Please switch "
-                             "the power back on by hand, then tell me to check again.")
+                             f"the power back on by hand: {MANUAL_ON_WORDS}. Then tell me to "
+                             "check again.")
             if restored.get("error"):
-                return reply("Power is off. When you have fixed the circuit, press button 4 "
-                             "or tell me you fixed it, and the power will come back on.")
+                return reply(f"Power is off. When you have fixed the circuit, press "
+                             f"{button_words(4)} or tell me you fixed it, and the power will "
+                             "come back on.")
             # Power came on and was measured at once: carry on from that check.
 
         if status == "free":
@@ -238,7 +241,7 @@ class ScriptedTutorModel(BaseChatModel):
             manual = "do_instead" in result_of("cut_power")
             if "show_on_board" not in called:
                 if manual:
-                    note = "DANGER!|Switch the power OFF|by hand now."
+                    note = MANUAL_OFF_SCREEN
                 else:
                     where = ("Yellow: look here." if check.get("light") == "yellow"
                              else "Red rows: look here.")
@@ -265,8 +268,8 @@ class ScriptedTutorModel(BaseChatModel):
             if restored.get("recut"):
                 return reply(f"{restored['why']} {say}")
             if manual:
-                return reply(f"Switch the power off by hand right now, to keep your parts "
-                             f"safe. {say}")
+                return reply(f"Switch the power off by hand right now: {MANUAL_OFF_WORDS}. "
+                             f"That keeps your parts safe. {say}")
             if check["action"] == "cut_power":
                 if check.get("board_cut"):  # the board did it by itself
                     first = check["board_cut"]["say"].split(". ")[0] + "."
@@ -310,13 +313,15 @@ class ScriptedTutorModel(BaseChatModel):
             if "light_row" not in called and last_read["lesson"]["rows"]:
                 return call("light_row", rows=last_read["lesson"]["rows"], color="green")
             if "show_on_board" not in called:
-                return call("show_on_board", text="Works when held!|Now let go, then|press 1.")
+                return call("show_on_board",
+                            text=f"Works when held!|Now let go, then|press {BUTTON_COLORS[1]}.")
             return reply("It works while you hold the button: current flows and the LED "
                          f"lights up. {check['next_step']}")
 
         if status == "press_first":  # lesson 4: nothing flows yet, hold the button
             if "show_on_board" not in called:
-                return call("show_on_board", text="Hold the button down|and press 1 again.")
+                return call("show_on_board",
+                            text=f"Hold the button down|and press {BUTTON_COLORS[1]} again.")
             return reply(check["message"])
 
         if status == "power_off":

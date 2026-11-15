@@ -3,13 +3,14 @@
     python -m agent                 # uses the fake board (sim/fake_board.py)
     python -m agent --rows T1-T16 --no-current --no-power-switch
     python -m agent --serial COM3          # a real board (or --serial auto)
+    python -m agent --supply 5             # fake board on another supply (default 3.3 V)
 
 Type what a student would say ("check my circuit", "I fixed it").
 Commands for testing with the fake board:
     /build <circuit>    pretend the student built this circuit
     /list               show the circuits for the current lesson
-    /press <1-4>        press a board button (1 check, 2 hint,
-                        3 next step, 4 power off/on)
+    /press <1-4>        press a board button (1 yellow: check, 2 white:
+                        hint, 3 blue: next step, 4 red: power off/on)
     /board              show the board's lights and screen
     /notebook           show the student's notebook
     /answer <1-3>       answer lesson 0's question (which holes are joined)
@@ -25,7 +26,7 @@ from agent.buttons import handle_button
 from agent.notebook import Notebook, safe_name
 from agent.serial_board import BoardError, SerialBoard, choose_port
 from agent.session import Session
-from protocol import BUTTON_LABELS, DEFAULT_BAUD
+from protocol import BUTTON_LABELS, DEFAULT_BAUD, SUPPLY_V
 from sim.fake_board import SCENARIOS, FakeBoard
 
 DEFAULT_HISTORY = Path(__file__).resolve().parent / "student_history.json"
@@ -57,6 +58,8 @@ def main(argv=None):
     p.add_argument("--no-current", action="store_true", help="no current sensor")
     p.add_argument("--no-power-switch", action="store_true", help="cannot switch power")
     p.add_argument("--no-screen", action="store_true", help="no screen")
+    p.add_argument("--supply", type=float, default=SUPPLY_V,
+                   help=f"fake board supply voltage (default {SUPPLY_V:g} V, like the station)")
     p.add_argument("--serial", metavar="PORT",
                    help='use a real board on this port (COM3, /dev/ttyUSB0) or "auto"')
     p.add_argument("--baud", type=int, default=DEFAULT_BAUD,
@@ -79,10 +82,14 @@ def main(argv=None):
             print(f"Could not use the real board. {e}")
             return 2
     else:
-        board = FakeBoard(args.lesson if args.lesson is not None else 1, args.scenario, rows=args.rows,
-                          has_current=not args.no_current,
-                          has_power_switch=not args.no_power_switch,
-                          has_screen=not args.no_screen)
+        try:
+            board = FakeBoard(args.lesson if args.lesson is not None else 1, args.scenario,
+                              rows=args.rows, has_current=not args.no_current,
+                              has_power_switch=not args.no_power_switch,
+                              has_screen=not args.no_screen, supply_v=args.supply)
+        except ValueError as e:
+            print(f"Could not start the fake board: {e}")
+            return 2
     fake = isinstance(board, FakeBoard)
     notebook = Notebook(args.notebooks, args.student)
     session = Session(board, lesson="start" if args.lesson is None else args.lesson,
@@ -100,7 +107,7 @@ def main(argv=None):
     print(f"Board: {caps['rows']} rows measured, current sensor "
           f"{'yes' if caps['has_current'] else 'no'}, power switch "
           f"{'yes' if caps['has_power_switch'] else 'no'}, screen "
-          f"{'yes' if caps['has_screen'] else 'no'}")
+          f"{'yes' if caps['has_screen'] else 'no'}, supply {caps['supply_v']:g} V")
     print(f"Notebook for {args.student}: {notebook.path}")
     if is_real:
         print(f"Model: {model}")

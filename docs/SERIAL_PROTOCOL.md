@@ -12,6 +12,13 @@ Version 2 replaces version 1 (one `probe1` voltage). The board now
 measures many breadboard rows, has a light beside every row and may
 have a small screen with 4 buttons.
 
+The real board is **the station** (`docs/HARDWARE.md`): its firmware
+`firmware/smartboard_s3` (jinglebells2020/smartboard) speaks this
+protocol in its **Genesis mode**, which it starts in. Its hello line:
+every row once the row map from the mux test is flashed (`[]` before),
+`"has_current": false`, `"has_power_switch": false`, `"has_screen": true`,
+`"buttons": 4` and `"supply_v": 3.3`.
+
 **Rules for every line**
 
 - One JSON object per line, ending with `\n`. Both directions are text,
@@ -37,8 +44,9 @@ Rows have a light beside them; the power strips do not.
 
 ### `hello`: once, when the board starts
 
-Says what this board has, because that is not decided yet (see
-docs/HARDWARE_SUMMARY.md). The laptop adapts to it.
+Says what this board has (the station's answers are in
+docs/HARDWARE_SUMMARY.md). The laptop adapts to it, so other boards and
+the fake board still work.
 
 ```json
 {"type": "hello", "protocol": 2,
@@ -55,6 +63,7 @@ docs/HARDWARE_SUMMARY.md). The laptop adapts to it.
 | `has_power_switch` | `true` if the board can switch breadboard power off and on |
 | `has_screen` | `true` if the board has a screen |
 | `buttons` | How many buttons (0 to 4) |
+| `supply_v` | Optional. The breadboard supply voltage, in volts (the station: `3.3`). The laptop judges "the + line is pulled down" against it and says it to the student. Without it the laptop assumes 3.3 V (`SUPPLY_V` in `protocol.py`) |
 
 If the laptop connects after the board started, it can ask again with
 the `HELLO` command.
@@ -62,9 +71,9 @@ the `HELLO` command.
 ### `reading`: streamed all the time
 
 ```json
-{"type": "reading", "t_ms": 51230, "power_on": true, "supply_v": 5.0,
+{"type": "reading", "t_ms": 51230, "power_on": true, "supply_v": 3.3,
  "current_ma": null,
- "rows": {"T5": 4.99, "T10": 2.01, "T12": 0.0, "T13": 0.12},
+ "rows": {"T5": 3.3, "T10": 2.01, "T12": 0.0, "T13": 1.65},
  "floating": ["T13"]}
 ```
 
@@ -72,9 +81,9 @@ the `HELLO` command.
 |---|---|---|
 | `t_ms` | integer | Milliseconds since the board started |
 | `power_on` | true/false | Is breadboard power on? Always `true` without a power switch |
-| `supply_v` | number | Voltage of the breadboard supply |
+| `supply_v` | number | Voltage of the breadboard supply. The station sends its + line when that is below the top of its meter, else 3.3 |
 | `current_ma` | number or `null` | Supply current in mA. **`null` when there is no current sensor** |
-| `rows` | object | Name → volts, **only for measured names** (the `rows` in `hello`) |
+| `rows` | object | Name → volts, **only for measured names** (the `rows` in `hello`). A board whose meter tops out below its supply (the station: about 2.9-3.1 V) sends a row at or above that top as the supply voltage ("at the supply") |
 | `floating` | list | Measured names that nothing is driving (an empty row). Their volts mean nothing |
 
 ### `button`: when a button is pressed
@@ -84,14 +93,15 @@ the `HELLO` command.
 ```
 
 `id` is 1 to 4. What each one does is set on the laptop, in one place
-(`BUTTONS` in `protocol.py`):
+(`BUTTONS` in `protocol.py`). On the station the buttons have colours,
+not numbers (`BUTTON_COLORS`), and the StickS3's orange key also sends 1:
 
-| Button | Meaning |
-|---|---|
-| 1 | Check my circuit |
-| 2 | I need a hint |
-| 3 | Next step (light the rows for the next part) |
-| 4 | Power off / on |
+| Button | Station | Meaning |
+|---|---|---|
+| 1 | yellow | Check my circuit |
+| 2 | white | I need a hint |
+| 3 | blue | Next step (light the rows for the next part) |
+| 4 | red | Power off / on |
 
 ### `power_cut`: when the board switches power off by itself
 
@@ -151,7 +161,9 @@ Plain text, one command per line.
 - `CUT` or `RESTORE` on a board with no power switch:
   `{"type": "error", "cmd": "CUT", "msg": "no power switch"}`.
   The laptop then tells the student to switch the power off by hand,
-  on the laptop and on the board screen.
+  on the laptop and on the board screen. On the station that means
+  "pull the red wire out of the + line" (`MANUAL_OFF_WORDS` in
+  `protocol.py`).
 - `SHOW` on a board with no screen: `"msg": "no screen"`.
 - `SHOW` with more lines or longer lines than the screen holds:
   `"msg": "too long"`. The laptop never sends that: it fits the text

@@ -22,7 +22,7 @@ classify() then decides, from one normal check and its physics facts:
 
 import time
 
-from protocol import is_row
+from protocol import SUPPLY_V, is_row
 
 STEADY = 1.5          # seconds a new state must last before it counts
 SAME_V = 0.3          # volts: closer than this is "the same voltage"
@@ -122,9 +122,14 @@ class ChangeDetector:
 WIRE_DROP_V = 0.5  # a wire never has more than this across it
 
 
+def _supply(summary):
+    """The measured + line, else the board's own supply, else 3.3 V."""
+    return summary.get("supply_v") or summary.get("nominal_v") or SUPPLY_V
+
+
 def _volts(row, summary):
     if row in ("PT+", "PB+"):
-        return summary.get("supply_v") or 5.0
+        return _supply(summary)
     if row in ("PT-", "PB-"):
         return 0.0
     if row in summary.get("floating", []) or row not in summary.get("rows", {}):
@@ -136,7 +141,7 @@ def parts_in(lesson, summary):
     """(parts that are in, all parts). A part is in when every row it uses
     has something connected, and nothing shows it cannot be there: a wire
     never has more than WIRE_DROP_V across it (with the LED joined across by
-    mistake, row 12 reads 5 V, but that does not mean the black wire to the
+    mistake, row 12 reads 3.3 V, but that does not mean the black wire to the
     - line is in)."""
     layout = lesson.get("layout", [])
     done = 0
@@ -153,8 +158,8 @@ def parts_in(lesson, summary):
 
 def wrong_side(lesson, summary):
     """Plan rows that read the opposite end of the supply from the plan (a
-    row that should be near 0 V at 5 V, or the other way round)."""
-    supply = summary.get("supply_v") or 5.0
+    row that should be near 0 V at 3.3 V, or the other way round)."""
+    supply = _supply(summary)
     out = []
     for row, e in lesson.get("expected", {}).get("rows", {}).items():
         m = _volts(row, summary)

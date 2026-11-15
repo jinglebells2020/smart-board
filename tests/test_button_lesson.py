@@ -38,16 +38,16 @@ def check_with(board, session, hold):
 class TestLessonFile(unittest.TestCase):
     def test_rows_layout_and_steps(self):
         self.assertEqual((L4["id"], L4["title"]), (4, "Button switch"))
-        self.assertEqual(L4["circuit"], "5 V -> push button -> 220 ohm resistor -> red LED -> ground")
+        self.assertEqual(L4["circuit"], "3.3 V -> push button -> 220 ohm resistor -> red LED -> ground")
         self.assertEqual(L4["rows"], ["T5", "T8", "T13", "T15"])
         legs = {p["part"]: [leg["row"] for leg in p["legs"]] for p in L4["layout"]}
         self.assertEqual(legs, {"Red wire": ["PT+", "T5"], "Push button": ["T5", "T8"],
                                 "220 ohm resistor": ["T8", "T13"], "Red LED": ["T13", "T15"],
                                 "Black wire": ["T15", "PT-"]})
         pressed, released = L4["states"]["pressed"], L4["states"]["released"]
-        self.assertEqual(pressed["accept"]["current_ma"], {"min": 10, "max": 17})
-        self.assertEqual(pressed["expected"]["current_ma"], 13.6)
-        self.assertEqual(pressed["expected"]["math"], "(5 - 2) / 220 = 0.0136 A = 13.6 mA")
+        self.assertEqual(pressed["accept"]["current_ma"], {"min": 4.0, "max": 7.5})
+        self.assertEqual(pressed["expected"]["current_ma"], 5.9)
+        self.assertEqual(pressed["expected"]["math"], "(3.3 - 2) / 220 = 0.0059 A = 5.9 mA")
         self.assertEqual(released["accept"]["current_ma"], {"max": 1})
         self.assertNotIn("T8", released["accept"]["rows"])  # may be empty when let go
         self.assertEqual({m["id"]: m.get("step") for m in L4["mistakes"]},
@@ -218,7 +218,7 @@ class TestTutor(unittest.TestCase):
         state = self.app.state()
         self.assertEqual((state["button_step"], state["held"]), ("pressed", False))
         self.assertIn("states", state["lesson"])
-        self.assertEqual(state["lesson"]["accept"]["current_ma"], {"min": 10, "max": 17})
+        self.assertEqual(state["lesson"]["accept"]["current_ma"], {"min": 4.0, "max": 7.5})
         self.assertEqual(state["mini_lesson"]["title"], "Buttons are drawbridges")  # intro card
         self.assertEqual(self.app.hold(True)["type"], "ack")
         self.assertTrue(self.app.state()["held"])

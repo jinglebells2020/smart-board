@@ -4,12 +4,51 @@ docs/SERIAL_PROTOCOL.md.
 
 Everything that must be the same in several places lives here, once:
 row names, light colors and what they mean, what the 4 board buttons
-do, and the screen size.
+do (and their colours on the station), the supply voltage, and the
+screen size.
 """
 
 import re
 
 PROTOCOL_VERSION = 2
+
+# --- Supply voltage -------------------------------------------------------
+# The station (docs/HARDWARE.md) powers the breadboard from the 3.3 V
+# regulator of its ESP32-S3 board: its mux chips take nothing outside
+# 0-3.3 V. Every lesson is written for this voltage. A board whose hello
+# line has "supply_v" is taken at its word (supply_of); the fake board
+# defaults to SUPPLY_V and takes --supply.
+SUPPLY_V = 3.3
+# The + line below this share of the supply: something pulls a big current
+# (a short, or an LED with no resistor). Not 0.9: the station's meter tops
+# out at about 2.9 to 3.1 V and is good to about 0.1 V, so a healthy + line
+# can read as low as about 2.8 V (0.85 x 3.3).
+LOW_SUPPLY_SHARE = 0.85
+# The station's meter (the ESP32-S3's ADC) reads 0 to about 2.9-3.1 V.
+# Anything at or above its top is sent as the supply voltage ("at the
+# supply"), and below it a number is good to about ADC_ACCURACY_V.
+ADC_TOP_V = 2.9
+ADC_ACCURACY_V = 0.1
+
+
+def supply_of(hello):
+    """The supply voltage a board says it has ("supply_v" in its hello
+    line, a number above 0), else SUPPLY_V."""
+    v = (hello or {}).get("supply_v")
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 < v <= 30:
+        return float(v)
+    return SUPPLY_V
+
+
+def low_supply_v(supply=None):
+    """Below this the + line counts as pulled down (LOW_SUPPLY_SHARE of the
+    supply)."""
+    return round(LOW_SUPPLY_SHARE * (supply or SUPPLY_V), 3)
+
+
+def volts_words(v):
+    """3.3 -> "3.3 volts", 5.0 -> "5 volts"."""
+    return f"{v:g} volts"
 
 # --- Rows ---------------------------------------------------------------
 # A full-size breadboard has 63 numbered rows. Each row has two halves:
@@ -38,6 +77,26 @@ COLORS = {
 BUTTONS = {1: "check", 2: "hint", 3: "next_step", 4: "power"}
 BUTTON_LABELS = {1: "Check my circuit", 2: "I need a hint",
                  3: "Next step", 4: "Power off / on"}
+# The station's buttons have colours, not numbers (docs/HARDWARE.md). Text
+# a student reads names a button by its colour (button_words).
+BUTTON_COLORS = {1: "yellow", 2: "white", 3: "blue", 4: "red"}
+
+
+def button_words(n):
+    """How a student is told about a button: 1 -> "the yellow button"."""
+    return f"the {BUTTON_COLORS[n]} button"
+
+
+# --- Switching the power off by hand --------------------------------------
+# The station has no power switch: the laptop's USB cable powers it all,
+# and the breadboard's + line gets its 3.3 V through the red wire. So
+# "switch the power off by hand" means: pull the red wire out of the +
+# line (the board keeps measuring; unplugging USB would stop it too).
+MANUAL_OFF_WORDS = "pull the red wire out of the + line"
+MANUAL_ON_WORDS = "push the red wire back into the + line"
+# The board screen's text for it (fit_screen keeps it to the screen size).
+MANUAL_OFF_SCREEN = "DANGER!|Pull the red wire|out of the + line|right now!"
+NO_SWITCH_SCREEN = "No power switch.|Power off: pull the|red wire out of +.|On: push it back in."
 
 # --- Power cut by the board itself ----------------------------------------
 # A board with a current sensor and a power switch must switch power off by
@@ -65,12 +124,12 @@ def power_cut_words(event):
     current = event.get("current_ma")
     seen = f" It measured {current:.0f} mA." if isinstance(current, (int, float)) else ""
     return (f"The board switched the power off by itself, because {reason}.{seen} "
-            "Fix the circuit, then press 4 to turn the power back on.")
+            f"Fix the circuit, then press {button_words(4)} to turn the power back on.")
 
 
 # --- Screen -------------------------------------------------------------
-# The real screen size is not known yet. Change it here and only here.
-# The laptop never sends more than this.
+# The station's StickS3 shows a big row name plus text and holds 4 x 20
+# easily. Change it here and only here. The laptop never sends more than this.
 SCREEN_LINES = 4
 SCREEN_CHARS = 20
 

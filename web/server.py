@@ -57,9 +57,9 @@ from agent.activity import Activity  # noqa: E402
 from agent.trace import describe_step, describe_steps  # noqa: E402
 from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E402
 from agent.session import Session  # noqa: E402
-from protocol import (BUTTON_LABELS, COLORS, DEFAULT_BAUD, SCREEN_CHARS,  # noqa: E402
-                      SCREEN_LINES, USABLE_ROWS_ENV, is_row, parse_usable, power_cut_words,
-                      row_label)
+from protocol import (BUTTON_COLORS, BUTTON_LABELS, COLORS, DEFAULT_BAUD,  # noqa: E402
+                      SCREEN_CHARS, SCREEN_LINES, SUPPLY_V, USABLE_ROWS_ENV, button_words,
+                      is_row, parse_usable, power_cut_words, row_label)
 from sim.fake_board import SCENARIOS, SIM_EXTRA, FakeBoard  # noqa: E402
 from sim.random_circuit import random_circuit  # noqa: E402
 from sim.solver import NetlistError  # noqa: E402
@@ -183,8 +183,8 @@ class App:
 
     def _welcome(self):
         l = self.session.lesson
-        what = {"explore": "Tap the holes!", "free": "Build anything!"}.get(l.get("kind"),
-                                                                         "Press 3 to start.")
+        what = {"explore": "Tap the holes!", "free": "Build anything!"}.get(
+            l.get("kind"), f"Press {BUTTON_COLORS[3]} to start.")
         name = l["title"] if l.get("kind") == "free" else f"Lesson {l['id']}: {l['title']}"
         self.board.show(f"Genesis|{name}|{what}")
 
@@ -244,10 +244,11 @@ class App:
             text = result["say"]
         elif action == "next_step":
             if result.get("done"):
-                text = "All parts are in place. Press 1 (Check my circuit) when you are ready."
+                text = (f"All parts are in place. Press {button_words(1)} (Check my circuit) "
+                        "when you are ready.")
             else:
                 text = (f"Step {result['step']} of {result['of']}: {result['part']}. "
-                        f"Put {Session.where_legs(result['legs'])}. "
+                        f"Put {Session.where_legs(result['legs'], self.board.supply_v)}. "
                         "The blue lights show the rows.")
         elif action == "power":
             text = result.get("say") or ("Power is off." if not result.get("power_on")
@@ -264,10 +265,9 @@ class App:
                          "mood": mood})
         return result
 
-    @staticmethod
-    def _where(name):
-        return {"PT+": "the top + line (5 V)", "PT-": "the top - line (ground)"}.get(
-            name, row_label(name))
+    def _where(self, name):
+        return {"PT+": f"the top + line ({self.board.supply_v:g} V)",
+                "PT-": "the top - line (ground)"}.get(name, row_label(name))
 
     def current_card(self):
         """The card on the page: the latest mistake's, or in lesson 0 (no
@@ -380,6 +380,10 @@ class App:
                 "lights": dict(b.lights), "screen": list(b.screen), "colors": COLORS,
                 "screen_size": [SCREEN_LINES, SCREEN_CHARS],
                 "buttons": {str(i): BUTTON_LABELS[i] for i in range(1, b.buttons + 1)},
+                # The station's button colours (yellow, white, blue, red), for
+                # the pretend board's buttons on the page.
+                "button_colors": {str(i): BUTTON_COLORS[i] for i in range(1, b.buttons + 1)},
+                "supply_v": b.supply_v,
                 "step": self.session.step + 1 if self.session.step >= 0 else None,
                 "steps": len(self.session.lesson["layout"])}
 
@@ -1058,10 +1062,14 @@ def open_board(args):
     """The fake board, or with --serial a real one. Problems are printed
     in plain words and give None."""
     if not args.serial:
-        return FakeBoard(args.lesson if args.lesson is not None else 1, args.scenario, rows=args.rows,
-                         has_current=not args.no_current,
-                         has_power_switch=not args.no_power_switch,
-                         has_screen=not args.no_screen)
+        try:
+            return FakeBoard(args.lesson if args.lesson is not None else 1, args.scenario,
+                             rows=args.rows, has_current=not args.no_current,
+                             has_power_switch=not args.no_power_switch,
+                             has_screen=not args.no_screen, supply_v=args.supply)
+        except ValueError as e:
+            print(f"Could not start the fake board: {e}")
+            return None
     try:
         port = choose_port(args.serial)
         print(f"Connecting to the board on {port} at {args.baud} baud...")
@@ -1127,6 +1135,8 @@ def main(argv=None):
     p.add_argument("--no-power-switch", action="store_true",
                    help="fake board cannot switch power")
     p.add_argument("--no-screen", action="store_true", help="fake board has no screen")
+    p.add_argument("--supply", type=float, default=SUPPLY_V,
+                   help=f"fake board supply voltage (default {SUPPLY_V:g} V, like the station)")
     p.add_argument("--serial", metavar="PORT",
                    help='use a real board on this port (COM3, /dev/ttyUSB0) or "auto"')
     p.add_argument("--baud", type=int, default=DEFAULT_BAUD,
@@ -1176,7 +1186,8 @@ def main(argv=None):
         print(tracing_line())
     print(f"Tutor: {app.model_name}. Board: {where}, {caps['rows']} rows measured, "
           f"current sensor {'yes' if caps['has_current'] else 'no'}, "
-          f"power switch {'yes' if caps['has_power_switch'] else 'no'}.")
+          f"power switch {'yes' if caps['has_power_switch'] else 'no'}, "
+          f"supply {caps['supply_v']:g} V.")
     print(f"Notebook for {args.student}: {notebook.path}")
     if app.model_name == "offline practice tutor":
         print("No ANTHROPIC_API_KEY set: Zip uses the offline tutor for every answer.")

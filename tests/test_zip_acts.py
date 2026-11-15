@@ -164,12 +164,12 @@ class TestExperiment(unittest.TestCase):
         self.assertEqual(len(led), 1)
         self.assertIn("blocked", led[0]["before"])
         self.assertIn("should be lit", led[0]["after"])
-        self.assertTrue(any(w.startswith("row 10 changed from 5.0 V") for w in
+        self.assertTrue(any(w.startswith("row 10 changed from 3.3 V") for w in
                             out["changed_words"]), out["changed_words"])
         steps = texts(session)
         self.assertIn("Asked you to turn around the LED in rows 10 and 12", steps)
         self.assertEqual(steps.count("Asked you to turn around the LED in rows 10 and 12"), 1)
-        self.assertTrue(any(s.startswith("Measured again: row 10 changed from 5.0 V")
+        self.assertTrue(any(s.startswith("Measured again: row 10 changed from 3.3 V")
                             for s in steps), steps)
         self.assertTrue(history)  # the finished reply is kept
 

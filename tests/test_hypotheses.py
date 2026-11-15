@@ -26,11 +26,14 @@ from tests.test_zip_acts import ScriptModel
 from web.server import App
 
 USABLE = "T3-T8,T20-T24,B40-B45"
-# Seed 1: wire + -> B43, 330 ohm B43-B45, blue LED in backwards (long leg in the - line).
+V = P.SUPPLY_V  # 3.3 V, like the station
+# Seed 1 (from a test at 5 V): wire + -> B43, 330 ohm B43-B45, an LED in
+# backwards (long leg in the - line). It was blue; at the station's 3.3 V a
+# blue LED barely lights even the right way round, so here it is red.
 SEED1 = [{"kind": "wire", "rows": ["PB+", "B43"]},
          {"kind": "resistor", "rows": ["B43", "B45"], "ohms": 330},
-         {"kind": "led", "rows": ["PB-", "B45"], "color": "blue"}]
-SEED1_FIXED = SEED1[:2] + [{"kind": "led", "rows": ["B45", "PB-"], "color": "blue"}]
+         {"kind": "led", "rows": ["PB-", "B45"], "color": "red"}]
+SEED1_FIXED = SEED1[:2] + [{"kind": "led", "rows": ["B45", "PB-"], "color": "red"}]
 # Seed 4: push button + -> B40, 330 ohm B40-B41, green LED in backwards.
 SEED4 = [{"kind": "button", "rows": ["PB+", "B40"]},
          {"kind": "resistor", "rows": ["B40", "B41"], "ohms": 330},
@@ -90,25 +93,25 @@ class TestHypotheses(unittest.TestCase):
         """The real answer was "two wires from + to the rows": it fits, but
         uses no tray part and has no usual mistake while no current flows."""
         truth = {"parts": [dict(p, sure=False) for p in SEED1]}
-        for tray in (None, ["330 ohm resistor", "blue LED"]):
+        for tray in (None, ["330 ohm resistor", "red LED"]):
             with self.subTest(tray=tray):
                 reader = FakeReader(script=[{"hypotheses": [TWO_WIRES, truth]}])
                 _, s = session(SEED1, reader=reader, tray=tray)
                 _, result, _ = s.measure()
                 self.assertEqual(len(result["hypotheses"]), 2)  # both fit the physics
-                self.assertIn("blue LED", " ".join(result["hypotheses"][0]["circuit"]))
+                self.assertIn("red LED", " ".join(result["hypotheses"][0]["circuit"]))
                 self.assertEqual(result["main_problem"]["kind"], "led_backwards")
                 self.assertEqual(result["reader_tries"], 1)
 
     def test_rank_penalties(self):
-        measured = {"rows": {"B43": 5.0, "B45": 5.0}, "current_ma": 0.0,
-                    "current_source": "measured", "supply_v": 5.0}
+        measured = {"rows": {"B43": V, "B45": V}, "current_ma": 0.0,
+                    "current_source": "measured", "supply_v": V}
         usable = P.parse_usable(USABLE)
         hyps = []
         for parts in (TWO_WIRES["parts"], SEED1):
             g = clean_guess({"parts": parts}, usable)
             hyps.append(dict(physics_check(g["parts"], measured), guess=g))
-        ranked = rank(hyps, measured, clean_tray(["330 ohm resistor", "blue LED"])["parts"])
+        ranked = rank(hyps, measured, clean_tray(["330 ohm resistor", "red LED"])["parts"])
         self.assertEqual(ranked[0]["guess"]["parts"][-1]["kind"], "led")
         self.assertEqual(ranked[0]["problems"][0]["kind"], "led_backwards")
         self.assertGreater(ranked[1]["penalty"], ranked[0]["penalty"])
@@ -136,8 +139,8 @@ class TestPlanner(unittest.TestCase):
 
     def test_press_the_button_when_that_separates(self):
         """Button not pressed, LED one way or the other: only pressing tells."""
-        measured = {"rows": {"B40": 5.0, "B41": None}, "current_ma": 0.0,
-                    "current_source": "measured", "supply_v": 5.0}
+        measured = {"rows": {"B40": V, "B41": None}, "current_ma": 0.0,
+                    "current_source": "measured", "supply_v": V}
         base = [{"kind": "resistor", "rows": ["PB+", "B40"], "ohms": 330},
                 {"kind": "button", "rows": ["B40", "B41"], "closed": False}]
         forward = base + [{"kind": "led", "rows": ["B41", "PB-"], "color": "red"}]
@@ -147,7 +150,7 @@ class TestPlanner(unittest.TestCase):
         plan = plan_experiment([forward, back], measured, P.parse_usable(USABLE))
         self.assertEqual(plan["action"], "press")
         self.assertIn("Press the push button in rows 40 and 41", plan["instruction"])
-        after = {"rows": {"B40": 2.2, "B41": 2.2}, "current_ma": 8.4,  # it lit
+        after = {"rows": {"B40": 2.0, "B41": 2.0}, "current_ma": 4.0,  # it lit: (3.3 - 1.9) / 345
                  "current_source": "measured"}
         kept = which_hypothesis(plan, after)
         self.assertEqual((kept["index"], kept["all_matched"]), (0, True))
@@ -275,7 +278,7 @@ if __name__ == "__main__":
 
 
 # The bug from a real test of PR #28: button + -> B40, 220 ohm B40-B41, red
-# LED in backwards (- line -> B41). The board: B40 = 5 V, B41 = 5 V, 0 mA.
+# LED in backwards (- line -> B41). The board: B40 = B41 = the supply, 0 mA.
 # The tray (as the student filled it in): push button, 330 ohm, green LED.
 REPORTED = [{"kind": "button", "rows": ["PB+", "B40"]},
             {"kind": "resistor", "rows": ["B40", "B41"], "ohms": 220},
@@ -305,8 +308,8 @@ class TestRowsThatReadEmpty(unittest.TestCase):
         self.assertFalse(out["passed"])
         self.assertFalse(out["explains_all"])
         self.assertEqual(out["unexplained"], ["B40", "B41"])
-        self.assertIn("B40: has 5.0 V, your guess leaves it empty", out["mismatches"])
-        self.assertIn("B41: has 5.0 V, your guess leaves it empty", out["mismatches"])
+        self.assertIn("B40: has 3.3 V, your guess leaves it empty", out["mismatches"])
+        self.assertIn("B41: has 3.3 V, your guess leaves it empty", out["mismatches"])
         self.assertEqual(out["empty_joints"], ["T20", "T5"])  # joints of parts in empty rows
 
     def test_a_guess_that_drives_an_empty_row_fails(self):
@@ -339,7 +342,7 @@ class TestRowsThatReadEmpty(unittest.TestCase):
         _, result, _ = s.measure()
         self.assertEqual(len(reader.seen), 2)  # the mismatches went back once
         again = json.loads(reader.seen[1])
-        self.assertIn("B40: has 5.0 V, your guess leaves it empty", again["did_not_match"])
+        self.assertIn("B40: has 3.3 V, your guess leaves it empty", again["did_not_match"])
         self.assertEqual(result["main_problem"]["kind"], "not_sure")
         self.assertNotIn("experiment_plan", result)
 
@@ -384,7 +387,7 @@ class TestRowsThatReadEmpty(unittest.TestCase):
         board.set_netlist(REPORTED_FIXED)  # the student turned the LED around
         answer_experiment(agent, [], True)
         out = model.seen[-1]
-        self.assertGreater(out["lesson_check"]["current_ma"], 10)  # current flows now
+        self.assertGreater(out["lesson_check"]["current_ma"], 4)  # current flows now (5.9 mA)
         kept = out["hypothesis_kept"]
         self.assertTrue(kept["came_true"])
         self.assertIn("is blocking the current", kept["problem"])
@@ -403,8 +406,8 @@ class TestWhatCountsAsAFix(unittest.TestCase):
     def setUp(self):
         self.usable = P.parse_usable(USABLE)
         self.measured = {"rows": {r: None for r in self.usable}, "current_ma": 0.0,
-                         "current_source": "measured", "supply_v": 5.0}
-        self.measured["rows"].update({"B40": 5.0, "B41": 5.0})
+                         "current_source": "measured", "supply_v": V}
+        self.measured["rows"].update({"B40": V, "B41": V})
         self.backwards = clean_guess({"parts": [
             {"kind": "button", "rows": ["PB+", "B40"], "closed": True},
             {"kind": "resistor", "rows": ["B40", "B41"], "ohms": 220},
@@ -418,7 +421,7 @@ class TestWhatCountsAsAFix(unittest.TestCase):
         self.assertEqual(plan["instruction"], "Turn around the LED in row 41 and the bottom - line.")
         self.assertTrue(plan["fixes"])
         lit = plan["predictions"][0]
-        self.assertGreater(lit["current_ma"], 10)  # 13.2 mA, the LED on: the real fix
+        self.assertGreater(lit["current_ma"], 4)  # 5.96 mA, the LED on: the real fix
 
     def test_hiding_the_problem_is_not_a_fix(self):
         from agent.planner import _state, apply, fixes_top

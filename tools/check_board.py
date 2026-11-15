@@ -422,13 +422,15 @@ class Checker:
 def tell_person(what, n):
     """Ask the person at the board to do something."""
     if what == "button":
-        print(f"\n>>> Press button {n} ({P.BUTTON_LABELS.get(n, '?')}) on the board now "
-              "(you have 30 seconds).", flush=True)
+        colour = P.BUTTON_COLORS.get(n)
+        on_station = f"; the {colour} one on the station" if colour else ""
+        print(f"\n>>> Press button {n} ({P.BUTTON_LABELS.get(n, '?')}{on_station}) on the board "
+              "now (you have 30 seconds).", flush=True)
     else:
         print("\n>>> Make the board cut power now (you have 30 seconds). Safe way: in the "
-              "firmware set the cut limit low (for example 10 mA), upload it, then build "
-              "lesson 1 (LED with the 220 ohm resistor, about 14 mA). Do NOT short the "
-              "supply.", flush=True)
+              "firmware set the cut limit low (for example 3 mA), upload it, then build "
+              "lesson 1 (LED with the 220 ohm resistor, about 6 mA on 3.3 V). Do NOT short "
+              "the supply.", flush=True)
 
 
 def main(argv=None):

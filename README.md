@@ -6,6 +6,16 @@ measurements, cuts power on unsafe mistakes, and teaches with hints.
 After every mistake the laptop shows a short mini-lesson about the
 idea behind that mistake, with a one-question quiz.
 
+The real board is **the station**, built in
+[jinglebells2020/smartboard](https://github.com/jinglebells2020/smartboard)
+(`docs/HARDWARE.md`): an ESP32-S3 that measures every breadboard row, a
+light strip on each side, a StickS3 screen and four coloured buttons
+(yellow check, white hint, blue next step, red power). **Its breadboard
+runs on 3.3 V**, so every lesson is written for 3.3 V, and it has no
+current sensor and no power switch: when a circuit is dangerous, Genesis
+tells the student to pull the red wire out of the + line. Everything
+also works with the fake board, without hardware.
+
 ## Target user
 
 Middle school students, ages 11 to 14, building their first circuits.
@@ -17,10 +27,10 @@ written at about a 6th grade reading level.
 
 | Part                     | Status                                        |
 |--------------------------|-----------------------------------------------|
-| `sim/fake_board.py`      | Done. Speaks serial protocol version 2. Simulates lessons 0 to 4 (lesson 4's push button held or let go with `HOLD on|off`), every listed mistake (including a loose leg that flickers), two unlisted ones, a part plugged into a row outside the plan (`stray_part`) and 1 to 3 copies of a circuit (`COPIES T0 T15 B0`). Starts with any rows, with or without a current sensor, power switch or screen |
-| `lessons/*.json`         | Done for lesson 0 (how a breadboard connects: tap holes, one question), lessons 1 and 2, lesson 3 "More LEDs" (the LED circuit with a 330 ohm resistor, built 1 to 3 times anywhere; each copy is checked, and the total current must be 3 x 9.1 = 27.3 mA or less for three), and lesson 4 "Button switch" (two guided steps: hold the button and check, then let go and check; each step has its own rules and mistakes): 22 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). Any other mistake gets a clue from the numbers |
+| `sim/fake_board.py`      | Done. Speaks serial protocol version 2. Simulates lessons 0 to 4 (lesson 4's push button held or let go with `HOLD on|off`), every listed mistake (including a loose leg that flickers), two unlisted ones, a part plugged into a row outside the plan (`stray_part`) and 1 to 3 copies of a circuit (`COPIES T0 T15 B0`). Starts with any rows, with or without a current sensor, power switch or screen, on a 3.3 V supply like the station (`--supply` for another) |
+| `lessons/*.json`         | Done for lesson 0 (how a breadboard connects: tap holes, one question), lessons 1 and 2, lesson 3 "More LEDs" (the LED circuit with a 330 ohm resistor, built 1 to 3 times anywhere; each copy is checked, and with three the total current must be about 3 x 3.9 = 11.7 mA), and lesson 4 "Button switch" (two guided steps: hold the button and check, then let go and check; each step has its own rules and mistakes): 22 mistakes, each with a hint, full explanation and mini-lesson (idea + quiz question). Any other mistake gets a clue from the numbers. All numbers, ranges and texts are for the station's 3.3 V, and allow its meter (±0.1 V, the top of its range read as the supply) |
 | `docs/SERIAL_PROTOCOL.md`| Done, version 2: a voltage per row, empty rows, current (or null), row lights with colors, screen text, 4 buttons |
-| `protocol.py`            | Done. Row names, light colors, button meanings and screen size, in one place |
+| `protocol.py`            | Done. Row names, light colors, button meanings and the station's button colours, the supply voltage (`SUPPLY_V = 3.3`; a board's hello line can say its own `supply_v`), what "switch the power off by hand" means on the station, and screen size, in one place |
 | `agent/`                 | Done. deepagents tutor with the CLAUDE.md tools. Uses Claude when ANTHROPIC_API_KEY is set, an offline mock otherwise |
 | `agent/placement.py` | Done. Build anywhere: the same circuit built in other rows (or the bottom half) is found and checked there (agent/placement.py). Any spacing too: parts may span a different number of rows than the lesson (resistor in rows 20 to 27, LED in 27 to 29), even built the other way round. The exact spacing is tried first. |
 | `agent/physics.py`, `agent/diagnoser.py` | Done. AI diagnoser: plain Python works out physics facts from each check (row voltages, the voltage across each part, the current through each resistor, LED on/blocked/shorted, rows that read the same, extra rows, loose legs, power). With Claude, the diagnoser subagent reasons from those facts and names the facts behind every cause; plain Python drops any cause the facts do not show. Safety, power and passing are still decided by plain Python and the lesson's rules. Offline, nothing changes. |
@@ -28,12 +38,12 @@ written at about a 6th grade reading level.
 | `agent/experiments.py` | Done. Zip acts: when two causes look the same to the board, Zip can ask you to do ONE thing with your hands ("Turn around the LED in rows 10 and 12"), with two buttons ("Done" / "I can't"), then measures again and sees what changed. Python checks the instruction first (one action from: pull out, push in, turn around, move, press, let go, wait; a part of the lesson; a row; never anything about power) and allows at most 2 per reply. While you build, each part you add makes Zip light the next part's rows blue and write the step on the board screen, without a chat message. Zip may switch the power off at any time and must say why; it can never switch power on by itself (that still asks "Turn the power back on?"). |
 | `agent/activity.py` | Done. Agent activity: a live panel for judges (closed for the student, opens with the Teacher view) listing the last 50 actions of Zip's agents, newest first, with who did it, the kind of action and the time, and counts per agent. Built from the same recorded steps as "How Zip worked", plus instant help and plain-Python safety cuts. It only reads: nothing about what Zip does changes. |
 | `sim/solver.py`, free build (phase 1) | Done. **Usable rows**: `--usable-rows "T3-T8,T20-T24,B40-B45"` (or the `SMART_BOARD_USABLE_ROWS` environment variable; default every row) for a board where only some rows work: the others are never measured, never called empty, never lit, and are grey in the drawing. **Circuit solver**: the fake board works out any circuit (wires, resistors, LEDs of 5 colours, push buttons) with nodal analysis, so a free build reads like a real board. **Random judge circuits** (`/api/random-circuit`), sometimes with a typical mistake (LED backwards, missing link, short, LED with no resistor: the safety cut still works). **Parts tray** ("What parts did you use?" and "What should it do?"). **Free build** (`--free-build`): after lesson 4 in the path, no plan, the check reports every measured row, the current and plain facts. The AI that works out what was built comes in phase 2. |
-| `agent/reader.py`, `agent/feedback.py`, free build (phase 2) | Done. In free build, every check reads ANY circuit: plain Python works out the facts, the **circuit reader** (a Claude subagent; offline, a plain-Python reader for one chain of parts) guesses which parts are on which rows, and a **physics check** in plain Python works the guess out with `sim/solver.py` and compares it with every measured row (within 0.3 V) and the current (within 20 % or 2 mA). If it does not match, the reader is told what did not match and tries once more; the best guess is kept. Then Zip gives feedback, hint first: is each LED on and why, shorts, parts doing nothing, open paths, the current, and whether the circuit does what the student wanted. Red, yellow and green lights only on usable rows. When the guess does not fit, Zip says honestly that it is not sure and asks about the parts tray. The page shows **"Zip thinks you built:"** with a check mark for each part the physics check confirmed. |
+| `agent/reader.py`, `agent/feedback.py`, free build (phase 2) | Done. In free build, every check reads ANY circuit: plain Python works out the facts, the **circuit reader** (a Claude subagent; offline, a plain-Python reader for one chain of parts) guesses which parts are on which rows, and a **physics check** in plain Python works the guess out with `sim/solver.py` and compares it with every measured row (within 0.3 V) and the current (within 20 % or 1 mA). If it does not match, the reader is told what did not match and tries once more; the best guess is kept. Then Zip gives feedback, hint first: is each LED on and why, shorts, parts doing nothing, open paths, the current, and whether the circuit does what the student wanted. Red, yellow and green lights only on usable rows. When the guess does not fit, Zip says honestly that it is not sure and asks about the parts tray. The page shows **"Zip thinks you built:"** with a check mark for each part the physics check confirmed. |
 | `agent/planner.py`, free build (several hypotheses) | Done. When no current flows, several circuits can read the same: the circuit reader gives up to 3; every one that matches every usable row is kept and ranked in Python (all rows with a voltage explained, tray parts used, a usual mistake before invisible wires). The planner simulates every allowed action on each with the solver and picks the one that tells them apart (preferring one that really fixes the most likely problem, never an unsafe one); after the student does it, the one that came true is kept and Zip names its problem, hint first. |
 | LangSmith tracing (optional) | Done. Off by default. Set `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY` and `LANGSMITH_PROJECT=genesis` (RUN.md Part H) and every run, tool and subagent shows on smith.langchain.com; the server prints "LangSmith tracing: on (project genesis)". No extra install: `langsmith` comes with LangChain. |
-| `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`) |
+| `agent/serial_board.py`  | Done. Talks to a real board on a USB serial port (pyserial). Survives junk lines, a missing hello, the cable being unplugged and plugged back, and silence. Use it with `--serial COM3` (or `--serial auto`, which picks the station's ESP32-S3 port, USB vendor id 0x303A, when there are several) |
 | `tools/check_board.py`   | Done. Checks a board's firmware against the protocol and prints PASS or FAIL per rule. How the hardware teammate tests the firmware (docs/FIRMWARE_GUIDE.md) |
-| `firmware/`              | Not written yet. docs/FIRMWARE_GUIDE.md says what it must do |
+| Station firmware         | Done, in jinglebells2020/smartboard: `firmware/smartboard_s3` starts in Genesis mode (protocol version 2) and must pass `tools/check_board.py`. docs/FIRMWARE_GUIDE.md says what any board's firmware must do |
 | `web/`                   | Done. Projector page made for an 11-year-old: Zip the guide with 4 moods, a drawn plan of the breadboard with the parts and live row lights, a lesson path with stars, a pop-up mini-lesson with quiz, a short celebration, a pretend board (screen + 4 buttons) with the fake board, and a Teacher drawer (`python web/server.py`) |
 
 ## Folders
@@ -52,7 +62,8 @@ written at about a 6th grade reading level.
   never committed (it is about real students).
 - `tests/` : automatic checks for the simulator, the agent and the web page.
 - `web/` : the projector page and its small local server.
-- `firmware/` : coming later.
+- `firmware/` : a pointer. The station's firmware lives in
+  jinglebells2020/smartboard (`firmware/smartboard_s3`).
 
 ## Setup (step by step)
 
@@ -179,23 +190,44 @@ reply with how long it took:
 [14:06:40] Claude failed after 0.5 s (could not reach Claude: is the internet connected?). The offline tutor answered this message; the next one tries Claude again.
 ```
 
-## Use a real board
+## Use the real station
 
-Plug the board in, then (Windows steps in RUN.md Part F):
+The station is the real board (`docs/HARDWARE.md`). Do these in order the
+first time (the steps for the station are in jinglebells2020/smartboard):
 
-```bash
-python tools/check_board.py --serial auto
-```
+1. **Mux test.** Walk every breadboard row with `tools/mux_test` there. It
+   saves `as_built_map.json`: which wire is which row.
+2. **Make the row map** there:
+   `python3 tools/make_fw_maps.py tools/mux_test/as_built_map.json`.
+3. **Flash** `firmware/smartboard_s3` from the Arduino IDE.
+4. **Plug the station in** with its USB-C cable (the S3's own USB port),
+   then check it from this repository (Windows steps in RUN.md Part F):
 
-```bash
-python web/server.py --fresh --serial auto
-```
+   ```bash
+   python tools/check_board.py --serial auto
+   ```
 
-`--serial auto` finds the board when it is the only serial port;
-otherwise give its name (`COM3`, `/dev/ttyUSB0`). `--baud` changes the
-speed (default 115200). A line at the top of the page says "Board
-connected on COM3" or, in red, "Board not answering". Without
-`--serial` the fake board is used.
+5. **Start Genesis on it:**
+
+   ```bash
+   python web/server.py --fresh --serial auto
+   ```
+
+`--serial auto` picks the station's port by itself (USB vendor id 0x303A),
+even with other serial devices plugged in; otherwise give its name
+(`COM3`, `/dev/ttyACM0`). The baud rate does not matter on the S3's USB
+port (`--baud` is for other boards; default 115200). A line at the top of
+the page says "Board connected on COM3" or, in red, "Board not answering".
+Without `--serial` the fake board is used.
+
+**3.3 V.** The station's breadboard runs on 3.3 V, and every lesson is
+written for it (5.9 mA through lesson 1's LED, 1.65 V in the middle of
+lesson 2). Use red, yellow or green LEDs: a blue or white one barely
+lights at 3.3 V. The station has no power switch: the red button, and any
+dangerous circuit, makes Genesis say "pull the red wire out of the + line"
+on the laptop and on the station's screen. Before the row map is flashed
+the station measures no named rows, and Genesis says it cannot check the
+lesson yet.
 
 ## Run the tutor in a terminal
 
@@ -240,7 +272,7 @@ then type (all on one line) and press Enter:
 NETLIST [{"kind": "wire", "rows": ["PT+", "T5"]}, {"kind": "resistor", "rows": ["T5", "T10"], "ohms": 220}, {"kind": "led", "rows": ["T10", "T12"], "color": "red"}, {"kind": "wire", "rows": ["T12", "PT-"]}]
 ```
 
-The readings now show about 13.2 mA. `NETLIST CLEAR` empties the board again.
+The readings now show about 6 mA (3.3 V, like the station). `NETLIST CLEAR` empties the board again.
 
 Try a board with only 16 rows, no current sensor and no power switch:
 
@@ -267,7 +299,8 @@ Three zones fill the screen:
   lights in their colours (red ones gently pulse: "look here", not
   "you failed") and each row's voltage in small text. The current and
   the power voltage are small pills on top; the pretend board (screen
-  and 4 buttons) sits underneath. Parts are drawn in their real
+  and 4 buttons, in the station's colours: yellow check, white hint,
+  blue next step, red power) sits underneath. Parts are drawn in their real
   colours (red wire, black wire, tan resistor with its colour bands,
   red LED).
 - In lesson 0 there is nothing to build: **tap any hole** in the
@@ -318,24 +351,24 @@ buttons. Pick circuits in **Teacher → Practice mode**.
    the whole line lights. Press **Learn**, then **Show the class** to
    put the question on the projector; Esc closes it. Answer the
    question, press **Check my circuit**, and Zip moves on to lesson 1.
-1. Build step by step: press **3 · Next step**. The drawing shows the
-   red wire strong and the rest faint, row 5 lights blue and the screen
-   says "Step 1 of 4 / Red wire". Keep pressing 3: resistor, LED (long
-   leg row 10, short leg row 12), black wire.
-2. LED backwards, then **1 · Check my circuit** → Zip thinks, then
+1. Build step by step: press the blue **Next step** button. The drawing
+   shows the red wire strong and the rest faint, row 5 lights blue and the
+   screen says "Step 1 of 4 / Red wire". Keep pressing it: resistor, LED
+   (long leg row 10, short leg row 12), black wire.
+2. LED backwards, then the yellow **Check my circuit** → Zip thinks, then
    looks curious. Rows 10 and 12 glow red, Zip gives a hint (not the
    answer), and the card "LEDs are one-way doors" appears with a quiz
    question. Answer it: right or wrong, the page says why.
    A ring in the drawing points at the LED's long leg (marked +).
-   Practice mode **Loose LED leg**, then 1 → row 10 keeps switching
+   Practice mode **Loose LED leg**, then yellow → row 10 keeps switching
    between connected and empty, so it lights yellow and Zip says "push
    that leg in firmly". Card: "Loose legs make blinking circuits".
-3. **2 · I need a hint** → the next level of help: the full
+3. The white **I need a hint** → the next level of help: the full
    explanation. The hint button never measures, never changes power and
    never adds a mistake to the history.
-4. No resistor, then 1 → power is cut at once, Zip looks careful (a
+4. No resistor, then yellow → power is cut at once, Zip looks careful (a
    friendly yellow sign) and asks what keeps the current small. Card:
-   "Resistors keep current small". Press **4** before fixing it: power
+   "Resistors keep current small". Press the red **Power off / on** before fixing it: power
    comes on, is measured at once, and goes off again ("still not safe:
    100 mA flowed").
 5. Correct circuit, then **I fixed it** → power back on, all rows
@@ -350,10 +383,11 @@ buttons. Pick circuits in **Teacher → Practice mode**.
    different value than the plan says...?"). In the Teacher drawer, "What the
    tutor did" says "asked the detective, wrote in the notebook", and
    **Open the student's notebook** shows the line it just wrote.
-7. Restart with `--no-power-switch --no-current --rows T1-T16`: the same
-   lessons still work. No resistor now puts "DANGER! Switch the power
-   OFF by hand now" on the board screen, and the current shows as
-   "worked out from the rows".
+7. Restart with `--no-power-switch --no-current --rows T1-T16` (like the
+   station, on fewer rows): the same lessons still work. No resistor now
+   puts "DANGER! / Pull the red wire / out of the + line / right now!" on
+   the board screen, Zip says to pull the red wire out of the + line, and
+   the current shows as "worked out from the rows".
 
 ## How we use deepagents
 
@@ -490,7 +524,7 @@ itself with the Teacher view).
    circuit**: the power is cut (How Zip worked: … Cut the power, Saved
    the mistake (no resistor), Lit rows 5 and 10 red …). Pick **Correct
    circuit**, click **I fixed it**: Zip asks **"Turn the power back
-   on?"**. Click **Yes** (or board button 4). How Zip worked:
+   on?"**. Click **Yes** (or the board's red button). How Zip worked:
    1. Read Maya's notebook
    2. Measured the rows
    3. Asked you: turn the power back on? You said yes

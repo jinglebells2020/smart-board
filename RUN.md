@@ -166,9 +166,10 @@ lines are what a student would say.
 | `/quit`                     | Stop                                              |
 
 `/list` shows every circuit you can `/build` for the current lesson.
-`/press 3` presses board button 3 (next step): it shows where the next
-part goes. `/press 1` checks, `/press 2` asks for a hint, `/press 4`
-switches power. `/board` shows the lights and the board screen.
+`/press 3` presses board button 3 (blue on the station, next step): it
+shows where the next part goes. `/press 1` (yellow) checks, `/press 2`
+(white) asks for a hint, `/press 4` (red) switches power. `/board` shows
+the lights and the board screen.
 
 Mini-lessons and their quiz questions appear only on the web page
 (Part E), not in this terminal.
@@ -279,25 +280,27 @@ The tests in Part B never use the key, even when it is set.
      ask Zip anything, with **Send**.
 
 4. Run the demo with the mouse. The pretend board's buttons work like
-   the real board's buttons will. To choose what the pretend student
+   the station's buttons, and have its colours: yellow **Check my
+   circuit**, white **I need a hint**, blue **Next step**, red **Power
+   off / on**. To choose what the pretend student
    built, click **Teacher** (top right): a drawer slides in over Zip.
    Click a circuit under **Practice mode**, then **Close** (or press
    Esc).
 
    | Click | What the audience sees |
    |---|---|
-   | **3 · Next step** | The red wire is drawn strong with a dashed sky-blue outline, the other parts faint. Row 5's light turns **sky blue** (put a part here). Under the title: "Step 1 of 4: Red wire". Zip: "Put one end in the top + line (5 V) and the other end in row 5" |
-   | **3 · Next step** three more times | Resistor (rows 5 and 10), LED ("long leg: row 10 / short leg: row 12"), black wire (row 12). Each time that part is outlined and its rows light sky blue |
-   | **3 · Next step** once more | Lights off, all parts drawn. Screen: "All parts placed! / Press 1 to check." |
-   | Teacher → **LED backwards**, Close, then **1 · Check my circuit** | Zip looks **thinking**, then **curious**. The lights of rows 10 and 12 turn **red** and gently pulse (red means "look here"). Zip gives a hint. Under Zip's words a tab appears: **Learn why: LEDs are one-way doors** (yellow book). Click it: the mini-lesson opens in Zip's panel, in place of Zip's picture, with a yellow top strip, a question and 3 big answers. The breadboard and Zip's words stay in view (on a phone it opens below Zip's words) |
+   | Blue **Next step** | The red wire is drawn strong with a dashed sky-blue outline, the other parts faint. Row 5's light turns **sky blue** (put a part here). Under the title: "Step 1 of 4: Red wire". Zip: "Put one end in the top + line (3.3 V) and the other end in row 5" |
+   | Blue **Next step** three more times | Resistor (rows 5 and 10), LED ("long leg: row 10 / short leg: row 12"), black wire (row 12). Each time that part is outlined and its rows light sky blue |
+   | Blue **Next step** once more | Lights off, all parts drawn. Screen: "All parts placed! / Press the yellow / button to check." |
+   | Teacher → **LED backwards**, Close, then yellow **Check my circuit** | Zip looks **thinking**, then **curious**. The lights of rows 10 and 12 turn **red** and gently pulse (red means "look here"). Zip gives a hint. Under Zip's words a tab appears: **Learn why: LEDs are one-way doors** (yellow book). Click it: the mini-lesson opens in Zip's panel, in place of Zip's picture, with a yellow top strip, a question and 3 big answers. The breadboard and Zip's words stay in view (on a phone it opens below Zip's words) |
    | (still LED backwards) look at the drawing | A yellow ring with the words "long leg (+)" points at the LED's long leg. The LED is always drawn with a **+** by its long leg and a flat side by its short leg, like a real LED |
    | **Show the class** (top right of the mini-lesson card) | The mini-lesson fills the whole screen as one slide: big title, the idea, a drawing of the lesson's parts, and the question with its 3 answers. Big enough to read from the back of the room. Press **Esc** (or click **Close**) to go back |
    | The middle answer, **"The LED faces the wrong way, or a leg is not connected"** | It turns green: "Right!" and why. Click **✕** to close the mini-lesson and Zip comes back; the **Learn why** tab opens it again |
-   | **2 · I need a hint** | Zip, still **curious**, gives the next level of help: the full explanation. Nothing is measured, power is not touched |
-   | Teacher → **No resistor**, Close, then **1 · Check my circuit** | Zip looks **careful** (a friendly yellow sign, nothing scary). The power sign says **Power off**. Mini-lesson: "Resistors keep current small" |
-   | **4 · Power off / on** (before fixing) | Power comes on, is measured at once and goes off again. Zip: "The power went off again right away, because the circuit is still not safe: 100 mA flowed…" |
-   | Teacher → **Correct circuit**, Close, then **I fixed it**, then **Yes** | Zip first asks **"Turn the power back on?"** with **Yes** and **No** (board button 4 also means Yes; No keeps the power off). After Yes, Zip turns **happy** and bounces, the lesson's rows glow green for a moment, a short burst of confetti falls (no sound), the LED in the drawing glows red, and lesson 1 on the path gets a green tick with its stars. Zip: "…This is the next lesson you have not passed yet." The page moves to lesson 2 |
-   | **4 · Power off / on** (twice) | Power off (Zip careful), then on again (Zip happy) |
+   | White **I need a hint** | Zip, still **curious**, gives the next level of help: the full explanation. Nothing is measured, power is not touched |
+   | Teacher → **No resistor**, Close, then yellow **Check my circuit** | Zip looks **careful** (a friendly yellow sign, nothing scary). The power sign says **Power off**. Mini-lesson: "Resistors keep current small" |
+   | Red **Power off / on** (before fixing) | Power comes on, is measured at once and goes off again. Zip: "The power went off again right away, because the circuit is still not safe: 100 mA flowed…" |
+   | Teacher → **Correct circuit**, Close, then **I fixed it**, then **Yes** | Zip first asks **"Turn the power back on?"** with **Yes** and **No** (the board's red button also means Yes; No keeps the power off). After Yes, Zip turns **happy** and bounces, the lesson's rows glow green for a moment, a short burst of confetti falls (no sound), the LED in the drawing glows red, and lesson 1 on the path gets a green tick with its stars. Zip: "…This is the next lesson you have not passed yet." The page moves to lesson 2 |
+   | Red **Power off / on** (twice) | Power off (Zip careful), then on again (Zip happy) |
 
    **Instant help** (on by default; the "Instant help" switch under the
    buttons turns it off) makes Zip react as soon as the board changes,
@@ -312,7 +315,7 @@ The tests in Part B never use the key, even when it is set.
    it was answered right. A lesson passed with no mistakes gets all 3.
    New stars pop when they appear.
 
-   Power only comes back on when the student asks: button 4, or saying
+   Power only comes back on when the student asks: the red button, or saying
    they fixed it ("I fixed it", "I added the resistor"). "Check my circuit"
    while power is off just says how to turn it on. Every time power comes
    on, the circuit is measured at once and switched off again if unsafe.
@@ -334,24 +337,25 @@ The tests in Part B never use the key, even when it is set.
    history** table. Close it with **Close** or the Esc key.
 
    More circuits to try. In the Teacher drawer pick one, close it, then click
-   **1 · Check my circuit**:
+   the yellow **Check my circuit**:
 
    | Lesson | Circuit | What the tutor does |
    |---|---|---|
    | 1 | **Loose LED leg** | Row 10 keeps switching between connected and empty while the board measures. It lights **yellow** (careful) and Zip says "push that leg in firmly". No power cut. Mini-lesson: "Loose legs make blinking circuits" |
    | 1 | **Part in wrong row** | Row 10 shows "empty" and lights red. Mini-lesson: "Circuits must be closed loops" |
    | 1 | **Resistor too big (1k)** | Hint: the LED gets much less current, so it is dim. Mini-lesson: "Bigger resistor, less current" |
-   | 1 | **Current skips the LED** | Hint: lots of current but 0 V on row 10. No power cut (22.7 mA is safe). Mini-lesson: "Current takes the easy path" |
+   | 1 | **Current skips the LED** | Hint: lots of current but 0 V on row 10. No power cut (15 mA is safe). Mini-lesson: "Current takes the easy path" |
    | 1 | **Not on the list: 150 ohm resistor** | No mini-lesson. Zip gives a clue, then the detective's question |
    | 2 | **Wrong top resistor (1k)** | Hint: the middle is much higher than half. Mini-lesson: "Bigger resistor, bigger share" |
-   | 2 | **Bottom resistor missing** | Hint: no current, full 5 V in the middle. Mini-lesson: "No flow, no voltage drop" |
+   | 2 | **Bottom resistor missing** | Hint: no current, full 3.3 V in the middle. Mini-lesson: "No flow, no voltage drop" |
    | 2 | **Top resistor missing** | Hint: no current, 0 V in the middle. Mini-lesson: "Voltage needs a path from power" |
    | 2 | **Loose resistor leg** | Like the loose LED leg, for the middle row (row 10) of lesson 2 |
    | 2 | **Not on the list: 4.7k bottom resistor** | No mini-lesson. Row 10 lights **yellow** (careful), Zip gives a clue and the detective's two questions |
 
-   **Try a different board.** The real board's details are not decided
-   yet. Stop the server (Ctrl+C in its window) and start it with any of
-   these, then open the page again:
+   **Try a board like the station.** The station has no current sensor
+   and no power switch (docs/HARDWARE.md). Stop the server (Ctrl+C in its
+   window) and start it like this (here with only 16 rows), then open the
+   page again:
 
    ```
    python web\server.py --fresh --no-current --no-power-switch --rows T1-T16
@@ -360,9 +364,12 @@ The tests in Part B never use the key, even when it is set.
    The Teacher drawer now says "Board: 16 rows measured, current sensor no,
    power switch no". Both lessons still work. The current pill says
    "worked out from the rows". Pick **No resistor**, then
-   **1 · Check my circuit**: Zip says "Switch the power off by hand
-   right now", and the board screen says "DANGER! Switch the power OFF by
-   hand now." **4 · Power off / on** says the board cannot switch power.
+   yellow **Check my circuit**: Zip says "Switch the power off by hand
+   right now: pull the red wire out of the + line", and the board screen
+   says "DANGER! / Pull the red wire / out of the + line / right now!".
+   The red **Power off / on** says the board has no power switch, and how
+   to do it by hand (pull the red wire out of the + line; push it back in
+   to switch on).
    With `--no-current`, **Resistor too big (1k)** looks correct, and the
    tutor says plainly that this board cannot measure current, so it could
    not check for it.
@@ -401,6 +408,36 @@ cannot open it.)
 Do this when the hardware teammate gives you a board with firmware on
 it. Everything else (lessons, tutor, page) stays the same.
 
+The real board is **the station** (docs/HARDWARE.md). Before you use it
+the first time, these happen **in this order** (the hardware steps are in
+the jinglebells2020/smartboard repository, `firmware/README.md`):
+
+1. **The mux test.** Every breadboard row is walked with
+   `tools/mux_test`. It saves `as_built_map.json`: which wire is which row.
+2. **The row map.** In the smartboard folder,
+   `py tools\make_fw_maps.py tools\mux_test\as_built_map.json` turns
+   that file into the firmware's row map.
+3. **Flash** `firmware/smartboard_s3` onto the station's ESP32-S3 from the
+   Arduino IDE.
+4. Then Steps 1 to 3 below.
+
+If step 2 was skipped, the station measures no named rows yet: the check
+in Step 2 below still passes, but Genesis says it cannot check a lesson.
+
+**Good to know about the station:**
+
+- Its breadboard runs on **3.3 V** (not 5 V). Every lesson is written for
+  3.3 V: lesson 1's LED takes about 5.9 mA, lesson 2's middle row reads
+  1.65 V. Use **red, yellow or green** LEDs: blue and white ones barely
+  light at 3.3 V.
+- It has **no power switch**. When a circuit is dangerous, or the red
+  button is pressed, Zip and the station's screen say **"pull the red
+  wire out of the + line"**. Push it back in to turn the power on again.
+  Unplugging the USB cable switches the whole station off.
+- Its buttons have colours: **yellow** = check my circuit, **white** = I
+  need a hint, **blue** = next step, **red** = power off / on. The orange
+  key on the little screen also means "check".
+
 ### Step 1. Find the board's COM port
 
 Windows gives every USB serial device a name like `COM3`.
@@ -410,9 +447,11 @@ Windows gives every USB serial device a name like `COM3`.
    cable.)
 2. Press the Windows key, type `Device Manager`, press Enter.
 3. Click the arrow next to **Ports (COM & LPT)**.
-4. You see a line like **USB-SERIAL CH340 (COM3)** or
-   **Arduino Uno (COM4)**. The name in brackets is the port. Write it
-   down.
+4. You see a line like **USB Serial Device (COM3)** (the station's
+   ESP32-S3), **USB-SERIAL CH340 (COM3)** or **Arduino Uno (COM4)**. The
+   name in brackets is the port. Write it down. The station's S3 board
+   has two USB ports: use the one that shows up as **USB Serial Device**
+   (in the list below it says `303A`, Espressif's number).
 5. To be sure: unplug the board. The line disappears. Plug it back in.
    It comes back.
 
@@ -424,7 +463,8 @@ python -m serial.tools.list_ports -v
 
 If **Ports (COM & LPT)** is missing, Windows needs a driver for the
 board's USB chip. Ask the hardware teammate which chip it uses (often
-CH340 or CP2102) and install that driver.
+CH340 or CP2102) and install that driver. The station's own USB port needs
+no driver on Windows 10 and 11.
 
 ### Step 2. Check the board
 
@@ -447,15 +487,16 @@ CH340 or CP2102) and install that driver.
 python web\server.py --fresh --serial COM3
 ```
 
-If only one board is plugged in, `--serial auto` finds the port by
-itself:
+`--serial auto` finds the port by itself when only one is plugged in, and
+picks the station (vendor id `303A`) when there are several:
 
 ```
 python web\server.py --fresh --serial auto
 ```
 
-If there is more than one port, it lists them and stops. Run it again
-with the right name.
+If it still cannot choose (for example two S3 boards, or several other
+ports and no station), it lists them and stops. Run it again with the
+right name.
 
 Open http://localhost:8000 in Chrome or Edge. With a real board:
 
@@ -476,6 +517,7 @@ python -m agent --fresh --serial COM3
 
 If the firmware uses another speed than 115200, add `--baud` with that
 number, for example `--baud 57600`. Both sides must use the same speed.
+(The station's own USB port ignores the speed, so it needs no `--baud`.)
 
 ---
 
@@ -626,5 +668,5 @@ offline tutor (no Claude key) is traced too, so you can try it free.
 | `OSError: ... address already in use` (Part E)  | The server is already running in another window. Use that one, or run `python web\server.py --port 8001` and open http://localhost:8001 |
 | `Cannot open COM3 ... Access is denied` (Part F) | Another program has the port: close the Arduino Serial Monitor, or the other server window (Ctrl+C), then try again |
 | `No serial ports found` (Part F)                | The board is not plugged in, the cable carries no data, or the driver is missing. See Part F, Step 1 |
-| `More than one serial port found` (Part F)      | Use the name instead of `auto`, for example `--serial COM3`. The message lists the ports |
+| `More than one serial port found` (Part F)      | Use the name instead of `auto`, for example `--serial COM3`. The message lists the ports (the station is picked by itself when it is plugged in: its line says `ESP32-S3, VID 303A`) |
 | `did not send a hello line` (Part F)            | The firmware is not running or uses another speed. Press the board's reset button. Ask the hardware teammate to run `tools\check_board.py` |

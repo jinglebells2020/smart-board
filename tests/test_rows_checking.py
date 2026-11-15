@@ -8,41 +8,43 @@ fake board.
 import unittest
 
 from agent.lessons import calculate_current, check, clue, load_lessons, matches, summarize
-from protocol import ALL_NODES, TOP_ROWS, is_node, is_row, parse_rows
+from protocol import ALL_NODES, SUPPLY_V, TOP_ROWS, is_node, is_row, parse_rows
 from tests.test_mini_lessons import FIX_WORDS, HARD_WORDS, has_word, reading_grade
 
 LESSONS = load_lessons()
 FLOAT = None  # marks a floating (empty) row below
 
-# Ideal row voltages for every circuit, in volts, worked out by hand.
-# Lesson 1 rows: T5 (after the red wire), T10 (resistor/LED long leg),
-# T12 (LED short leg / black wire). Lesson 2: T5, T10 (middle), T15.
+# Ideal row voltages for every circuit, in volts, worked out by hand, at
+# the station's supply (V = 3.3 V). Lesson 1 rows: T5 (after the red wire),
+# T10 (resistor/LED long leg), T12 (LED short leg / black wire). Lesson 2:
+# T5, T10 (middle), T15.
+V = SUPPLY_V
 CIRCUITS = {
     1: {
-        "correct":          ({"T5": 5, "T10": 2.0, "T12": 0}, (5 - 2) / 220 * 1000, 5.0),
-        "led_backwards":    ({"T5": 5, "T10": 5.0, "T12": 0}, 0.0, 5.0),
+        "correct":          ({"T5": V, "T10": 2.0, "T12": 0}, (V - 2) / 220 * 1000, V),
+        "led_backwards":    ({"T5": V, "T10": V, "T12": 0}, 0.0, V),
         "no_resistor":      ({"T5": 2.2, "T10": 2.2, "T12": 0}, 100.0, 2.2),
-        "open_circuit":     ({"T5": 5, "T10": FLOAT, "T12": 0}, 0.0, 5.0),
-        "resistor_too_big": ({"T5": 5, "T10": 2.0, "T12": 0}, (5 - 2) / 1000 * 1000, 5.0),
-        "led_bypassed":     ({"T5": 5, "T10": 0.0, "T12": 0}, 5 / 220 * 1000, 5.0),
-        "resistor_150":     ({"T5": 5, "T10": 2.0, "T12": 0}, (5 - 2) / 150 * 1000, 5.0),
+        "open_circuit":     ({"T5": V, "T10": FLOAT, "T12": 0}, 0.0, V),
+        "resistor_too_big": ({"T5": V, "T10": 2.0, "T12": 0}, (V - 2) / 1000 * 1000, V),
+        "led_bypassed":     ({"T5": V, "T10": 0.0, "T12": 0}, V / 220 * 1000, V),
+        "resistor_150":     ({"T5": V, "T10": 2.0, "T12": 0}, (V - 2) / 150 * 1000, V),
     },
     2: {
-        "correct":          ({"T5": 5, "T10": 2.5, "T15": 0}, 5 / 20000 * 1000, 5.0),
-        "bottom_1k":        ({"T5": 5, "T10": 5 / 11, "T15": 0}, 5 / 11000 * 1000, 5.0),
-        "middle_floating":  ({"T5": 5, "T10": FLOAT, "T15": 0}, 0.25, 5.0),
-        "top_1k":           ({"T5": 5, "T10": 50 / 11, "T15": 0}, 5 / 11000 * 1000, 5.0),
-        "bottom_missing":   ({"T5": 5, "T10": 5.0, "T15": 0}, 0.0, 5.0),
-        "top_missing":      ({"T5": 5, "T10": 0.0, "T15": 0}, 0.0, 5.0),
-        "bottom_4k7":       ({"T5": 5, "T10": 5 * 4.7 / 14.7, "T15": 0}, 5 / 14700 * 1000, 5.0),
+        "correct":          ({"T5": V, "T10": V / 2, "T15": 0}, V / 20000 * 1000, V),
+        "bottom_1k":        ({"T5": V, "T10": V / 11, "T15": 0}, V / 11000 * 1000, V),
+        "middle_floating":  ({"T5": V, "T10": FLOAT, "T15": 0}, V / 20, V),
+        "top_1k":           ({"T5": V, "T10": V * 10 / 11, "T15": 0}, V / 11000 * 1000, V),
+        "bottom_missing":   ({"T5": V, "T10": V, "T15": 0}, 0.0, V),
+        "top_missing":      ({"T5": V, "T10": 0.0, "T15": 0}, 0.0, V),
+        "bottom_4k7":       ({"T5": V, "T10": V * 4.7 / 14.7, "T15": 0}, V / 14700 * 1000, V),
     },
     3: {  # one LED circuit (copy) with a 330 ohm resistor
-        "correct":          ({"T5": 5, "T10": 2.0, "T12": 0}, (5 - 2) / 330 * 1000, 5.0),
-        "led_backwards":    ({"T5": 5, "T10": 5.0, "T12": 0}, 0.0, 5.0),
+        "correct":          ({"T5": V, "T10": 2.0, "T12": 0}, (V - 2) / 330 * 1000, V),
+        "led_backwards":    ({"T5": V, "T10": V, "T12": 0}, 0.0, V),
         "no_resistor":      ({"T5": 2.2, "T10": 2.2, "T12": 0}, 100.0, 2.2),
-        "open_circuit":     ({"T5": 5, "T10": FLOAT, "T12": 0}, 0.0, 5.0),
-        "resistor_too_big": ({"T5": 5, "T10": 2.0, "T12": 0}, (5 - 2) / 1000 * 1000, 5.0),
-        "led_bypassed":     ({"T5": 5, "T10": 0.0, "T12": 0}, 5 / 330 * 1000, 5.0),
+        "open_circuit":     ({"T5": V, "T10": FLOAT, "T12": 0}, 0.0, V),
+        "resistor_too_big": ({"T5": V, "T10": 2.0, "T12": 0}, (V - 2) / 1000 * 1000, V),
+        "led_bypassed":     ({"T5": V, "T10": 0.0, "T12": 0}, V / 330 * 1000, V),
     },
 }
 UNLISTED = {"resistor_150", "bottom_4k7"}
@@ -125,12 +127,12 @@ class TestCalculatedCurrent(unittest.TestCase):
     def test_lesson_1_from_the_220_ohm_resistor(self):
         s = measure(1, "correct", with_sensor=False)
         self.assertEqual(s["current_source"], "calculated")
-        self.assertAlmostEqual(s["current_ma"], (5 - 2) / 220 * 1000, places=2)  # 13.6 mA
+        self.assertAlmostEqual(s["current_ma"], (V - 2) / 220 * 1000, places=2)  # 5.9 mA
 
     def test_lesson_2_both_resistors_agree(self):
         s = measure(2, "correct", with_sensor=False)
         self.assertEqual(s["current_source"], "calculated")
-        self.assertAlmostEqual(s["current_ma"], 0.25, places=3)
+        self.assertAlmostEqual(s["current_ma"], 0.165, places=3)
 
     def test_disagreeing_resistors_give_no_guess(self):
         for circuit in ("top_1k", "bottom_1k", "top_missing", "bottom_missing", "bottom_4k7"):
@@ -141,17 +143,17 @@ class TestCalculatedCurrent(unittest.TestCase):
                 self.assertIn("do not agree", s["current_note"])
 
     def test_floating_end_means_no_current(self):
-        value, _ = calculate_current({"T5": 5.0, "T10": 1.7}, ["T10"],
+        value, _ = calculate_current({"T5": V, "T10": 1.7}, ["T10"],
                                      [{"rows": ["T5", "T10"], "ohms": 220}])
         self.assertEqual(value, 0.0)
 
     def test_sensor_wins_when_there_is_one(self):
         s = measure(1, "resistor_too_big", with_sensor=True)
         self.assertEqual(s["current_source"], "measured")
-        self.assertAlmostEqual(s["current_ma"], 3.0, places=2)
+        self.assertAlmostEqual(s["current_ma"], 1.3, places=2)
 
     def test_needs_both_rows(self):
-        value, note = calculate_current({"T5": 5.0}, [], [{"rows": ["T5", "T10"], "ohms": 220}])
+        value, note = calculate_current({"T5": V}, [], [{"rows": ["T5", "T10"], "ohms": 220}])
         self.assertIsNone(value)
         self.assertIn("T10", note)
 
@@ -275,13 +277,13 @@ class TestRowClue(unittest.TestCase):
             if lesson.get("states"):
                 continue  # a lesson with steps (lesson 4): tests/test_button_lesson.py
             names = lesson["rows"]
-            for v in (0.0, 0.1, 1.0, 2.0, 3.5, 4.95):
+            for v in (0.0, 0.1, 1.0, 2.0, 3.0, 3.25):
                 for name in names:
                     for floating in ([], [name]):
                         s = measure(lid, "correct")
                         s["rows"] = dict(s["rows"], **{name: v})
                         s["floating"] = floating
-                        for supply in (5.0, 4.2):
+                        for supply in (V, 2.6):
                             s["supply_v"] = supply
                             c = clue(s, lesson)
                             texts.add(c["text"])

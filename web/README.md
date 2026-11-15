@@ -27,10 +27,12 @@ RUN.md, Part E.
 ## Pretend board
 
 With the fake board, the page shows a **pretend board**: the board's
-small screen with its current text, and its 4 buttons
-(1 check my circuit, 2 I need a hint, 3 next step, 4 power off/on).
-Clicking a button presses it on the fake board, so it goes exactly the
-way a real button press will. Button 3 builds the lesson step by step:
+small screen with its current text, and its 4 buttons in the station's
+colours (yellow 1 check my circuit, white 2 I need a hint, blue 3 next
+step, red 4 power off/on; `BUTTON_COLORS` in `protocol.py`, sent to the
+page as `board.button_colors`). Clicking a button presses it on the fake
+board, so it goes exactly the way a real button press will. The blue
+button (3) builds the lesson step by step:
 the next part's rows light blue and the screen names the part.
 
 The drawing ("The plan: where each part goes") shows each row the lesson uses with its

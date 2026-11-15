@@ -229,10 +229,16 @@
   .board-buttons { display: grid; gap: 8px; flex: 1 1 auto; min-width: 0;
                    grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); }
   .board-buttons .btn { padding: 0 16px; background: var(--white); color: var(--ink); }
-  .board-buttons .num {
-    width: 24px; height: 24px; border-radius: 50%; background: var(--yellow); color: var(--ink);
-    display: inline-grid; place-items: center; font-size: 16px;
+  /* Each button shows its colour on the station: yellow check, white hint,
+     blue next step, red power. */
+  .board-buttons .key {
+    width: 24px; height: 24px; border-radius: 50%; flex: none; display: inline-block;
+    outline: 2px solid var(--ink-2); outline-offset: -2px;
   }
+  .board-buttons .key.yellow { background: var(--yellow); }
+  .board-buttons .key.white { background: var(--white); }
+  .board-buttons .key.blue { background: var(--blue); }
+  .board-buttons .key.red { background: var(--coral); }
 
   /* ---- The mini-lesson: opens in the Zip panel, in place of Zip's
      picture. It never covers the breadboard, the numbers or Zip's words. ---- */
@@ -599,6 +605,8 @@
       <div class="tray" id="tray" hidden>
         <h3>What parts did you use?</h3>
         <p class="small muted">Tap a part once for each one you used.</p>
+        <p class="small muted" id="tray-leds">This board runs on 3.3 volts. Red, yellow and
+          green LEDs light up well; a blue one only glows a little.</p>
         <div class="tray-chips" id="tray-chips"></div>
         <input type="text" id="tray-other" maxlength="80" aria-label="Other parts"
                placeholder="Other parts, for example a buzzer">
@@ -1819,12 +1827,14 @@
       title.textContent = `${row.label}: ${!row.measured ? "not measured" : text}` +
         (row.name in should ? `, should be ${should[row.name]} V` : "");
     });
-    // The LED lights up in the drawing when it really has about 2 volts.
+    // The LED lights up in the drawing when it really has about 2 volts. With
+    // the full supply across it (3.3 V on the station) it is blocked, not lit.
     const at = (row) => row === "PT+" || row === "PB+" ? state.shown.supply_v
       : row.startsWith("P") ? 0 : volts[row];
+    const ledTop = Math.min(3.3, (state.board.supply_v || 3.3) - 0.15);
     bbRefs.leds.forEach((led) => {
       const across = at(led.plus) - at(led.minus);
-      const on = !noBoard && state.reading.power_on && across > 1.6 && across < 3.3 &&
+      const on = !noBoard && state.reading.power_on && across > 1.6 && across < ledTop &&
         (state.shown.current_ma === null || state.shown.current_ma > 1);
       const cls = "bb-led" + (on ? " on" : "");
       if (led.el.getAttribute("class") !== cls) led.el.setAttribute("class", cls);
@@ -1837,7 +1847,8 @@
     const b = state.board;
     const c = b.capabilities;
     $("caps").textContent = `Board: ${c.rows} rows measured, current sensor ` +
-      `${c.has_current ? "yes" : "no"}, power switch ${c.has_power_switch ? "yes" : "no"}`;
+      `${c.has_current ? "yes" : "no"}, power switch ${c.has_power_switch ? "yes" : "no"}` +
+      (c.supply_v ? `, supply ${c.supply_v} V` : "");
 
     // The device strip first: its height changes the drawing's box.
     $("tile-board").hidden = !b.pretend;
@@ -1885,7 +1896,9 @@
       : "";
   }
 
-  // The pretend board (b.pretend): its little screen and its 4 buttons.
+  // The pretend board (b.pretend): its little screen and its 4 buttons, in
+  // the station's colours (yellow check, white hint, blue next step, red power).
+  const KEY_COLORS = { 1: "yellow", 2: "white", 3: "blue", 4: "red" };
   function renderDevice(b, c) {
     const lines = [];
     for (let i = 0; i < b.screen_size[0]; i++) lines.push((b.screen[i] || "").padEnd(b.screen_size[1]));
@@ -1900,10 +1913,13 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btn btn-small";
-      const num = document.createElement("span");
-      num.className = "num";
-      num.textContent = id;
-      btn.append(num, label);
+      const colour = (b.button_colors || {})[id] || KEY_COLORS[id];
+      const key = document.createElement("span");
+      key.className = "key " + colour;
+      key.setAttribute("aria-hidden", "true");
+      btn.append(key, label);
+      btn.title = `The ${colour} button: ${label}`;
+      btn.setAttribute("aria-label", `${colour} button: ${label}`);
       btn.disabled = busy;
       btn.addEventListener("click", () => pressButton(Number(id)));
       btns.append(btn);

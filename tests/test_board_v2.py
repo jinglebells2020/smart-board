@@ -58,7 +58,7 @@ class TestBoardLink(unittest.TestCase):
         link = BoardLink(FakeBoard(rows="T1-T16", has_current=False, has_power_switch=False))
         self.assertEqual(link.capabilities(), {"rows": 16, "has_current": False,
                                                "has_power_switch": False, "has_screen": True,
-                                               "buttons": 4})
+                                               "buttons": 4, "supply_v": 3.3})
 
     def test_lights_are_checked_before_sending(self):
         board = RecordingBoard()
@@ -124,7 +124,7 @@ class TestBuildingStepByStep(unittest.TestCase):
             done = session.next_step()
             self.assertTrue(done["done"])
             self.assertEqual(board.lights, {})
-            self.assertIn("Press 1", " ".join(board.screen))
+            self.assertIn("Press the yellow button to check.", " ".join(board.screen))
 
     def test_led_step_says_which_leg_goes_where(self):
         session = Session(FakeBoard(1), lesson=1)
@@ -161,7 +161,7 @@ class TestNoCurrentSensor(unittest.TestCase):
                                                                      **self.OPTS), lesson=1))}
         out = json.loads(tools["read_current"]())
         self.assertEqual(out["current_source"], "calculated")
-        self.assertAlmostEqual(out["current_ma"], 13.6, delta=0.3)
+        self.assertAlmostEqual(out["current_ma"], 5.9, delta=0.3)  # (3.3 - 2) / 220
 
     def test_says_plainly_what_it_could_not_check(self):
         _, _, _, reply, _ = run(1, "resistor_too_big", **self.OPTS)
@@ -176,9 +176,10 @@ class TestNoPowerSwitch(unittest.TestCase):
         board, session, _, reply, calls = run(1, "no_resistor", **self.OPTS)
         self.assertTrue(reply.startswith("Switch the power off by hand"))
         self.assertIn(mistake(1, "no_resistor")["hint"], reply)
+        self.assertIn("pull the red wire out of the + line", reply)  # the station's way
         screen = " ".join(board.screen)
-        self.assertIn("Switch the power OFF", screen)
-        self.assertIn("by hand", screen)
+        self.assertIn("Pull the red wire out of the + line", screen)
+        self.assertLessEqual(len(board.screen), P.SCREEN_LINES)
         self.assertTrue(board.power_on)  # nothing could switch it
         self.assertEqual(board.lights, {"T5": "red", "T10": "red"})
 
@@ -188,13 +189,15 @@ class TestNoPowerSwitch(unittest.TestCase):
         _, result, safety_cut = session.measure()
         self.assertTrue(result["manual_power_off"])
         self.assertFalse(safety_cut)
-        self.assertIn("by hand", " ".join(board.screen))
+        self.assertEqual(board.screen, P.fit_screen(P.MANUAL_OFF_SCREEN))
+        self.assertIn("Pull the red wire", " ".join(board.screen))
 
     def test_cut_tool_says_what_to_do_instead(self):
         tools = {f.__name__: f for f in make_tools(Session(FakeBoard(**self.OPTS)))}
         out = json.loads(tools["cut_power"]())
         self.assertEqual(out["msg"], "no power switch")
         self.assertIn("by hand", out["do_instead"])
+        self.assertIn("pull the red wire out of the + line", out["do_instead"])
 
     def test_power_button_explains(self):
         board = FakeBoard(**self.OPTS)
