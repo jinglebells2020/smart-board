@@ -243,6 +243,31 @@ def circuit_facts(summary, lesson, label=""):
     return facts
 
 
+def free_facts(summary, safety_cut=False):
+    """Free build (no plan): the facts that need no plan. The power, the
+    voltage of every row with something in it, and the current."""
+    facts = [power_fact(summary, safety_cut)]
+    if summary.get("power_on") or safety_cut:
+        floating = set(summary.get("floating", []))
+        for row, v in summary.get("rows", {}).items():
+            if row in floating:
+                continue
+            facts.append({"kind": "row_voltage", "rows": [row],
+                          "values": {"measured": round(v, 2), "expected": None},
+                          "text": f"{_cap(row_label(row))} reads {_v(v)}."})
+        current, source = summary.get("current_ma"), summary.get("current_source")
+        if current is None:
+            text = "This board has no current sensor, so the current is not known."
+        elif source == "measured":
+            text = f"The board measured {_ma(current)} of current."
+        else:
+            text = f"Worked out from the rows, the current is about {_ma(current)}."
+        facts.append({"kind": "current", "rows": [],
+                      "values": {"ma": None if current is None else round(current, 2),
+                                 "source": source}, "text": text})
+    return number(facts)
+
+
 def number(facts):
     """Give the facts their ids, F1, F2, ... (in place). Returns them."""
     for i, f in enumerate(facts, 1):

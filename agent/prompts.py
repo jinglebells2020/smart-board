@@ -101,6 +101,11 @@ changed something:
      rising toward the limit, the + line pulled down), even before the
      safety limit, and say why in your reply. You cannot switch power on:
      only the student can, when they ask (restore_power asks them first).
+   Free build (lesson_check status "free"): there is no plan, no mistake
+   list and no PASS. Say in plain words what the board measured
+   (measured_rows, current_ma, facts); never invent a plan or call
+   something wrong from a plan. If lesson_check has action "cut_power",
+   the power is already off: say why (danger) and what to look for.
    If lesson_check has "instant_trigger", this is an automatic check: the
    board changed and instant help saw the fact in instant_trigger.text.
    Explain that trigger first. If lesson_check has "building" (the

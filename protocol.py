@@ -120,6 +120,22 @@ def parse_rows(spec):
     return sorted(set(names), key=order.get)
 
 
+USABLE_ROWS_ENV = "SMART_BOARD_USABLE_ROWS"
+
+
+def parse_usable(spec):
+    """The rows of this board that work (are wired and measured): every
+    row (T1..T63, B1..B63) by default, or a list like "T3-T8,T20-T24,B40-B45".
+    The + and - lines always work, so they are not listed. Rows outside the
+    list are never measured, never treated as empty and never lit."""
+    if spec is None or not str(spec).strip() or str(spec).strip().lower() == "all":
+        return list(ALL_ROWS)
+    rows = [r for r in parse_rows(spec) if r in _ROW_SET]
+    if not rows:
+        raise ValueError(f"no usable rows in {spec!r} (use for example T3-T8,B40-B45)")
+    return rows
+
+
 def row_label(name):
     """A row name in words a middle schooler knows: T10 -> "row 10"."""
     if name.startswith("T") and name[1:].isdigit():

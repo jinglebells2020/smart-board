@@ -15,9 +15,10 @@ from pathlib import Path
 from agent.boardlink import BoardLink
 from agent.deadline import RunAbandoned
 from agent.diagnoser import compare_with_rules, lights_from, validate_diagnosis
-from agent.lessons import SAFETY_MAX_MA, calculate_current, check, load_lessons, summarize
+from agent.lessons import (FREE_ID, FREE_LESSON, SAFETY_MAX_MA, calculate_current, check,
+                           free_check, load_lessons, summarize)
 from agent.notebook import entry_start, mistake_label
-from agent.physics import circuit_facts, extra_rows_fact, number, power_fact
+from agent.physics import circuit_facts, extra_rows_fact, free_facts, number, power_fact
 from agent.placement import (HOME, ROW, describe, driven_rows, find_all_placements,
                              find_placement, is_row_map, shift_lesson, shift_name)
 from protocol import is_row, power_cut_words, row_label
@@ -47,9 +48,15 @@ def _short(name):
 
 
 class Session:
-    def __init__(self, board, lesson=1, history_path=None, lessons=None, notebook=None):
+    def __init__(self, board, lesson=1, history_path=None, lessons=None, notebook=None,
+                 free_build=False):
         self.board = board if isinstance(board, BoardLink) else BoardLink(board)
-        self.lessons = lessons or load_lessons()
+        self.lessons = dict(lessons or load_lessons())
+        if free_build:  # Free build comes after the lessons in the path
+            self.lessons[FREE_ID] = FREE_LESSON
+        # The parts tray: what the student says they used, and what the
+        # circuit should do (free build). The AI reads it in phase 2.
+        self.tray = None
         self.history_path = Path(history_path) if history_path else None
         self.history = {"mistakes": [], "passes": {}, "quiz": []}
         if self.history_path and self.history_path.exists():
@@ -252,7 +259,12 @@ class Session:
         data = on or readings
         lesson_file = self.lessons[self.lesson_id]
         copies = []
-        if lesson_file.get("copies") and not self.is_explore():
+        if self.is_free():
+            # Free build: no plan. Every usable row the board measured.
+            rows = [r for r in data[0]["rows"] if is_row(r)] if data else []
+            summary = summarize(data, dict(lesson_file, rows=rows))
+            result = free_check(summary)
+        elif lesson_file.get("copies") and not self.is_explore():
             # A lesson with copies (lesson 3: 1 to 3 LED circuits): find every
             # copy, anywhere on the board, and check each one.
             copies = find_all_placements(data, lesson_file, lesson_file["copies"].get("max", 1))
@@ -271,13 +283,15 @@ class Session:
                 board.clear_lights()  # old lights point at the old rows
                 if tuple(new) != HOME:  # back where the lesson shows: nothing to say
                     moved = describe(new, lesson_file)
-        if copies:
+        if self.is_free():
+            pass  # checked above
+        elif copies:
             summary, result = self._check_copies(data, lesson_file, copies)
         else:
             summary = summarize(data, self.lesson)
             result = check(summary, self._step_lesson(self.lesson) if self.button_step
                            else self.lesson)
-        if not self.is_explore() and result["status"] != "power_off":
+        if not self.is_explore() and not self.is_free() and result["status"] != "power_off":
             result = self._extra_parts(data, result, copies)
         if self.button_step and result["status"] != "power_off":
             result = self._button_steps(result)
@@ -310,7 +324,8 @@ class Session:
             self.passed_current = True
             self.open_mistake = None  # nothing left to give hints about
         if result.get("action") == "cut_power" and summary["power_on"] and not safety_cut:
-            what = str(result.get("mistake_id") or "a dangerous mistake").replace("_", " ")
+            what = str(result.get("mistake_id") or result.get("danger")
+                       or "a dangerous mistake").replace("_", " ")
             if board.has_power_switch:
                 board.cut()
                 safety_cut = True
@@ -320,7 +335,11 @@ class Session:
                 board.show(MANUAL_OFF_SCREEN)
                 self._safety(f"No power switch: asked for the power to be switched off by "
                              f"hand ({what})")
-        if self.diagnoser is not None and not self.is_explore():
+        if self.is_free():
+            # The facts that need no plan (plain Python). The AI reader that
+            # works out what was built comes in phase 2.
+            result["facts"] = free_facts(summary, safety_cut)
+        elif self.diagnoser is not None and not self.is_explore():
             # Claude is available: physics facts + the diagnoser. Only after
             # the safety cut above, so a slow answer never delays it.
             result = self._diagnose(data, summary, result, copies, safety_cut)
@@ -674,6 +693,9 @@ class Session:
             om["level"] = "explain"  # after the hint comes the full explanation
             self.board.show("More help is on|the laptop.")
             return {"level": "explain", "mistake": om["mistake"], "say": spec["explain"]}
+        if self.is_free():
+            return {"level": "step", "say": "Free build: build anything you like. Press 1 and "
+                                            "I will measure every row."}
         layout = self.lesson["layout"]
         i = max(self.step, 0)
         if i >= len(layout):
@@ -719,6 +741,10 @@ class Session:
         return next((m for m in lesson["mistakes"] if m["id"] == mistake_id), None)
 
     # --- Lesson 0: explore, then answer the quiz ------------------------------
+    def is_free(self, lesson_id=None):
+        lesson = self.lessons.get(self.lesson_id if lesson_id is None else lesson_id, {})
+        return lesson.get("kind") == "free"
+
     def is_explore(self, lesson_id=None):
         lesson = self.lessons.get(self.lesson_id if lesson_id is None else lesson_id, {})
         return lesson.get("kind") == "explore"
@@ -732,12 +758,13 @@ class Session:
         """Where this student starts: lesson 0 when they are new, otherwise
         the first lesson (not an explore one) they have not passed."""
         h = self.history
+        lessons = [lid for lid in sorted(self.lessons) if not self.is_free(lid)]
         if not (h.get("passes") or h["mistakes"] or h["quiz"]):
-            return min(self.lessons)
-        for lid in sorted(self.lessons):
+            return min(lessons)
+        for lid in lessons:
             if not self.is_explore(lid) and h.get("passes", {}).get(str(lid), 0) == 0:
                 return lid
-        return min(l for l in self.lessons if not self.is_explore(l))
+        return min(l for l in lessons if not self.is_explore(l))
 
     def log_mistake(self, mistake_id):
         """Record a mistake. Returns what the agent is allowed to say, and the
@@ -892,20 +919,21 @@ class Session:
             result["repeated"] = repeated
             return result
 
-        for lid in sorted(self.lessons):
+        lessons = [lid for lid in sorted(self.lessons) if not self.is_free(lid)]
+        for lid in lessons:
             if self.is_explore(lid):
                 continue  # lesson 0 is where new students start, never a step back
             if passes.get(str(lid), 0) == 0:
                 return self._pick(lid, "This is the next lesson you have not passed yet.")
         # Every building lesson is passed. A lesson skipped earlier (lesson 0
         # when the student started at lesson 1) comes now: it is not passed.
-        for lid in sorted(self.lessons):
+        for lid in lessons:  # (free build has no pass: never picked)
             if passes.get(str(lid), 0) == 0:
                 return self._pick(lid, f"You skipped lesson {lid}, "
                                        f"{self.lessons[lid]['title']}. Let's do it now.")
 
         counts = {lid: sum(1 for m in self.history["mistakes"] if m["lesson"] == lid)
-                  for lid in self.lessons}
+                  for lid in lessons}
         worst = max(counts, key=lambda lid: (counts[lid], -lid))
         if counts[worst] == 0:
             return {"lesson": None, "reason": "You passed every lesson with no mistakes. "

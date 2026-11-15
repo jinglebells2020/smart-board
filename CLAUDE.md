@@ -70,7 +70,16 @@ The software must work with any of those answers.
   one check: yellow light, "push that leg in firmly").
 - sim/fake_board.py : simulates the board for testing, with or
   without a current sensor, power switch or screen, and any rows.
+  sim/solver.py : a DC circuit solver (nodal analysis) so the fake
+  board can read any circuit (NETLIST <json>, free build).
+  sim/random_circuit.py : random judge circuits on usable rows,
+  sometimes with a typical mistake; the true netlist never goes to the AI.
   sim/fake_port.py : a pretend serial port with the fake board on it.
+- Usable rows (--usable-rows / SMART_BOARD_USABLE_ROWS, agent/boardlink.py):
+  rows outside the list are never measured, never empty, never lit.
+- Free build (--free-build, agent/lessons.py FREE_LESSON, id 5): after
+  lesson 4, no plan and no PASS; the check reports the measured rows,
+  current and plain facts. Parts tray: agent/tray.py, /api/tray.
 - agent/serial_board.py : SerialBoard, a real board on a USB serial
   port (pyserial), same methods as the fake board. Server and
   python -m agent take --serial <port|auto> and --baud.
