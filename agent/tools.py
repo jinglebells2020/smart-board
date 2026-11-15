@@ -3,12 +3,22 @@
 Tool names come from CLAUDE.md (protocol version 2): read_rows,
 read_current, cut_power, light_row, clear_lights, show_on_board,
 log_mistake, next_lesson, plus restore_power to turn power back on
-after the student fixes a circuit.
+after the student fixes a circuit ("Turn the power back on?" first).
+Zip acts: run_experiment (ask the student to do one thing, then measure
+again; it pauses for the student's "done" or "can't") and
+guide_next_part (which parts look placed). cut_power takes a reason.
+There is no tool that turns power on without the student's approval.
 Every tool returns a JSON string, which is what the model reads.
 """
 
 import functools
 import json
+
+from langgraph.types import interrupt
+
+from agent.experiments import (MAX_EXPERIMENTS, diff_facts, facts_of, label, placed_parts,
+                               validate_instruction)
+from agent.lessons import summarize
 
 from agent.serial_board import BoardError
 from protocol import COLORS
@@ -32,8 +42,9 @@ def _board_errors_in_words(tool):
     return wrapper
 
 
-def make_tools(session):
-    """Build the tool functions for one session."""
+def make_tools(session, can_pause=False):
+    """Build the tool functions for one session. can_pause: the agent has a
+    checkpointer, so run_experiment can wait for the student."""
     board = session.board
 
     def _measure():
@@ -82,10 +93,16 @@ def make_tools(session):
         return json.dumps({k: m[k] for k in ("current_ma", "current_source", "current_note",
                                              "power_on", "safety_cut", "lesson_check")})
 
-    def cut_power() -> str:
-        """Switch breadboard power OFF. Use for any dangerous circuit.
-        If the board has no power switch, this tells you to have the
-        student switch it off by hand."""
+    def cut_power(reason: str = "") -> str:
+        """Switch breadboard power OFF at once. Use for any dangerous
+        circuit, and whenever the facts suggest danger (current rising
+        toward the limit, the + line pulled down), even before the safety
+        limit. Give the reason in a few words, and tell the student why in
+        your reply. Only the student can turn power back on (restore_power
+        asks them first). If the board has no power switch, this tells you
+        to have the student switch it off by hand."""
+        if reason:
+            session.power_log.append({"cut": str(reason)[:200]})
         answer = board.cut()
         if answer.get("type") == "error":
             board.show("DANGER!|Switch the power OFF|by hand now.")
@@ -159,6 +176,70 @@ def make_tools(session):
         Call only after lesson_check status is "ok"."""
         return json.dumps(session.next_lesson())
 
+    def guide_next_part() -> str:
+        """While the student builds: every part of the lesson (in the plan's
+        order), its rows, and whether it looks placed (every row it uses has
+        something connected). YOU choose the next part (the student may
+        have started elsewhere): light its rows "blue" with light_row and
+        show a short step on the board screen with show_on_board (at most
+        4 lines of 20 characters). Does not change power."""
+        readings = [board.read() for _ in range(3)]
+        lesson = session._step_lesson(session.lesson) if session.button_step else session.lesson
+        parts = placed_parts(lesson, summarize(readings, lesson))
+        missing = [p for p in parts if not p["placed"]]
+        return json.dumps({"parts": parts, "placed": len(parts) - len(missing),
+                           "total": len(parts),
+                           "first_missing": missing[0]["part"] if missing else None,
+                           "screen": "4 lines of 20 characters"})
+
+    def run_experiment(instruction: str, done_label: str = "Done",
+                       cant_label: str = "I can't") -> str:
+        """Ask the student to do ONE thing with their hands, then measure
+        again, to tell two causes apart. instruction: one action from
+        "pull out", "push in", "turn around", "move", "press", "let go",
+        "wait", a part of the lesson (or "the extra part") and a row, e.g.
+        "Turn around the LED in rows 10 and 12." The page shows it with two
+        buttons (done_label, cant_label) and waits. Returns before_facts,
+        after_facts and "changed" (what is different), or done: false if
+        the student could not. At most 2 per reply. Never about power."""
+        lesson = session._step_lesson(session.lesson) if session.button_step else session.lesson
+        ok, error, parsed = validate_instruction(instruction, lesson)
+        if not ok:
+            return json.dumps({"type": "error", "msg": error + " Rephrase and try again."})
+        pending = session.experiment
+        if pending is None or pending.get("instruction") != instruction:
+            if session.experiments_done >= MAX_EXPERIMENTS:
+                return json.dumps({"type": "error",
+                                   "msg": f"At most {MAX_EXPERIMENTS} experiments per reply. "
+                                          "Conclude from what you have, or ask a question."})
+            if session.last_check is None:
+                session.measure()
+            summary, result = session.last_check
+            pending = {"instruction": instruction, "parsed": parsed,
+                       "before": facts_of(session, summary, result)}
+            session.experiment = pending  # kept while the run waits for the student
+        answer = interrupt({"type": "experiment", "instruction": instruction.strip(),
+                            "done_label": label(done_label, "Done"),
+                            "cant_label": label(cant_label, "I can't"),
+                            "action": parsed["action"], "part": parsed["part"],
+                            "rows": parsed["rows"]})
+        session.experiment = None
+        session.experiments_done += 1
+        if not (isinstance(answer, dict) and answer.get("done")):
+            session.trace.append({"who": "tutor", "tool": "experiment_result",
+                                  "args": {"done": False}})
+            return json.dumps({"done": False, "say": "The student could not do it."})
+        summary, result, cut = session.measure()
+        after = facts_of(session, summary, result, cut)
+        changed, words = diff_facts(pending["before"], after)
+        session.trace.append({"who": "tutor", "tool": "experiment_result",
+                              "args": {"done": True, "changed": words}})
+        return json.dumps({"done": True, "before_facts": pending["before"],
+                           "after_facts": after, "changed": changed, "changed_words": words,
+                           "lesson_check": result})
+
     tools = [read_rows, read_current, cut_power, restore_power, get_hint, light_row,
-             clear_lights, show_on_board, log_mistake, next_lesson]
+             clear_lights, show_on_board, log_mistake, next_lesson, guide_next_part]
+    if can_pause:
+        tools.append(run_experiment)
     return [_board_errors_in_words(t) for t in tools]

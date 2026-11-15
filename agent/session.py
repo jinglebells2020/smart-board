@@ -106,6 +106,11 @@ class Session:
         # Instant help's automatic check (web/server.py): the fact that set it
         # off, and how far the build is. None for every other check.
         self.instant_context = None
+        # Zip acts (agent/tools.py): experiments done in this reply, the one
+        # waiting for the student, and why the tutor cut the power.
+        self.experiments_done = 0
+        self.experiment = None
+        self.power_log = []
 
     # --- Lessons -------------------------------------------------------
     @property

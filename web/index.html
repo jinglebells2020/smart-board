@@ -243,6 +243,12 @@
   .learn span { overflow: hidden; text-overflow: ellipsis; }
   .ask-power { display: flex; gap: 16px; margin-top: 16px; }
   .ask-power .btn { flex: 1 1 0; }
+  .experiment { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 16px;
+                background: var(--white); }
+  .exp-label { margin: 0; font-weight: 700; color: var(--ink-2); }
+  .exp-text { margin: 8px 0 16px; font-size: 20px; font-weight: 700; color: var(--ink); }
+  .exp-buttons { display: flex; gap: 16px; }
+  .exp-buttons .btn { flex: 1 1 0; }
   .mini-head {
     display: flex; align-items: center; gap: 16px; padding: 8px 8px 8px 24px;
     background: var(--yellow); color: var(--ink); border-radius: 16px 16px 0 0;
@@ -623,6 +629,15 @@
           No
         </button>
       </div>
+      <!-- Zip asks the student to do one thing, then measures again -->
+      <div class="experiment" id="experiment" role="group" aria-labelledby="exp-text" hidden>
+        <p class="exp-label small">Try this</p>
+        <p class="exp-text" id="exp-text"></p>
+        <div class="exp-buttons">
+          <button class="btn btn-blue" type="button" id="exp-done">Done</button>
+          <button class="btn btn-soft" type="button" id="exp-cant">I can't</button>
+        </div>
+      </div>
       </div>
 
       <form class="actions" id="say">
@@ -758,6 +773,8 @@
     show_on_board: "wrote on the screen",
     log_mistake: "saved the mistake",
     next_lesson: "picked the next lesson",
+    guide_next_part: "looked which parts are in",
+    run_experiment: "asked you to try something",
     task: "asked the detective",
     edit_file: "wrote in the notebook",
     read_file: "read the notebook",
@@ -1085,6 +1102,14 @@
     renderLog(state.log);
     renderMini(state.mini_lesson);
     $("ask-power").hidden = !state.asks_power || busy;
+    // Zip's experiment: one thing to do, then "done" or "can't".
+    const exp = state.experiment;
+    $("experiment").hidden = !exp || busy;
+    if (exp) {
+      $("exp-text").textContent = exp.instruction;
+      $("exp-done").textContent = exp.done_label;
+      $("exp-cant").textContent = exp.cant_label;
+    }
     renderHistory(state.history, state.passes, state.lesson_count);
     renderScenarios(state);
   }
@@ -1776,6 +1801,24 @@
   }
   $("power-yes").addEventListener("click", () => answerPower(true));
   $("power-no").addEventListener("click", () => answerPower(false));
+
+  // Zip's experiment card: the student did it ("done") or could not.
+  async function answerExperiment(done) {
+    if (busy) return;
+    $("experiment").hidden = true;
+    setBusy(true);
+    try {
+      const out = await post("/api/experiment", { done });
+      showWords(out.reply || out.error || "(no reply)");
+    } catch (e) {
+      showWords("Zip cannot reach the tutor program right now.");
+    } finally {
+      setBusy(false);
+      lastLogKey = "";
+    }
+  }
+  $("exp-done").addEventListener("click", () => answerExperiment(true));
+  $("exp-cant").addEventListener("click", () => answerExperiment(false));
 
   $("check").addEventListener("click", () => askTutor("Check my circuit"));
   $("fixed").addEventListener("click", () => askTutor("I fixed it, check again"));

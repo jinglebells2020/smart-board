@@ -88,7 +88,7 @@ def build_agent(session, model=None, detective_model=None, ask_before_power=Fals
                      checkpointer=InMemorySaver())
     agent = create_deep_agent(
         model=model,
-        tools=make_tools(session),
+        tools=make_tools(session, can_pause=ask_before_power),
         system_prompt=SYSTEM_PROMPT,
         **extra,
     )
@@ -123,6 +123,8 @@ def ask(agent, history, text, timeout=None):
         session.diagnoser = getattr(agent, "smart_board_diagnoser", None)  # this agent's own
         session.hear(text)
         session.trace = []  # a new reply: a new "How Zip worked"
+        session.experiments_done = 0  # at most 2 experiments per reply
+        session.experiment = None
     before = len(history)
     # Each reply is its own short thread: the checkpointer only keeps a reply
     # that is waiting for the student, and memory is read fresh every time.
@@ -138,8 +140,8 @@ def answer_power(agent, history, yes, timeout=None):
     student asking for power; restore_power then runs, measures at once and
     cuts again if the circuit is still unsafe. No: the tool never runs."""
     pending = getattr(agent, "smart_board_pending", None)
-    if pending is None:
-        raise ValueError("nothing is waiting for an answer")
+    if pending is None or pending.get("kind") == "experiment":
+        raise ValueError("nothing is waiting for an answer about the power")
     session = agent.smart_board_session
     session.diagnoser = getattr(agent, "smart_board_diagnoser", None)
     session.trace.append({"who": "you", "tool": "approval", "args": {"yes": bool(yes)}})
@@ -152,10 +154,30 @@ def answer_power(agent, history, yes, timeout=None):
     return _finish(agent, history, pending["before"], result, pending["config"])
 
 
+def answer_experiment(agent, history, done, timeout=None):
+    """The student's answer to an experiment card: "done" (they did it: the
+    board measures again) or "can't". The run_experiment tool finishes and
+    the reply goes on."""
+    pending = getattr(agent, "smart_board_pending", None)
+    if pending is None or pending.get("kind") != "experiment":
+        raise ValueError("no experiment is waiting for an answer")
+    session = agent.smart_board_session
+    session.diagnoser = getattr(agent, "smart_board_diagnoser", None)
+    result = run_with_timeout(
+        lambda: agent.invoke(Command(resume={"done": bool(done)}), pending["config"]), timeout)
+    return _finish(agent, history, pending["before"], result, pending["config"])
+
+
 def _finish(agent, history, before, result, config):
     session = getattr(agent, "smart_board_session", None)
     if result.get("__interrupt__"):
-        agent.smart_board_pending = {"config": config, "before": before}
+        value = getattr(result["__interrupt__"][0], "value", None)
+        if isinstance(value, dict) and value.get("type") == "experiment":
+            # Zip asks the student to do one thing (agent/tools.py run_experiment).
+            agent.smart_board_pending = {"config": config, "before": before,
+                                         "kind": "experiment", "experiment": value}
+            return value["instruction"], result["messages"][before:]
+        agent.smart_board_pending = {"config": config, "before": before, "kind": "power"}
         return POWER_QUESTION, result["messages"][before:]
     agent.smart_board_pending = None
     history[:] = [_without_thinking(m) for m in result["messages"]]
