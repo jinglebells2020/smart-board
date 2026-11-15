@@ -16,7 +16,7 @@ from agent.boardlink import BoardLink
 from agent.lessons import SAFETY_MAX_MA, calculate_current, check, load_lessons, summarize
 from agent.notebook import entry_start, mistake_label
 from agent.placement import (HOME, ROW, describe, driven_rows, find_all_placements,
-                             find_placement, shift_lesson)
+                             find_placement, is_row_map, shift_lesson)
 from protocol import is_row, power_cut_words, row_label
 
 WINDOW = 10  # readings per measurement (about 1 second on the fake board)
@@ -193,8 +193,13 @@ class Session:
         if not self.is_explore() and result["status"] != "power_off":
             result = self._extra_parts(data, result, copies)
         if moved:
-            result["moved"] = (f"You built it in {moved}, not where the lesson shows. "
-                               "That is fine: I am checking it there.")
+            if is_row_map(self.placement):  # any spacing
+                result["moved"] = (f"You built it in {moved}, with the parts spaced "
+                                   "differently from the lesson. That is fine: I am "
+                                   "checking it there.")
+            else:
+                result["moved"] = (f"You built it in {moved}, not where the lesson shows. "
+                                   "That is fine: I am checking it there.")
         if result["status"] == "ok" and self.is_explore():
             result["explore"] = True  # lesson 0: nothing was built, the quiz was answered
         if result["status"] == "ok" and self.is_explore() and not self.intro_answered():

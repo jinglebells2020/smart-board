@@ -10,7 +10,8 @@ server sits in between. It uses only Python's built-in http.server.
     POST /api/ask     {"text": "..."}      -> the tutor's reply
     POST /api/build   {"scenario": "...", "place": "T 15"} -> fake board only: change the circuit
                       (place, optional: build it in other rows, top T or bottom B;
-                      or "copies": ["T 0", "T 15"]: the circuit at each place, lesson 3)
+                      or "copies": ["T 0", "T 15"]: the circuit at each place, lesson 3;
+                      or "rows": ["T20", "T27", "T29"]: on these rows, any spacing)
     POST /api/quiz    {"occurrence": n, "choice": 0..2} -> answer the mini-lesson question
     POST /api/press   {"id": 1..4}         -> fake board only: press a board button
     POST /api/reset   start again with a new student (a fresh notebook)
@@ -519,13 +520,21 @@ class App:
             self.board.send(f"SCENARIO {self.session.lesson_id} correct")
         return {"reply": reply, "tools": tools, "offline": offline}
 
-    def build(self, scenario, place=None, copies=None):
+    def build(self, scenario, place=None, copies=None, rows=None):
         """Fake board only: change the circuit. place, like "T 15" or "B 0",
         builds it somewhere else on the board (None: leave it where it is).
-        copies, like ["T 0", "T 15"], builds the circuit at each place (the
-        scenario is the last copy; the others are correct)."""
+        copies, like ["T 0", "T 15"] or ["T 0", "T20/T27/T29"], builds the
+        circuit at each place (the scenario is the last copy; the others are
+        correct). rows, like ["T20", "T27", "T29"] (the lesson's rows in
+        order), builds it on those rows: any spacing."""
         if not self.is_sim:
             return {"error": "only the fake board can change circuits"}
+        if rows:
+            if not isinstance(rows, list):
+                return {"type": "error", "msg": "rows must be a list like [\"T20\", \"T27\", \"T29\"]"}
+            answer = self.board.send("MAP " + " ".join(str(r) for r in rows))
+            if answer.get("type") == "error":
+                return answer
         if place:
             answer = self.board.send(f"PLACE {place}")
             if answer.get("type") == "error":
@@ -573,7 +582,7 @@ def make_handler(app):
             elif self.path == "/api/build":
                 self._send(200, app.build(str(body.get("scenario", "")),
                                           body.get("place") and str(body["place"]),
-                                          body.get("copies")))
+                                          body.get("copies"), body.get("rows")))
             elif self.path == "/api/press":
                 if not isinstance(body, dict):
                     return self._send(400, {"error": "bad request"})

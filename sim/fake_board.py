@@ -233,17 +233,61 @@ class FakeBoard:
         self.place = (half, int(offset))
         self.copies = None
 
+    def lesson_rows(self, lesson=None):
+        """The lesson's rows in chain order (the first is wired to +)."""
+        lesson = self.lesson if lesson is None else lesson
+        rows = _circuit(lesson, "correct")[2]
+        return sorted(rows, key=lambda n: int(n[1:]))
+
+    def _rows_place(self, rows):
+        """("ROWS", rows): the lesson circuit on these real rows, in lesson
+        order (any spacing). Checked: row names, one half, one per lesson row."""
+        rows = tuple(str(r).upper() for r in rows)
+        if not rows or any(not (len(r) > 1 and r[0] in "TB" and r[1:].isdigit()
+                                and 1 <= int(r[1:]) <= 63) for r in rows):
+            raise ValueError(f"not rows: {' '.join(rows)} (use T20 T27 T29)")
+        if len({r[0] for r in rows}) != 1:
+            raise ValueError("all rows must be in one half (T or B)")
+        if len(set(rows)) != len(rows):
+            raise ValueError("each row only once")
+        wanted = len(self.lesson_rows())
+        if len(rows) != wanted:
+            raise ValueError(f"lesson {self.lesson} needs {wanted} rows, got {len(rows)}")
+        return ("ROWS", rows)
+
+    def set_map(self, rows):
+        """Sim only: build the lesson circuit on these rows (any spacing), in
+        lesson order: MAP T20 T27 T29, or MAP T29 T27 T20 built the other way
+        round. The + and - lines follow the half."""
+        self.place = self._rows_place(rows)
+        self.copies = None
+
     def set_copies(self, places):
         """Sim only: build the lesson circuit at each place, e.g.
-        [("T", 0), ("T", 15), ("B", 0)]. The scenario applies to the LAST
+        [("T", 0), ("T", 15), ("B", 0)], or with explicit rows
+        ("ROWS", ("T20", "T27", "T29")). The scenario applies to the LAST
         copy; the others are correct. The current is the sum."""
-        places = [(str(h).upper(), int(o)) for h, o in places]
-        if not places or any(h not in ("T", "B") for h, _ in places):
+        out = []
+        for place in places:
+            if place and place[0] == "ROWS":
+                out.append(self._rows_place(place[1]))
+                continue
+            h, o = place
+            if str(h).upper() not in ("T", "B"):
+                raise ValueError("give at least one place, each T or B with an offset")
+            out.append((str(h).upper(), int(o)))
+        if not out:
             raise ValueError("give at least one place, each T or B with an offset")
-        self.copies = places
+        self.copies = out
 
     def _moved(self, name, place=None):
-        half, offset = place or getattr(self, "place", ("T", 0))
+        place = place or getattr(self, "place", ("T", 0))
+        if place[0] == "ROWS":  # any spacing: the lesson's rows -> these rows
+            rows = place[1]
+            if name in ("PT+", "PT-"):
+                return f"P{rows[0][0]}{name[2]}"
+            return dict(zip(self.lesson_rows(), rows)).get(name, name)
+        half, offset = place
         if name in ("PT+", "PT-"):
             return f"P{half}{name[2]}"
         if name[0] in "TB" and name[1:].isdigit():
@@ -375,10 +419,19 @@ class FakeBoard:
             except ValueError as e:
                 return error(str(e))
             return ack(f"PLACE {self.place[0]} {self.place[1]}")
+        if cmd == "MAP" and len(parts) >= 2:  # simulator only: MAP T20 T27 T29
+            try:
+                self.set_map(parts[1:])
+            except ValueError as e:
+                return error(str(e))
+            return ack("MAP " + " ".join(self.place[1]))
         if cmd == "COPIES" and len(parts) >= 2:  # simulator only: COPIES T0 T15 B0
             try:
                 places = []
                 for token in parts[1:]:
+                    if "/" in token:  # explicit rows: T20/T27/T29
+                        places.append(("ROWS", tuple(token.split("/"))))
+                        continue
                     half, offset = token[0], token[1:]
                     if not offset.lstrip("-").isdigit():
                         raise ValueError(f"not a place: {token} (use T0, T15, B0, ...)")
@@ -386,7 +439,8 @@ class FakeBoard:
                 self.set_copies(places)
             except ValueError as e:
                 return error(str(e))
-            return ack("COPIES " + " ".join(f"{h}{o}" for h, o in self.copies))
+            return ack("COPIES " + " ".join("/".join(p[1]) if p[0] == "ROWS" else f"{p[0]}{p[1]}"
+                                            for p in self.copies))
         if cmd == "SCENARIO" and len(parts) == 3:  # simulator only
             try:
                 self.set_scenario(int(parts[1]), parts[2])
