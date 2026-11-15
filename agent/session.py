@@ -184,7 +184,8 @@ class Session:
             if tuple(new) != tuple(self.placement):
                 self.placement = new
                 board.clear_lights()  # old lights point at the old rows
-                moved = describe(new, lesson_file)
+                if tuple(new) != HOME:  # back where the lesson shows: nothing to say
+                    moved = describe(new, lesson_file)
         if copies:
             summary, result = self._check_copies(data, lesson_file, copies)
         else:
