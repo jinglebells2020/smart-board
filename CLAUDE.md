@@ -44,6 +44,9 @@ The software must work with any of those answers.
   no internet, the offline tutor answers that one message (the page
   says "Zip is in offline mode for this answer"); the next message
   tries Claude again. The server prints how long each Claude reply took.
+  LangSmith tracing is optional and off by default: environment variables
+  only (LANGSMITH_TRACING, LANGSMITH_API_KEY, LANGSMITH_PROJECT; RUN.md
+  Part H); the server prints "LangSmith tracing: on (project ...)".
   python web/server.py --demo starts Maya at lesson 1, fresh; Teacher
   view has "Restart demo".
 - web/index.html : one page UI, made for an 11-year-old (bright,
