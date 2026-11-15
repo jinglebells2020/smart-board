@@ -197,6 +197,25 @@ def find_flexible(readings, lesson, exclude=frozenset()):
     return maps
 
 
+def as_shift(row_map, lesson):
+    """The (half, offset) placement a row map is the same as, or None. A row
+    map that only moves every lesson row by the same number of rows (same
+    order) is plain "build anywhere" with the lesson's spacing."""
+    if not is_row_map(row_map):
+        return None
+    mapped = dict(row_map)
+    halves, offsets = set(), set()
+    for name in lesson.get("rows", []):
+        m, r = ROW.match(name), ROW.match(mapped.get(name, ""))
+        if not m or not r:
+            return None
+        halves.add(r.group(1))
+        offsets.add(int(r.group(2)) - int(m.group(2)))
+    if len(halves) == 1 and len(offsets) == 1:
+        return (halves.pop(), offsets.pop())
+    return None
+
+
 def driven_rows(readings):
     """Rows with something connected in most readings (power on)."""
     on = [r for r in readings if r.get("power_on")]
@@ -229,6 +248,13 @@ def find_placement(readings, lesson, current=HOME):
     if not driven:
         return current  # power off or nothing built: keep what we had
     measured = set.intersection(*(set(r["rows"]) for r in readings))
+    if is_row_map(current):
+        # A row map is never kept just because its rows are still in use: it is
+        # worked out again from the readings (the same rows may now be built
+        # the other way round). Only (half, offset) placements are sticky.
+        flexible = find_flexible(readings, lesson)
+        if len(flexible) == 1:
+            return as_shift(flexible[0], lesson) or flexible[0]
 
     def score(placement):
         return sum(shift_name(n, placement) in driven for n in rows)

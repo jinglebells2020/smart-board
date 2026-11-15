@@ -151,6 +151,63 @@ class TestLessonOne(unittest.TestCase):
         self.assertEqual(find_placement(readings, LESSONS[1]), HOME)  # not exactly one
 
 
+class TestRebuiltOnTheSameRows(unittest.TestCase):
+    """A row map is worked out again at every check, never kept just because
+    its rows are still in use."""
+    FORWARD = SPACED
+    REVERSED = (("T5", "T29"), ("T10", "T27"), ("T12", "T20"))
+
+    def setUp(self):
+        self.board = FakeBoard(1, "correct", seed=1)
+        self.session = Session(self.board, lesson=1)
+
+    def build(self, rows, scenario="correct"):
+        self.assertEqual(self.board.send("MAP " + rows)["type"], "ack")
+        self.assertEqual(self.board.send(f"SCENARIO 1 {scenario}")["type"], "ack")
+        return self.session.measure()[1]
+
+    def test_rebuilt_the_other_way_round(self):
+        self.assertEqual(self.build("T20 T27 T29")["status"], "ok")
+        self.assertEqual(self.session.placement, self.FORWARD)
+        result = self.build("T29 T27 T20")
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(self.session.placement, self.REVERSED)
+        self.assertEqual(result["moved"], SPACED_WORDS)
+
+    def test_forward_reversed_forward(self):
+        for rows, placement in (("T20 T27 T29", self.FORWARD), ("T29 T27 T20", self.REVERSED),
+                                ("T20 T27 T29", self.FORWARD)):
+            with self.subTest(rows=rows):
+                self.assertEqual(self.build(rows)["status"], "ok")
+                self.assertEqual(self.session.placement, placement)
+
+    def test_the_reported_steps(self):
+        # MAP T20 T27 T29 with a stray part, then the same rows reversed and correct.
+        result = self.build("T20 T27 T29", "stray_part")
+        self.assertEqual(result["mistake_id"], "extra_part")
+        self.assertEqual(self.build("T29 T27 T20")["status"], "ok")
+        self.assertEqual(self.session.placement, self.REVERSED)
+
+    def test_rebuilt_with_the_lessons_spacing(self):
+        self.build("T20 T27 T29")
+        result = self.build("T5 T10 T12")  # back where the lesson shows
+        self.assertEqual((result["status"], self.session.placement), ("ok", HOME))
+        self.assertNotIn("moved", result)
+        result = self.build("T20 T25 T27")  # the lesson's spacing, moved down
+        self.assertEqual((result["status"], self.session.placement), ("ok", ("T", 15)))
+        self.assertIn("not where the lesson shows", result["moved"])
+
+    def test_stray_part_follows_the_mapped_middle_row(self):
+        _, result, _, _ = measure(1, "stray_part", "MAP T20 T27 T29")
+        self.assertEqual(result["extra_rows"], ["T47"])
+        _, result, _, _ = measure(1, "stray_part", "MAP T29 T27 T20")
+        self.assertEqual(result["extra_rows"], ["T47"])
+        _, result, _, _ = measure(1, "stray_part")
+        self.assertEqual(result["extra_rows"], ["T30"])  # unchanged without MAP
+        _, result, _, _ = measure(1, "stray_part", "PLACE T 15")
+        self.assertEqual(result["extra_rows"], ["T45"])
+
+
 class TestLessonTwoAndThree(unittest.TestCase):
     def test_lesson_two_with_other_spacing(self):
         session, result, _, _ = measure(2, command="MAP T5 T12 T16")

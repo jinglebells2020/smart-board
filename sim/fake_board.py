@@ -318,9 +318,19 @@ class FakeBoard:
                     c = 0.0
             else:
                 s, c, circuit = _circuit(self.lesson, scenario)
+            stray = None
+            if scenario == "stray_part" and self.lesson in STRAY:
+                # The extra part goes from the REAL middle row to 20 rows below
+                # it, wherever (and however spaced) the circuit is built.
+                middle = STRAY[self.lesson]
+                value = circuit.pop(f"T{int(middle[1:]) + 20}")
+                real = self._moved(middle, place)
+                stray = (f"{real[0]}{int(real[1:]) + 20}", value)
             supply, current = min(supply, s), current + c
             nodes.update({self._moved(k, place): v
                           for k, v in dict(circuit, **{"PT+": s, "PT-": 0.0}).items()})
+            if stray:
+                nodes[stray[0]] = stray[1]
         if len(places) > 1:
             current = min(current, CURRENT_LIMIT_MA)  # the supply's limit
             if supply < SUPPLY_V:  # one copy pulls the shared supply down
