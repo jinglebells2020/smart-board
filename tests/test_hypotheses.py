@@ -272,3 +272,125 @@ class TestSmallFixes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# The bug from a real test of PR #28: button + -> B40, 220 ohm B40-B41, red
+# LED in backwards (- line -> B41). The board: B40 = 5 V, B41 = 5 V, 0 mA.
+# The tray (as the student filled it in): push button, 330 ohm, green LED.
+REPORTED = [{"kind": "button", "rows": ["PB+", "B40"]},
+            {"kind": "resistor", "rows": ["B40", "B41"], "ohms": 220},
+            {"kind": "led", "rows": ["PB-", "B41"], "color": "red"}]
+REPORTED_FIXED = REPORTED[:2] + [{"kind": "led", "rows": ["B41", "PB-"], "color": "red"}]
+REPORTED_TRAY = ["push button", "330 ohm resistor", "green LED"]
+# The reader's wrong answer: parts in rows that read EMPTY, nothing in B40/B41.
+EMPTY_ROWS_GUESS = {"parts": [{"kind": "button", "rows": ["PT+", "T5"], "closed": False},
+                              {"kind": "resistor", "rows": ["T5", "T20"], "ohms": 330},
+                              {"kind": "led", "rows": ["T20", "PT-"], "color": "green"}]}
+GOOD_GUESS = {"parts": [{"kind": "button", "rows": ["PB+", "B40"], "closed": True},
+                        {"kind": "resistor", "rows": ["B40", "B41"], "ohms": 330},
+                        {"kind": "led", "rows": ["PB-", "B41"], "color": "green"}]}
+
+
+class TestRowsThatReadEmpty(unittest.TestCase):
+    def measured(self):
+        _, s = session(REPORTED, tray=REPORTED_TRAY, hold=True)
+        summary, _, _ = s.measure()
+        return measured_of(summary)
+
+    def test_guess_in_empty_rows_fails_the_check(self):
+        m = self.measured()
+        self.assertEqual({r for r, v in m["rows"].items() if v is not None}, {"B40", "B41"})
+        g = clean_guess(EMPTY_ROWS_GUESS, P.parse_usable(USABLE))
+        out = physics_check(g["parts"], m)
+        self.assertFalse(out["passed"])
+        self.assertFalse(out["explains_all"])
+        self.assertEqual(out["unexplained"], ["B40", "B41"])
+        self.assertIn("B40: has 5.0 V, your guess leaves it empty", out["mismatches"])
+        self.assertIn("B41: has 5.0 V, your guess leaves it empty", out["mismatches"])
+        self.assertEqual(out["empty_joints"], ["T20", "T5"])  # joints of parts in empty rows
+
+    def test_a_guess_that_drives_an_empty_row_fails(self):
+        m = self.measured()
+        g = clean_guess({"parts": GOOD_GUESS["parts"] + [{"kind": "wire", "rows": ["B40", "B42"]}]},
+                        P.parse_usable(USABLE))
+        out = physics_check(g["parts"], m)
+        self.assertFalse(out["passed"])
+        self.assertTrue(any(x.startswith("B42: your guess drives it") for x in out["mismatches"]))
+
+    def test_the_kept_hypothesis_uses_b40_b41_and_the_backwards_led(self):
+        reader = FakeReader(script=[{"hypotheses": [EMPTY_ROWS_GUESS, GOOD_GUESS]}])
+        _, s = session(REPORTED, reader=reader, tray=REPORTED_TRAY, hold=True)
+        _, result, _ = s.measure()
+        self.assertEqual(result["reader_tries"], 1)
+        self.assertEqual(len(result["hypotheses"]), 1)  # the empty-rows guess is not kept
+        circuit = " ".join(result["hypotheses"][0]["circuit"])
+        self.assertIn("row 40", circuit)
+        self.assertIn("row 41", circuit)
+        self.assertNotIn("row 5", circuit)
+        main = result["main_problem"]
+        self.assertEqual(main["kind"], "led_backwards")
+        self.assertEqual(main["text"], "The green LED between row 41 and the - line is blocking "
+                                       "the current: which way does its long leg go?")
+        self.assertEqual(main["rows"], ["B41"])
+
+    def test_only_the_empty_rows_guess_is_honestly_not_sure(self):
+        reader = FakeReader(script=[EMPTY_ROWS_GUESS])  # twice: it does not learn
+        _, s = session(REPORTED, reader=reader, tray=REPORTED_TRAY, hold=True)
+        _, result, _ = s.measure()
+        self.assertEqual(len(reader.seen), 2)  # the mismatches went back once
+        again = json.loads(reader.seen[1])
+        self.assertIn("B40: has 5.0 V, your guess leaves it empty", again["did_not_match"])
+        self.assertEqual(result["main_problem"]["kind"], "not_sure")
+        self.assertNotIn("experiment_plan", result)
+
+    def test_rows_that_explain_every_driven_row_rank_first(self):
+        m = self.measured()
+        usable = P.parse_usable(USABLE)
+        hyps = []
+        for raw in (EMPTY_ROWS_GUESS, GOOD_GUESS):
+            g = clean_guess(raw, usable)
+            hyps.append(dict(physics_check(g["parts"], m), guess=g))
+        ranked = rank(hyps, m, clean_tray(REPORTED_TRAY)["parts"])
+        self.assertTrue(ranked[0]["explains_all"])
+        self.assertEqual(ranked[0]["guess"]["parts"][0]["rows"], ["PB+", "B40"])
+        self.assertFalse(ranked[1]["explains_all"])
+
+    def test_planner_turns_the_led_around_never_parts_in_empty_rows(self):
+        from agent.planner import candidate_actions
+        _, s = session(REPORTED, tray=REPORTED_TRAY, hold=True)  # the offline reader
+        summary, result, _ = s.measure()
+        plan = result["experiment_plan"]
+        self.assertEqual(plan["action"], "turn around")
+        self.assertEqual(plan["instruction"], "Turn around the LED in row 41 and the bottom - line.")
+        self.assertTrue(plan["fixes"])  # it would fix the most likely problem
+        m = measured_of(summary)
+        usable = P.parse_usable(USABLE)
+        bad = clean_guess(EMPTY_ROWS_GUESS, usable)["parts"]
+        good = clean_guess(GOOD_GUESS, usable)["parts"]
+        for action in candidate_actions([bad, good], usable, m):
+            self.assertFalse({"T5", "T20"} & set(action["part"]["rows"]), action)
+
+    def test_turning_it_around_keeps_it_and_feedback_names_it(self):
+        board, s = session(REPORTED, tray=REPORTED_TRAY, hold=True)
+        _, first, _ = s.measure()
+        instruction = first["experiment_plan"]["instruction"]
+        model = ScriptModel(script=[{"tool": "read_rows"}, {"tool": "plan_experiment"},
+                                    {"tool": "run_experiment",
+                                     "args": {"instruction": instruction}},
+                                    {"reply": "Done."}])
+        agent = build_agent(s, model, detective_model=ScriptedDetectiveModel(),
+                            ask_before_power=True, reader_model=HeuristicReaderModel())
+        self.assertEqual(ask(agent, [], "Check my circuit")[0], instruction)
+        board.set_netlist(REPORTED_FIXED)  # the student turned the LED around
+        answer_experiment(agent, [], True)
+        out = model.seen[-1]
+        self.assertGreater(out["lesson_check"]["current_ma"], 10)  # current flows now
+        kept = out["hypothesis_kept"]
+        self.assertTrue(kept["came_true"])
+        self.assertIn("is blocking the current", kept["problem"])
+        self.assertIn("row 41", kept["problem"])
+        main = s.last_check[1]["main_problem"]
+        self.assertEqual(main["kind"], "found")
+        self.assertEqual(main["text"], "The experiment showed it: the green LED between row 41 "
+                                       "and the - line is blocking the current: which way does "
+                                       "its long leg go?")

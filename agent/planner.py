@@ -20,7 +20,9 @@ import itertools
 
 from agent.experiments import validate_instruction
 from agent.lessons import FREE_LESSON, SAFETY_MAX_MA
-from agent.reader import CURRENT_TOLERANCE, CURRENT_TOLERANCE_MA, ROW_TOLERANCE_V, place_words
+from agent.reader import (CURRENT_TOLERANCE, CURRENT_TOLERANCE_MA, ROW_TOLERANCE_V, place_words,
+                          problems_of)
+from agent.reader import _solver_parts as _reader_solver_parts
 from protocol import is_row
 from sim import solver
 
@@ -121,8 +123,32 @@ def _differs(a, b, sensor):
     return n
 
 
-def candidate_actions(hypotheses, usable):
-    """Every allowed action on any part of any hypothesis (no duplicates)."""
+def _in_empty_rows(part, measured):
+    """Is every leg of this part (in a usable row) in a row the board reads
+    empty? Such a part cannot really be there: never plan around it."""
+    rows = (measured or {}).get("rows", {})
+    legs = [r for r in part["rows"] if is_row(r)]
+    return bool(legs) and all(r in rows and rows[r] is None for r in legs)
+
+
+def _on_driven(part, measured):
+    """Does this part touch a row the board reads with a voltage (or a + / - line)?"""
+    rows = (measured or {}).get("rows", {})
+    return any((is_row(r) and rows.get(r) is not None) or r in ("PT+", "PT-", "PB+", "PB-")
+               for r in part["rows"])
+
+
+def _problems(parts):
+    """The usual mistakes in a hypothesis, worked out with the solver."""
+    sparts, index = _reader_solver_parts(parts)
+    sol = solver.solve(sparts) if sparts else {"rows": {}, "leds_on": {}, "current_ma": 0.0}
+    predicted = {"rows": sol["rows"], "leds_on": {index[i]: on for i, on in sol["leds_on"].items()}}
+    return problems_of(parts, predicted), sol["current_ma"]
+
+
+def candidate_actions(hypotheses, usable, measured=None):
+    """Every allowed action on any part of any hypothesis (no duplicates).
+    Never on a part whose legs are all in rows the board reads empty."""
     out, seen = [], set()
     used = {r for h in hypotheses for p in h for r in p["rows"]}
     free = [r for r in usable if r not in used]
@@ -136,7 +162,8 @@ def candidate_actions(hypotheses, usable):
 
     for parts in hypotheses:
         for p in parts:
-            if p["kind"] in ("wire", "unknown") or any(r in solver.UNSEEN for r in p["rows"]):
+            if p["kind"] in ("wire", "unknown") or any(r in solver.UNSEEN for r in p["rows"]) \
+                    or _in_empty_rows(p, measured):
                 continue
             if p["kind"] == "led":
                 add({"verb": "turn around", "part": p})
@@ -163,7 +190,8 @@ def plan_experiment(hypotheses, measured, usable, about=None):
         return None
     sensor = measured.get("current_source") == "measured"
     best, best_key = None, None
-    for action in candidate_actions(hypotheses, usable):
+    top_problems, top_current = _problems(hypotheses[0])
+    for action in candidate_actions(hypotheses, usable, measured):
         text = _instruction(action)
         ok, _error, _parsed = validate_instruction(text, FREE_LESSON)
         if not ok:
@@ -183,14 +211,22 @@ def plan_experiment(hypotheses, measured, usable, about=None):
         told = sum(d > 0 for d in diffs)
         if told == 0:
             continue
-        key = (told, sum(diffs), -VERBS.index(action["verb"]))
+        # Equally good at telling them apart? Then the action that would FIX
+        # the problem in the most likely hypothesis (it has fewer problems
+        # after, or current starts to flow), then one on a part in a row with
+        # a voltage, then the one with the most differences, then the simplest.
+        after_problems, after_current = _problems(after[0])
+        fixes = len(after_problems) < len(top_problems) or \
+            (top_current <= CHANGED_MA < after_current)
+        key = (told, fixes, _on_driven(action["part"], measured), sum(diffs),
+               -VERBS.index(action["verb"]))
         if best_key is None or key > best_key:
             best_key = key
             before = {"rows": {r: measured.get("rows", {}).get(r) for r in watch},
                       "current_ma": measured.get("current_ma")}
             best = {"verb": action["verb"], "action": action["verb"], "before": before,
                     "part": _name(action["part"]), "rows": list(action["part"]["rows"]),
-                    "instruction": text, "watch": watch, "separates": told,
+                    "instruction": text, "watch": watch, "separates": told, "fixes": fixes,
                     "move": ({"from": action["from"], "to": action["to"]}
                              if action["verb"] == "move" else None),
                     "predictions": [dict(p, hypothesis=i, **((about or [{}] * len(preds))[i]))

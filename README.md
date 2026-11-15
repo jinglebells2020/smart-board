@@ -76,7 +76,7 @@ pip install -r requirements.txt
 python -m unittest -v
 ```
 
-The last line should say `OK` (630 tests; it says `OK (skipped=1)` on a
+The last line should say `OK` (637 tests; it says `OK (skipped=1)` on a
 computer without Node.js and Playwright, which the page-layout browser
 check needs). They never call Claude, so
 they work without an API key.
@@ -134,7 +134,10 @@ like one chain to the board, so "passes physics" does not always mean
 **When no current flows, several circuits read the same.** An LED in
 backwards, an LED whose leg missed its row, and "two wires" can all give
 the same voltages. So the circuit reader gives up to 3 possible circuits;
-each is checked with the solver, and Python ranks the ones that fit:
+each is checked with the solver against every usable row: a row with a
+voltage must be explained, and a row the board reads empty must stay
+empty (so a guess that puts parts in empty rows fails). Python ranks the
+ones that fit: those that explain every row with a voltage first, then
 every tray part used, and a usual student mistake (LED backwards, a
 missing link, a push button not pressed) before invisible extra wires.
 Zip names the most likely problem, hint first ("the LED between row 45
@@ -143,7 +146,8 @@ go?"), and suggests one experiment, planned in plain Python
 (`agent/planner.py`): it tries every allowed action (turn around a part,
 press or let go of a button, pull a part out, move a leg) on every
 possible circuit with the solver, and picks the one whose results differ
-most. After you do it and press **Done**, Python compares what changed
+most; when two are equally good, the one that would fix the most likely
+problem (and never one about a part in a row that reads empty). After you do it and press **Done**, Python compares what changed
 with each prediction and keeps the circuit that came true.
 
 ## Start the demo (one command)
