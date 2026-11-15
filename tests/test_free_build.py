@@ -76,6 +76,15 @@ class TestUsableRows(unittest.TestCase):
         self.assertEqual(link.usable_rows, [f"T{n}" for n in range(3, 9)])
         self.assertEqual(BoardLink(board).usable, None)  # default: every row
 
+    def test_only_rows_the_board_measures(self):
+        board = FakeBoard(FREE_ID, "correct", seed=1, rows="T1-T16")
+        self.assertEqual(BoardLink(board).usable_rows, [f"T{n}" for n in range(1, 17)])
+        self.assertEqual(BoardLink(board, "T10-T30").usable_rows, [f"T{n}" for n in range(10, 17)])
+        a, _ = app(rows="T1-T16")
+        made = a.random_circuit(4, 5)
+        rows = {r for p in made["netlist"] for r in p["rows"] if P.is_row(r)}
+        self.assertTrue(rows <= {f"T{n}" for n in range(1, 17)}, rows)
+
     def test_a_lesson_on_rows_that_do_not_work_cannot_be_checked(self):
         session = Session(BoardLink(FakeBoard(1, "correct", seed=1), "T3-T8"), lesson=1)
         _, result, _ = session.measure()

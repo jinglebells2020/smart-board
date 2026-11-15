@@ -57,8 +57,10 @@ class BoardLink:
 
     @property
     def usable_rows(self):
-        """Every usable row (T and B rows), in board order."""
-        return [r for r in P.ALL_ROWS if self.usable is None or r in self.usable]
+        """Every usable row (T and B rows) this board measures, in board
+        order: the rows in its hello line, and in --usable-rows if given."""
+        measured = set(self.hello["rows"])
+        return [r for r in P.ALL_ROWS if r in measured and (self.usable is None or r in self.usable)]
 
     def _usable_only(self, reading):
         if self.usable is None or not isinstance(reading.get("rows"), dict):
