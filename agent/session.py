@@ -378,25 +378,16 @@ class Session:
                                "args": {"rule": result.get("mistake_id") or result["status"]}})
         return result
 
-    def empty_plan_rows(self):
-        """Plan rows with nothing connected in the latest check."""
-        if self.last_check is None:
-            return list((self.instant_context or {}).get("empty_rows", []))
-        summary = self.last_check[0]
-        return [r for r in self.lesson.get("rows", [])
-                if r in summary.get("floating", []) or r not in summary.get("rows", {})]
-
     def lights_allowed(self, rows, color):
-        """An automatic check while the student is still building: no light
-        on a plan row that is simply empty (a part not added yet is not a
-        mistake), except the rows of the fact that set the check off. Blue
-        ("put a part here") is always fine."""
+        """An automatic check while the student is still building: lights
+        only on the rows of the fact that set the check off (a part not
+        added yet is not a mistake, and the rest of a half-built circuit
+        cannot be judged). Blue ("put a part here") is always fine."""
         ctx = self.instant_context
         if not ctx or not ctx.get("building") or str(color).lower() in ("blue", "off"):
             return list(rows)
         keep = set((ctx.get("trigger") or {}).get("rows") or [])
-        empty = set(self.empty_plan_rows())
-        return [r for r in rows if r in keep or r not in empty]
+        return [r for r in rows if r in keep]
 
     def _check_copies(self, readings, lesson, places):
         """Check every copy of a lesson with "copies" (lesson 3).

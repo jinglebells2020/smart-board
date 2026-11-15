@@ -132,14 +132,17 @@ class TestBuilding(InstantApp):
         self.assertIn("Your circuit is correct!", replies[0]["text"])
         self.assertEqual(self.app.session.lesson_id, 2)  # passed, by the normal rules
 
-    def test_bypassed_led_is_said_when_the_led_goes_in(self):
+    def test_bypassed_led_is_said_once_current_flows(self):
         self.make("led_bypassed")
         self.step("BUILD 2")
-        self.assertEqual(self.app.log, [])
-        self.step("BUILD 3")  # the LED goes in, both legs joined
+        self.step("BUILD 3")  # the LED goes in, both legs joined, but the black wire
+        self.assertEqual(self.app.log, [])  # is not: 0 mA, so its 0 V says nothing
+        self.assertEqual(self.board.lights, {})
+        self.assertEqual(self.app.building, {"parts_in": 3, "parts": 4})
+        self.step("BUILD 4")  # now current flows around the LED
         first = self.said()[0]
         self.assertTrue(first["instant"])
-        self.assertIn("the current goes around it", first["text"])
+        self.assertIn("while current flows: the current goes around it", first["text"])
         self.assertEqual(self.app.instant_mistake["rows"], ["T10", "T12"])
         self.assertTrue(self.said()[1]["auto"])  # then Zip explains, with a normal check
 
@@ -284,8 +287,8 @@ class TestFixesFromTheRealTest(InstantApp):
                              "empty_rows": ["T12"]}
         light_row = next(t for t in make_tools(s) if t.__name__ == "light_row")
         self.board.send("LED CLEAR")
-        light_row(["T10", "T12", "T30"], "red")
-        self.assertEqual(self.board.lights, {"T10": "red", "T30": "red"})  # not row 12: empty
+        light_row(["T5", "T10", "T12", "T30"], "red")
+        self.assertEqual(self.board.lights, {"T30": "red"})  # only the trigger's rows
         light_row(["T12"], "blue")  # "put a part here" is always fine
         self.assertEqual(self.board.lights["T12"], "blue")
         s.instant_context = None
@@ -318,6 +321,59 @@ class TestFixesFromTheRealTest(InstantApp):
         for needed in ('"instant_trigger"', "Explain that trigger first", '"when you add the ..."',
                        "never light those empty"):
             self.assertIn(needed, SYSTEM_PROMPT)
+
+
+class TestNoCurrentNoShort(InstantApp):
+    """A 0 V drop means nothing while no current flows (real test after PR #20)."""
+
+    def facts(self, scenario, built=None, **opts):
+        from agent.lessons import load_lessons, summarize
+        from agent.physics import observations
+        board = FakeBoard(1, scenario, seed=1, noise=False, **opts)
+        if built is not None:
+            board.send(f"BUILD {built}")
+        lesson = load_lessons()[1]
+        return observations(summarize([board.read() for _ in range(5)], lesson), lesson)
+
+    def kind(self, facts, kind):
+        return [f for f in facts if f["kind"] == kind]
+
+    def test_led_with_no_current_is_not_shorted(self):
+        led = self.kind(self.facts("led_bypassed", built=3), "led_state")[0]
+        self.assertEqual(led["values"]["state"], "no_current")
+        self.assertIn("No current flows yet", led["text"])
+        led = self.kind(self.facts("led_bypassed"), "led_state")[0]  # all in: 22.7 mA
+        self.assertEqual(led["values"]["state"], "shorted")
+
+    def test_same_voltage_with_no_current_is_not_joined(self):
+        same = self.kind(self.facts("led_bypassed", built=3), "same_voltage")
+        self.assertTrue(same)
+        self.assertTrue(all(not f["values"]["joined"] for f in same))
+        self.assertTrue(all("tells nothing" in f["text"] for f in same))
+        same = self.kind(self.facts("led_backwards"), "same_voltage")  # rows 5 and 10, 0 mA
+        self.assertEqual([f["values"]["joined"] for f in same], [False])
+        joined = self.kind(self.facts("led_bypassed"), "same_voltage")
+        self.assertEqual([(f["rows"], f["values"]["joined"]) for f in joined],
+                         [(["T10", "T12"], True)])
+        # No sensor, but the + line is pulled down: a big current flows anyway.
+        pulled = self.kind(self.facts("no_resistor", has_current=False), "same_voltage")
+        self.assertTrue(all(f["values"]["joined"] for f in pulled))
+
+    def test_not_a_mistake_now_for_instant_help(self):
+        lesson = {"rows": ["T5", "T10", "T12"], "layout": []}
+        summary = {"rows": {"T5": 5.0, "T10": 5.0, "T12": 5.0}, "floating": [], "current_ma": 0.0}
+        for fact in ({"kind": "led_state", "rows": ["T10", "T12"], "values": {"state": "no_current"},
+                      "text": "x"},
+                     {"kind": "same_voltage", "rows": ["T5", "T12"], "values": {"joined": False},
+                      "text": "x"}):
+            self.assertNotEqual(classify({"status": "unknown"}, summary, [fact], lesson)["kind"],
+                                "mistake")
+
+    def test_automatic_check_while_building_lights_only_the_trigger(self):
+        self.make("stray_part")
+        for n in (1, 2):
+            self.step(f"BUILD {n}")
+        self.assertEqual(self.board.lights, {"T30": "yellow"})  # not rows 5, 10 or 12
 
 
 class SlowTutor(ScriptedTutorModel):
@@ -425,10 +481,13 @@ class TestClassify(unittest.TestCase):
                 "floating": [r for r in self.LESSON["rows"] if r not in rows]}
 
     def test_same_voltage_mid_build_is_normal_without_current(self):
-        fact = {"kind": "same_voltage", "rows": ["T5", "T10"], "values": {}, "text": "same"}
+        # agent/physics.py marks same_voltage "joined" only when current flows
+        fact = {"kind": "same_voltage", "rows": ["T5", "T10"], "values": {"joined": False},
+                "text": "same"}
         out = classify({"status": "unknown"}, self.summary(["T5", "T10"]), [fact], self.LESSON)
         self.assertEqual((out["kind"], out["parts_in"], out["parts"]), ("building", 2, 4))
-        out = classify({"status": "unknown"}, self.summary(["T5", "T10", "T12"], 20.0), [fact],
+        joined = dict(fact, values={"joined": True})
+        out = classify({"status": "unknown"}, self.summary(["T5", "T10", "T12"], 20.0), [joined],
                        self.LESSON)
         self.assertEqual(out["kind"], "mistake")
 

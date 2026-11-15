@@ -30,6 +30,7 @@ SHORTED_V = 0.3          # less than this across a part: current goes around it
 CURRENT_FLOWS_MA = 1.0
 SAME_V = 0.15            # two rows this close read "the same"
 SHOULD_DIFFER_V = 1.0    # ...when the plan says they differ by more than this
+LOW_SUPPLY_V = 4.5       # the + line pulled below this: a big current flows
 
 
 def part_kind(part):
@@ -188,25 +189,37 @@ def circuit_facts(summary, lesson, label=""):
                 state, text = "blocked", (f"The LED has {_v(drop)} across it but almost no "
                                           "current flows: it is blocked (backwards, missing "
                                           "or open).")
-            elif abs(drop) < SHORTED_V:
+            elif abs(drop) < SHORTED_V and flows:
                 state, text = "shorted", (f"The LED has almost no voltage across it "
-                                          f"({_v(abs(drop))}): the current goes around it "
-                                          "(shorted or bypassed).")
+                                          f"({_v(abs(drop))}) while current flows: the current "
+                                          "goes around it (shorted or bypassed).")
+            elif abs(drop) < SHORTED_V:
+                # With no current every part has 0 V across it: that says nothing.
+                state, text = "no_current", (f"No current flows yet, so the LED's "
+                                             f"{_v(abs(drop))} across it tells nothing about it.")
             else:
                 state, text = "unclear", (f"The LED has {_v(drop)} across it; that is not "
                                           "what a lit LED shows.")
             add("led_state", rows, {"state": state, "drop": round(drop, 2)}, text)
 
+    # Two rows that should differ but read the same are only "joined" when
+    # current flows (or the supply is pulled down, which needs a big current
+    # even when no sensor sees it). With no current, every part has 0 V
+    # across it, so the same voltage tells nothing.
+    pulled_down = (summary.get("supply_v") or EXPECTED_SUPPLY_V) < LOW_SUPPLY_V
+    joined = (current is not None and current > CURRENT_FLOWS_MA) or pulled_down
     known = [r for r in plan if _measured(summary, r) is not None and _expected(lesson, r) is not None]
     for i, a in enumerate(known):
         for b in known[i + 1:]:
             if abs(_expected(lesson, a) - _expected(lesson, b)) > SHOULD_DIFFER_V and \
                     abs(_measured(summary, a) - _measured(summary, b)) <= SAME_V:
-                add("same_voltage", [a, b], {"volts": round(_measured(summary, a), 2)},
-                    f"{_cap(_words([a, b]))} read the same ({_v(_measured(summary, a))}) "
-                    f"but should differ by about "
-                    f"{_v(abs(_expected(lesson, a) - _expected(lesson, b)))}: either they are "
-                    "joined together, or no current flows between them.")
+                should = _v(abs(_expected(lesson, a) - _expected(lesson, b)))
+                same = f"{_cap(_words([a, b]))} read the same ({_v(_measured(summary, a))})"
+                text = (f"{same} but should differ by about {should}: they may be joined "
+                        "together." if joined else
+                        f"{same}, but no current flows yet, so that tells nothing.")
+                add("same_voltage", [a, b], {"volts": round(_measured(summary, a), 2),
+                                            "joined": joined}, text)
 
     expected_ma = lesson.get("expected", {}).get("current_ma")
     if current is not None and expected_ma is not None:
