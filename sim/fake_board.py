@@ -319,8 +319,9 @@ class FakeBoard:
         # to 3.1): a row at or above its top is sent as the supply ("at the
         # supply"), like the station's clip. None: every number as it is.
         self.meter_top = meter_top
-        # Power off by hand (sim only, UNPLUG): None, "wires" (the circuit's
-        # wires pulled out of the + line) or "all" (every wire, the feed too).
+        # Power off (sim only, UNPLUG): None, "wires" (the student's switch-off
+        # by hand: the circuit's wires pulled out of the + line, which stays
+        # up) or "all" (the + line's feed unplugged too: it has no power).
         self.unplugged = None
         self.held = False  # lesson 4: the push button on the breadboard (HOLD on|off)
         self.built = None  # BUILD n: only the first n parts are in (None: all)
@@ -492,8 +493,8 @@ class FakeBoard:
         if self.unplugged and self.power_on:
             # Wires pulled out of the + line by hand: nothing drives the rows
             # that got their voltage from it (rows joined to - still read 0 V),
-            # and no current flows. "all": the + line itself floats too, and
-            # the station then sends supply_v 0.
+            # and no current flows. "all": the + line has no power feed either:
+            # its taps float, and the station then sends supply_v 0.
             nodes = {k: (FLOATING if not k.startswith("P") and x is not FLOATING and x > 0.05
                          else x) for k, x in nodes.items()}
             current, supply = 0.0, v  # nothing loads the supply any more
@@ -612,9 +613,9 @@ class FakeBoard:
                 return error("BUILD needs a number of parts, or ALL")
             return ack(f"BUILD {'ALL' if self.built is None else self.built}")
         if cmd == "UNPLUG" and len(parts) == 2 and parts[1].lower() in ("all", "wires", "none"):
-            # simulator only: switch the power off by hand (no power switch):
-            # UNPLUG ALL (every wire out of the + line), WIRES (only the
-            # circuit's wires), NONE (pushed back in)
+            # simulator only, no power switch: UNPLUG WIRES (the student's
+            # switch-off: the circuit's wires out of the + line), ALL (the +
+            # line's feed unplugged too: no power feed), NONE (all back in)
             self.unplugged = None if parts[1].lower() == "none" else parts[1].lower()
             return ack(f"UNPLUG {parts[1].upper()}")
         if cmd == "HOLD" and len(parts) == 2 and parts[1].lower() in ("on", "off"):

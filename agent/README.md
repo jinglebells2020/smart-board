@@ -53,17 +53,25 @@ once, before the AI answers:
   (`MANUAL_OFF_SCREEN` in `protocol.py`). The tutor's first words then
   tell the student the same: switch the power off by hand, pull every
   wire out of the + line. Button 4 (red) on such a board says how to do
-  it by hand, on the screen and the laptop. When the + line then goes
-  empty (`supply_v` 0 with floating + taps, or the plan's + row empty),
-  the check says `power_off` with `by_hand`: "Good, the power is off. Now
-  fix the circuit, then push the wires back into the + line." The mistake
-  stays open, and the same mistake coming back when the wires go in again
-  is not logged a second time (`Session.manual_off`);
+  it by hand, on the screen and the laptop. When the plan's + rows then
+  go empty (the student pulled the circuit's wires out of the + line,
+  which stays at 3.3 V), the check says `power_off` with `by_hand`:
+  "Good, the power is off. Now fix the circuit, then push the wires back
+  into the + line." The mistake stays open, and the same mistake coming
+  back when the wires go in again is not logged a second time
+  (`Session.manual_off`). The + line with no power feed (`supply_v` 0,
+  its + taps floating: the station's feed unplugged) says `power_off`
+  with `no_feed`: "The + line has no power. Ask a grown-up to check the
+  station's power plug inside.";
 - on a board with **no current sensor**, a mistake whose rows also fit an
   LED with no resistor (`led_backwards`, `open_circuit` in lessons 1, 3
   and 4) uses its `"no_sensor"` texts: the hint starts with "First look
   at the LED. If it is very bright or feels warm, pull every wire out of
   the + line right now", and the board screen shows its short version.
+  That hint is a request to switch off by hand too (`manual_off` with
+  `"hint"`): the plan's + rows going empty gives the "Good, the power is
+  off" words, and the two look-alikes count as one mistake. Instant help
+  never says "That fixed it" while its quick check still shows a mistake.
 
 Turning power **on** has its own rules, also in plain Python
 (`session.turn_power_on()`, the only way power is switched on):

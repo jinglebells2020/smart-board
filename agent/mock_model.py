@@ -154,9 +154,10 @@ class ScriptedTutorModel(BaseChatModel):
                 step = check["next_step"]
                 return stepped_reply(text if step in text else f"{text} {step}")
 
-        # The student switched the power off by hand (no power switch): say
-        # so, never ask for the power back before the circuit is fixed.
-        if status == "power_off" and check.get("by_hand"):
+        # The student switched the power off by hand (no power switch), or
+        # the + line has no power feed: say so, never ask for the power back
+        # before the circuit is fixed.
+        if status == "power_off" and (check.get("by_hand") or check.get("no_feed")):
             return reply(check.get("message") or "The power is off.")
         # Power is off: ask for it to come back on. Plain Python decides
         # whether the student asked; if not, restore_power refuses.
@@ -248,7 +249,7 @@ class ScriptedTutorModel(BaseChatModel):
             if "show_on_board" not in called:
                 if manual:
                     note = MANUAL_OFF_SCREEN
-                elif logged.get("screen"):  # no current sensor: look at the LED first
+                elif logged.get("screen"):  # its own short text (no sensor: look at the LED)
                     note = logged["screen"]
                 else:
                     where = ("Yellow: look here." if check.get("light") == "yellow"

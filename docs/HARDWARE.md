@@ -39,20 +39,28 @@ built there; this page is what Genesis needs to know about it.
 - Power cutoff part: **none** (`has_power_switch: false`). **Unplugging the
   USB cable is the only off switch** for the whole station. To take the power
   off the breadboard only, the student **pulls every wire out of the + line**
-  (the board keeps measuring). "Every wire": the station's own feed wire,
-  and every wire or leg the circuit has there (one red wire per LED circuit
-  in lesson 3; any wire in free build). That is what Genesis tells the
-  student on the laptop and on the screen when a circuit is dangerous, and
-  when the red button is pressed. With the feed wire out, the + line floats:
-  the station sends `"supply_v": 0` and lists `PT+`/`PB+` as floating, and
-  Genesis takes that as the power off by hand, never as a short.
-- The S3 watches its two rail taps. A **driven sag** (the + line pulled
-  below its limit, about 2.8 V, but not floating) is a short: the station
-  warns ("Short circuit! / Pull every wire / out of the + line / right now!"
-  on the screen). A tap that **floats** (the + line unplugged by hand) is
-  the power off: no warning. In Genesis mode the firmware never changes
-  Genesis's row lights or screen by itself: Genesis's own SHOW replaces the
-  warning.
+  (the board keeps measuring): every wire or leg the circuit has there (one
+  red wire per LED circuit in lesson 3; any wire or leg in free build). That
+  is what Genesis tells the student on the laptop and on the screen when a
+  circuit is dangerous, and when the red button is pressed. The + line itself
+  stays at 3.3 V and its rail stays `up`: the rail feeds are wired inside the
+  station (soldered under the core's + lines, plugged into the logic board)
+  and are not the student's to pull. So Genesis sees the switch-off as the
+  circuit's rows going empty, starting with the plan's + rows.
+- **The feed unplugged** (a teacher unplugged the feed header, or a feed wire
+  came loose): the + line has no power feed. The tap reads `off`, the station
+  sends `"supply_v": 0` and lists `PT+`/`PB+` as floating, and Genesis says
+  "The + line has no power. Ask a grown-up to check the station's power plug
+  inside." That is not the student's switch-off, and never a short. (A tap far
+  below 3.3 V while the S3 still runs cannot be a sag: the feed is the S3's
+  own 3V3, so the S3 would have browned out. The feed is not connected.)
+- The S3 watches its two rail taps. A **sag** (the + line driven between
+  2 V and its limit, about 2.8 V) is a short: the station warns ("Short
+  circuit! / Pull every wire / out of the + line / right now!" on the
+  screen). A tap that is **off** (below 2 V, floating or driven: the + line
+  has no power feed) is not a short: no warning. In Genesis mode the
+  firmware never changes Genesis's row lights or screen by itself: Genesis's
+  own SHOW replaces the warning.
 
 ## Sensors
 - Current sensor: **none** (`has_current: false`, `current_ma` is null).

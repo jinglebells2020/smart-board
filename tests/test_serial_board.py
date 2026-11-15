@@ -7,7 +7,9 @@ plugged back in, and go silent.
 
 import contextlib
 import io
+import json
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -275,9 +277,11 @@ class TestBacklogKeepAliveAndConnect(unittest.TestCase):
     fresh start with the board's lights."""
 
     def test_read_takes_in_a_backlog_bigger_than_one_chunk(self):
-        # A Linux tty hands over about 4 KB at a time; 20 readings of every
-        # row (about 2 KB each) waited while nobody read.
-        port = FakeSerialPort(FakeBoard(1, "correct", seed=1), chunk=4095)
+        # A Linux tty hands over about 4 KB at a time, and between two chunks
+        # it says "nothing waiting" for a moment while it refills. 20 readings
+        # of every row (about 2 KB each) waited while nobody read. (A long
+        # period: no new reading arrives during the test.)
+        port = FakeSerialPort(FakeBoard(1, "correct", seed=1), chunk=4095, period=60)
         board = connect(port)
         board.read()
         port.board.send("SCENARIO 1 open_circuit")  # the student changes the circuit...
@@ -289,6 +293,57 @@ class TestBacklogKeepAliveAndConnect(unittest.TestCase):
         self.assertEqual(r["t_ms"], newest["t_ms"])
         self.assertIn("T10", r["floating"])
         self.assertEqual(len(port._out), 0)  # nothing old is left to read later
+
+    def test_after_a_backlog_read_waits_for_the_boards_next_line(self):
+        # While the port was full the board could not send: after the old
+        # lines, its next (fresh) one comes at its next reading, here 0.1 s
+        # later, longer than the quiet time between chunks.
+        port = FakeSerialPort(FakeBoard(1, "correct", seed=1), period=60)
+        board = connect(port)
+        board.read()
+        port.backlog(10)  # a second of old readings (the correct circuit)
+        port.board.send("SCENARIO 1 open_circuit")  # the circuit now
+        fresh = port.board.read()
+        line = json.dumps(fresh).encode() + b"\n"
+        threading.Timer(0.1, lambda: port._out.extend(line)).start()
+        r = board.read()
+        self.assertEqual(r["t_ms"], fresh["t_ms"])
+        self.assertIn("T10", r["floating"])
+
+    def test_the_fake_tty_pauses_between_chunks(self):
+        # What the test above guards against: the port says 0 once after a
+        # full chunk, then has the next one.
+        port = FakeSerialPort(FakeBoard(seed=1), chunk=100, period=60)
+        port.backlog(3)
+        self.assertEqual(port.in_waiting, 100)
+        self.assertEqual(len(port.read(100)), 100)
+        self.assertEqual(port.in_waiting, 0)    # refilling
+        self.assertEqual(port.in_waiting, 100)  # the next chunk is there
+
+    def test_read_does_not_wait_when_nothing_arrived(self):
+        port = FakeSerialPort(FakeBoard(seed=1), period=60)
+        board = connect(port)
+        board.read()
+        pumps = []
+        real = board._pump
+        board._pump = lambda: pumps.append(1) or real()
+        board._drain()  # nothing waiting: one look, no quiet time
+        self.assertEqual(len(pumps), 1)
+
+    def test_a_reading_that_arrives_in_two_parts_is_taken_whole(self):
+        # An older reading is waiting, and the newest one's second half comes
+        # a moment after its first (a new USB frame): read() waits for it
+        # instead of returning the older one.
+        port = FakeSerialPort(FakeBoard(1, "correct", seed=1), period=60)
+        board = connect(port)
+        board.read()
+        older, newer = port.board.read(), port.board.read()
+        text = json.dumps(newer).encode() + b"\n"
+        port._out += json.dumps(older).encode() + b"\n" + text[:500]
+        threading.Timer(0.005, lambda: port._out.extend(text[500:])).start()
+        r = board.read()
+        self.assertGreater(newer["t_ms"], older["t_ms"])
+        self.assertEqual(r["t_ms"], newer["t_ms"])
 
     def test_keep_alive_every_few_seconds_gets_no_answer(self):
         port = FakeSerialPort(FakeBoard(seed=1))
@@ -349,6 +404,64 @@ class TestBacklogKeepAliveAndConnect(unittest.TestCase):
         # The ESP32-S3's USB id alone is enough (before any hello is known).
         b3 = connect(FakeSerialPort(FakeBoard(seed=1)), vid=SB.STATION_VID)
         self.assertTrue(b3.is_station())
+
+    def test_station_port_gone_keeps_saying_unplug_the_cable(self):
+        # A hard short resets the S3: its USB port disappears, so every try
+        # to open it again fails. The words stay the station's, not "another
+        # program is using the port" (round 3, G4).
+        port = FakeSerialPort(FakeBoard(seed=1, has_power_switch=False, has_current=False))
+        board = connect(port)
+        port.unplug()
+        for _ in range(3):  # lost, then the port cannot be opened again
+            with self.assertRaises(BoardError) as e:
+                board.read()
+            self.assertTrue(str(e.exception).startswith(SB.STATION_LOST_SAY), str(e.exception))
+        self.assertIn("When it is fixed, plug the cable back in: I keep trying. (Cannot open "
+                      "COM9", str(e.exception))
+        self.assertNotIn("Serial Monitor", str(e.exception))
+        self.assertTrue(board.status()["text"].startswith(
+            "Board not answering on COM9: " + SB.STATION_STOPPED))
+        port.plug_in()
+        self.assertEqual(board.read()["type"], "reading")
+        # A board that was never connected, or one with a power switch, keeps
+        # the plain words about the port.
+        other = FakeSerialPort(FakeBoard(seed=1))
+        b2 = connect(other)
+        other.unplug()
+        for _ in range(2):
+            with self.assertRaises(BoardError) as e:
+                b2.read()
+        self.assertIn("Serial Monitor", str(e.exception))
+
+    def test_the_page_says_it_once_without_being_asked(self):
+        port = FakeSerialPort(FakeBoard(1, "correct", seed=1, has_power_switch=False,
+                                        has_current=False))
+        with tempfile.TemporaryDirectory() as tmp:
+            app = App(connect(port), lesson=1, history_path=Path(tmp) / "h.json",
+                      model=ScriptedTutorModel())
+            app.state()
+            self.assertEqual(app.log, [])
+            port.unplug()
+            for _ in range(3):
+                st = app.state()
+            lost = [m for m in app.log if m["who"] == "tutor"]
+            self.assertEqual([m["text"] for m in lost], [SB.STATION_LOST_SAY])  # once
+            self.assertTrue(st["board_status"]["text"].startswith(
+                "Board not answering on COM9: " + SB.STATION_STOPPED))
+            port.plug_in()
+            self.assertTrue(app.state()["reading_ok"])
+            port.unplug()
+            app.state()
+            self.assertEqual(len([m for m in app.log if m["who"] == "tutor"]), 2)  # lost again
+        # A board with a power switch: no such line (its words stay on the board line).
+        other = FakeSerialPort(FakeBoard(1, "correct", seed=1))
+        with tempfile.TemporaryDirectory() as tmp:
+            app = App(connect(other), lesson=1, history_path=Path(tmp) / "h.json",
+                      model=ScriptedTutorModel())
+            app.state()
+            other.unplug()
+            app.state()
+            self.assertEqual(app.log, [])
 
     def test_station_silence_says_the_same(self):
         port = FakeSerialPort(FakeBoard(seed=1, has_power_switch=False))

@@ -31,9 +31,9 @@ every row once the row map from the mux test is flashed (`[]` before),
   always uses the newest reading, never one from seconds ago.
 - **An empty line from the laptop is a keep-alive.** Genesis sends one
   about every 2 seconds while it is using the board, so the station knows
-  the laptop is still there. The board must not answer it (an answer could
-  be taken for the answer to the next command); `tools/check_board.py`
-  checks this.
+  the laptop is still there. Boards should ignore an empty line; Genesis
+  ignores any answer to it (an answer only counts for the command it names
+  in `cmd`). `tools/check_board.py` notes such an answer (not a FAIL).
 - **When the laptop connects** it reads the hello line (or asks with
   `HELLO`), then sends `LED CLEAR` once: a board that kept running while
   the laptop restarted might still show old lights.
@@ -90,7 +90,7 @@ the `HELLO` command.
 |---|---|---|
 | `t_ms` | integer | Milliseconds since the board started |
 | `power_on` | true/false | Is breadboard power on? Always `true` without a power switch |
-| `supply_v` | number | Voltage of the breadboard supply. The station sends its + line when that is below the top of its meter, `0` when its + tap floats (every wire pulled out of the + line: the power is off by hand), else 3.3 |
+| `supply_v` | number | Voltage of the breadboard supply. The station sends its + line when that is below the top of its meter, `0` while its + tap is `off` (the + line has no power feed: its feed unplugged inside the station; the tap is then in `floating` too), else 3.3 |
 | `current_ma` | number or `null` | Supply current in mA. **`null` when there is no current sensor** |
 | `rows` | object | Name → volts, **only for measured names** (the `rows` in `hello`). A board whose meter tops out below its supply (the station: about 2.9-3.1 V) sends a row at or above that top as the supply voltage ("at the supply") |
 | `floating` | list | Measured names that nothing is driving (an empty row). Their volts mean nothing |
@@ -159,7 +159,7 @@ Plain text, one command per line.
 | `CUT` | Switch breadboard power off |
 | `RESTORE` | Switch breadboard power back on |
 | `HELLO` | Send the `hello` line again |
-| an empty line | Nothing: the laptop's keep-alive (about every 2 s). **No answer** |
+| an empty line | Nothing: the laptop's keep-alive (about every 2 s). Boards should ignore it; Genesis ignores any answer to it |
 
 **Light colors.** Each color always means the same thing:
 
@@ -178,10 +178,19 @@ Plain text, one command per line.
   The laptop then tells the student to switch the power off by hand,
   on the laptop and on the board screen. On the station that means
   "pull every wire out of the + line" (`MANUAL_OFF_WORDS` in
-  `protocol.py`). When the student does, the station's readings show it
-  (`supply_v` 0 and its + taps in `floating`, or the plan's + row empty):
-  the laptop says "Good, the power is off" and waits for the fix, and it
-  never takes `supply_v` 0 with floating + taps for a short.
+  `protocol.py`): every wire or leg of the circuit. The + line itself
+  stays at 3.3 V (its feed is wired inside the station, not the
+  student's to pull), so the readings show it as the circuit's rows going
+  empty, starting with the plan's + rows: the laptop says "Good, the
+  power is off" and waits for the fix.
+
+  The station's + line with **no power feed** (the feed header unplugged
+  by a teacher, or a feed wire come loose) is something else: `supply_v`
+  0 and its + taps in `floating`. The laptop says "The + line has no
+  power. Ask a grown-up to check the station's power plug inside." and
+  never takes it for a short. It needs + taps in the readings: a board
+  that measures none, or has a power switch, with `supply_v` 0 has a
+  collapsed supply, a danger.
 - `SHOW` on a board with no screen: `"msg": "no screen"`.
 - `SHOW` with more lines or longer lines than the screen holds:
   `"msg": "too long"`. The laptop never sends that: it fits the text

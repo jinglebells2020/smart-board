@@ -14,7 +14,7 @@ import json
 import statistics
 from pathlib import Path
 
-from protocol import HAND_OFF_V, SUPPLY_V, low_supply_v, row_label, volts_words
+from protocol import NO_FEED_V, SUPPLY_V, low_supply_v, row_label, volts_words
 
 LESSONS_DIR = Path(__file__).resolve().parent.parent / "lessons"
 
@@ -58,27 +58,33 @@ FREE_LESSON = {"id": FREE_ID, "kind": "free", "title": "Free build",
 PLUS_TAPS = ("PT+", "PB+")
 
 
-def power_off_by_hand(summary):
-    """Is the + line unplugged by hand? On a board with no power switch (the
-    station) the student switches off by pulling every wire out of the +
-    line: power_on stays true, but the board sends "supply_v" of about 0 and
-    lists the + taps it measures (PT+, PB+) as floating. That is not a short
-    and never a sagging-supply mistake: nothing is measured, the power is off."""
-    if not summary.get("power_on") or summary.get("supply_v", SUPPLY_V) > HAND_OFF_V:
+def no_power_feed(summary):
+    """Has the + line no power feed? On the station (no power switch) the +
+    lines get their 3.3 V from rail feeds wired inside it. With the feed
+    unplugged (its header unplugged by a teacher, or a feed wire come loose)
+    power_on stays true, but the board sends "supply_v" of about 0 and lists
+    the + taps it measures (PT+, PB+) as floating. That is not a short and
+    never a sagging-supply mistake: nothing is measured, the power is off.
+    (It is not the student's switch-off by hand either: that leaves the +
+    line at 3.3 V and empties the plan's + rows, agent/session.py.)
+    Only with + taps measured, every one floating, and never on a board with
+    a power switch: there a collapsed supply is a danger, not "no feed"."""
+    if not summary.get("power_on") or summary.get("has_power_switch") \
+            or summary.get("supply_v", SUPPLY_V) > NO_FEED_V:
         return False
     measured = summary.get("plus_measured") or []
-    return not measured or set(summary.get("plus_floating") or []) >= set(measured)
+    return bool(measured) and set(summary.get("plus_floating") or []) >= set(measured)
 
 
 def free_check(summary):
     """The check in free build: no plan, so no mistakes and no PASS. What
     the board measured, plus the safety a plan is not needed for: too much
     current, or the + line pulled down (a big current even with no sensor).
-    The + line unplugged by hand is power off, not a pulled-down line."""
+    A + line with no power feed is power off, not a pulled-down line."""
     if not summary["power_on"]:
         return {"status": "power_off"}
-    if power_off_by_hand(summary):
-        return {"status": "power_off", "by_hand": True}
+    if no_power_feed(summary):
+        return {"status": "power_off", "no_feed": True}
     floating = set(summary["floating"])
     out = {"status": "free",
            "measured_rows": {r: v for r, v in summary["rows"].items() if r not in floating},
@@ -157,7 +163,8 @@ def summarize(readings, lesson):
     board's own supply voltage (the readings' laptop-only "nominal_v", from
     its hello line), else 3.3. "plus_measured" are the + taps (PT+, PB+) in
     every reading, "plus_floating" those floating in most of them (the +
-    line unplugged by hand: power_off_by_hand).
+    line with no power feed: no_power_feed). "has_power_switch" is true when
+    the readings say the board has one (BoardLink adds it, laptop only).
     "flickering" lists rows seen both connected and empty in this window
     (at least twice each): a loose leg.
     current_source is "measured" (a current sensor), "calculated" (from
@@ -184,6 +191,7 @@ def summarize(readings, lesson):
                            if isinstance(r.get("nominal_v"), (int, float))), SUPPLY_V),
         "power_on": all(r["power_on"] for r in readings),
         "missing_rows": [n for n in wanted if n not in measured],
+        "has_power_switch": any(r.get("has_power_switch") is True for r in readings),
     }
     every = set.intersection(*(set(r.get("rows", {})) for r in readings)) if readings else set()
     plus = [t for t in PLUS_TAPS if t in every]
@@ -242,10 +250,10 @@ def check(summary, lesson):
     """
     if not summary["power_on"]:
         return {"status": "power_off"}
-    if power_off_by_hand(summary):
-        # The + line is unplugged (no power switch): nothing to judge, and
-        # never a sagging-supply mistake such as no_resistor.
-        return {"status": "power_off", "by_hand": True}
+    if no_power_feed(summary):
+        # The + line has no power feed (no power switch): nothing to judge,
+        # and never a sagging-supply mistake such as no_resistor.
+        return {"status": "power_off", "no_feed": True}
     if summary["missing_rows"]:
         names = ", ".join(summary["missing_rows"])
         return {"status": "missing_rows", "missing_rows": summary["missing_rows"],

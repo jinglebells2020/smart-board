@@ -88,14 +88,20 @@ def button_words(n):
 
 
 # --- Switching the power off by hand --------------------------------------
-# The station has no power switch: the laptop's USB cable powers it all,
-# and the breadboard's + line gets its 3.3 V through a wire from the
-# station; the circuit takes it from the + line through its own wires (the
-# red wire, one per LED circuit in lesson 3, or any wire or leg in free
-# build). So "switch the power off by hand" means: pull every wire out of
-# the + line (the board keeps measuring; unplugging USB would stop it too).
-# With the feed wire out, the station sends "supply_v": 0 and lists its +
-# taps (PT+, PB+) as floating: Genesis knows the power is off.
+# The station has no power switch: the laptop's USB cable powers it all.
+# The breadboard's + lines get their 3.3 V from rail feeds wired inside the
+# station (soldered under the core's + lines and plugged into the logic
+# board): they are not the student's to pull. The circuit takes its power
+# from the + line through its own wires and legs (the red wire, one per LED
+# circuit in lesson 3, or any wire or leg in free build).
+# - The student's switch-off by hand: pull every wire, or leg, of the
+#   circuit out of the + line. The + line stays at 3.3 V; the circuit's
+#   rows, starting with the plan's + rows, go empty (floating). The board
+#   keeps measuring (unplugging USB would stop it too).
+# - The feed unplugged (a teacher unplugged the feed header, or a feed wire
+#   came loose): the + line has no power feed. The station sends
+#   "supply_v": 0 and lists its + taps (PT+, PB+) as floating. That is not
+#   the student's switch-off, and never a short.
 MANUAL_OFF_WORDS = "pull every wire out of the + line"
 MANUAL_ON_WORDS = "push the wires back into the + line"
 # The board screen's text for it (fit_screen keeps it to the screen size).
@@ -105,8 +111,11 @@ NO_SWITCH_SCREEN = "No power switch.|Off: pull every wire|out of the + line.|On:
 HAND_OFF_SAY = (f"Good, the power is off. Now fix the circuit, then "
                 f"{MANUAL_ON_WORDS}.")
 HAND_OFF_SCREEN = "Power is off. Good!|Fix the circuit,|then push the wires|back into the + line"
-# The + line reads at most this (volts) and its taps float: unplugged by hand.
-HAND_OFF_V = 0.1
+# Said when the + line has no power feed (supply_v 0, its + taps floating).
+NO_FEED_SAY = "The + line has no power. Ask a grown-up to check the station's power plug inside."
+NO_FEED_SCREEN = "+ line: no power.|Ask a grown-up to|check the station's|power plug inside."
+# The + line reads at most this (volts) and its + taps float: it has no feed.
+NO_FEED_V = 0.1
 
 # --- Power cut by the board itself ----------------------------------------
 # A board with a current sensor and a power switch must switch power off by

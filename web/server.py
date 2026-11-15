@@ -55,11 +55,12 @@ from agent.tray import TRAY_PARTS, clean_tray  # noqa: E402
 from agent.notebook import Notebook  # noqa: E402
 from agent.activity import Activity  # noqa: E402
 from agent.trace import describe_step, describe_steps  # noqa: E402
-from agent.serial_board import BoardError, SerialBoard, choose_port  # noqa: E402
+from agent.serial_board import (STATION_LOST_SAY, BoardError, SerialBoard,  # noqa: E402
+                                choose_port)
 from agent.session import UNMAPPED_SAY, Session  # noqa: E402
 from protocol import (BUTTON_COLORS, BUTTON_LABELS, COLORS, DEFAULT_BAUD,  # noqa: E402
-                      SCREEN_CHARS, SCREEN_LINES, SUPPLY_V, USABLE_ROWS_ENV, button_words,
-                      is_row, parse_usable, power_cut_words, row_label)
+                      HAND_OFF_SAY, SCREEN_CHARS, SCREEN_LINES, SUPPLY_V, USABLE_ROWS_ENV,
+                      button_words, is_row, parse_usable, power_cut_words, row_label)
 from sim.fake_board import SCENARIOS, SIM_EXTRA, FakeBoard  # noqa: E402
 from sim.random_circuit import random_circuit  # noqa: E402
 from sim.solver import NetlistError  # noqa: E402
@@ -84,6 +85,7 @@ class App:
         self.auto_inline = False     # tests: run the automatic check now, not in a thread
         self.instant_mistake = None  # the last mistake instant help told about
         self._hand_off_said = False  # "the power is off" (by hand) was said for this time
+        self._lost_said = False  # the station stopped answering: said on the page once
         self.building = None         # {"parts_in", "parts"} from the latest instant check
         self._auto_guard = threading.Lock()
         self._auto_running = False
@@ -390,6 +392,24 @@ class App:
                 "step": self.session.step + 1 if self.session.step >= 0 else None,
                 "steps": len(self.session.lesson["layout"])}
 
+    def _station_lost_note(self, reading_ok):
+        """The station was answering and now is not (its port is gone, or it
+        went silent): most often a hard short reset it. Say what to do on
+        the page once, without being asked; again after it came back."""
+        board = self.raw_board
+        if reading_ok:
+            self._lost_said = False
+            return
+        is_station = getattr(board, "is_station", None)
+        if self._lost_said or not getattr(board, "connects", 0) or not callable(is_station) \
+                or not is_station():
+            return
+        self._lost_said = True
+        self.log.append({"who": "tutor", "text": STATION_LOST_SAY, "time": time.time(),
+                         "tools": [], "mood": "careful"})
+        self.activity.add("Python safety", "The station stopped answering: told the student "
+                          "to unplug the USB cable", "check")
+
     def board_status(self):
         """For the page: which board, and is it answering?"""
         status = getattr(self.raw_board, "status", None)
@@ -468,6 +488,7 @@ class App:
             reading = self.board.read()
         except BoardError:
             reading, reading_ok = dict(self.NO_READING), False
+        self._station_lost_note(reading_ok)
         summary = summarize([reading], lesson)
         if reading_ok and self.instant:
             self.instant_tick(reading)  # instant help sees the same reading
@@ -640,15 +661,19 @@ class App:
         self._act(result, cut, found, event)
 
     def _act(self, result, cut, found, event):
-        if result.get("by_hand"):
-            # No power switch, and the + line is unplugged: the power is off by
-            # hand. Nothing is fixed yet (never "That fixed it"), the lights
-            # that point at the problem stay, and it is said once.
+        safety = bool((self.instant_mistake or {}).get("safety") or self.session.manual_off)
+        if result.get("by_hand") or result.get("no_feed") or \
+                (result.get("plus_rows_off") and safety):
+            # No power switch: the student pulled the wires out of the + line
+            # (after a request, or after a safety hint: the plan's + rows went
+            # empty), or the + line has no power feed. Nothing is fixed yet
+            # (never "That fixed it"), the lights that point at the problem
+            # stay, and it is said once.
             if not self._hand_off_said:
                 self._hand_off_said = True
                 self.instant_mistake = None  # the danger, if it comes back, is said again
                 self._auto_context = None
-                self._say(result.get("message") or "The power is off.", "careful")
+                self._say(result.get("message") or HAND_OFF_SAY, "careful")
             return
         self._hand_off_said = False
         before = (self.building or {}).get("parts_in", 0)
@@ -671,7 +696,7 @@ class App:
             if self.instant_mistake and self.instant_mistake["rows"] == found["rows"] \
                     and self.instant_mistake["text"] == found["text"]:
                 return  # already said
-            self.instant_mistake = found
+            self.instant_mistake = dict(found, safety=bool(self._safety_hint(result)))
             self.board.clear_lights()
             if found["rows"]:
                 self.board.set_lights(found["rows"], "yellow")  # careful: look here
@@ -689,6 +714,27 @@ class App:
                 "empty_rows": list(found["empty"])}
             self.trigger_auto()  # then Zip explains it, hint first
             return
+        if self.instant_mistake is not None and result.get("status") == "mistake":
+            # The trigger is gone, but the quick check still shows a mistake:
+            # never "That fixed it". With no current sensor this is often an
+            # LED with no resistor moved to its look-alike (a wire in the
+            # resistor's place -> the long leg in the + row): its safety hint
+            # again. Then Zip explains it with a normal check.
+            text = self._safety_hint(result)
+            rows = [r for r in (result.get("rows") or []) if is_row(r)]
+            if (self.instant_mistake.get("rows"), self.instant_mistake.get("text")) == \
+                    (rows, text) and text:
+                return  # already said
+            self.instant_mistake = dict(found, kind="mistake", rows=rows,
+                                        text=text or found.get("text", ""), safety=bool(text))
+            self.board.clear_lights()
+            if rows:
+                self.board.set_lights(rows, "yellow")  # careful: look here
+            if text:
+                self._say(text, "careful")
+            self._auto_context = None
+            self.trigger_auto()
+            return
         if self.instant_mistake is not None:
             # The trigger is gone, and something is still plugged in: fixed.
             self.instant_mistake = None
@@ -703,6 +749,16 @@ class App:
             self.trigger_auto()  # every part is in: a normal check decides
         elif found["kind"] == "building" and found["parts_in"] > before:
             self.trigger_auto("guide")  # a part went in: Zip shows where the next one goes
+
+    def _safety_hint(self, result):
+        """The safety hint of a quick check's mistake on a board with no
+        current sensor ("First look at the LED. If it is very bright or
+        feels warm, pull every wire out of the + line..."), or None."""
+        if result.get("status") != "mistake":
+            return None
+        s = self.session
+        spec = s.safety_hint_spec(s.lesson_id, result.get("mistake_id")) or {}
+        return spec.get("hint")
 
     def _say(self, text, mood):
         self.activity.add("Instant help", f"Said at once: {text}", "check")

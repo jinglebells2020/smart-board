@@ -251,13 +251,16 @@ ALT_LESSONS = {
         "why": "The big top resistor takes most of the 3.3 volts, so the middle is low.",
         "comparison": "two hills"},
     "bottom_missing": {
-        "title": "A toll booth with no cars takes nothing",
-        "idea": "A resistor is like a toll booth on a road. It takes money only from cars that "
-                "drive through. With no cars, it takes nothing.",
-        "question": "No current flows through a resistor. How much voltage does it take?",
-        "options": ["None", "All of it", "Half"], "answer": 0,
-        "why": "A resistor lowers the voltage only while current flows through it.",
-        "comparison": "a toll booth"},
+        "title": "A tug of war pulls the middle",
+        "idea": "The two resistors pull on the middle row like two teams in a tug of war. The "
+                "smaller resistor is the stronger team. If the bottom team lets go, or the top "
+                "team is much stronger, the middle goes up to 3.3 volts.",
+        "question": "What can pull the middle row all the way up to 3.3 volts?",
+        "options": ["Nothing reaching ground below the middle",
+                    "A top resistor much smaller than the bottom one", "Either one of these"],
+        "answer": 2,
+        "why": "Both leave the top team winning, so the middle ends up near 3.3 volts.",
+        "comparison": "a tug of war"},
     "top_missing": {
         "title": "No path to power, no voltage",
         "idea": "A row gets voltage only through a path to the power supply. It is like a lamp "

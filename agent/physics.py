@@ -20,7 +20,7 @@ led_state, same_voltage, current_vs_expected, extra_rows, flicker.
 
 import re
 
-from agent.lessons import power_off_by_hand
+from agent.lessons import no_power_feed
 from protocol import SUPPLY_V, low_supply_v, row_label
 
 PLUS, MINUS = ("PT+", "PB+"), ("PT-", "PB-")
@@ -118,12 +118,12 @@ def _expected(lesson, row, supply=EXPECTED_SUPPLY_V):
 def power_fact(summary, safety_cut=False):
     on = bool(summary.get("power_on"))
     supply = summary.get("supply_v") or 0.0
-    if on and not safety_cut and power_off_by_hand(summary):
-        # No power switch: the + line was unplugged by hand. Not a short.
+    if on and not safety_cut and no_power_feed(summary):
+        # No power switch, and the + line's feed is unplugged. Not a short.
         return {"kind": "power", "rows": [], "values": {"on": False, "supply_v": 0.0,
-                                                        "safety_cut": False, "by_hand": True},
-                "text": "The + line is unplugged: the power is off by hand, so nothing can "
-                        "be measured."}
+                                                        "safety_cut": False, "no_feed": True},
+                "text": "The + line has no power feed (its feed is unplugged), so nothing "
+                        "can be measured."}
     if safety_cut:
         text = (f"The power was on ({_v(supply)}) but has been switched off to keep the "
                 "parts safe.")
@@ -280,7 +280,7 @@ def free_facts(summary, safety_cut=False):
     """Free build (no plan): the facts that need no plan. The power, the
     voltage of every row with something in it, and the current."""
     facts = [power_fact(summary, safety_cut)]
-    if (summary.get("power_on") and not power_off_by_hand(summary)) or safety_cut:
+    if (summary.get("power_on") and not no_power_feed(summary)) or safety_cut:
         floating = set(summary.get("floating", []))
         for row, v in summary.get("rows", {}).items():
             if row in floating:
@@ -312,7 +312,7 @@ def number(facts):
 def observations(summary, lesson, extra_rows=None, safety_cut=False):
     """Every fact for one check: the power, then the circuit, then extra rows."""
     facts = [power_fact(summary, safety_cut)]
-    if (summary.get("power_on") and not power_off_by_hand(summary)) or safety_cut:
+    if (summary.get("power_on") and not no_power_feed(summary)) or safety_cut:
         facts += circuit_facts(summary, lesson)
         if extra_rows:
             facts.append(extra_rows_fact(extra_rows))

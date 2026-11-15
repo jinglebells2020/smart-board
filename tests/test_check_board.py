@@ -13,7 +13,7 @@ from tools import check_board as CB
 
 def run(board=None, port=None, buttons=False, power_cut=False, **kw):
     board = board if board is not None else FakeBoard(rows="T1-T8,PT+,PT-", seed=1)
-    port = port if port is not None else FakeSerialPort(board)
+    port = port if port is not None else FakeSerialPort(board, period=0)
     lines = []
     checker = CB.Checker(port, out=lines.append, answer_wait=0.15, hello_wait=0.2,
                          event_wait=0.5, **kw)
@@ -47,7 +47,7 @@ class TestGoodBoards(unittest.TestCase):
         self.assertIn('SHOW gives the error "no screen"', text)
 
     def test_board_without_hello_at_start_but_answers_HELLO(self):
-        port = FakeSerialPort(FakeBoard(seed=1), send_hello=False)
+        port = FakeSerialPort(FakeBoard(seed=1), send_hello=False, period=0)
         ok, results, text = run(port=port, board=port.board)
         self.assertTrue(ok, failed(results))
         self.assertIn("SKIP  No hello line when the laptop connected.", text)
@@ -136,10 +136,15 @@ class AnswersEmptyLines(FakeSerialPort):
 
 
 class TestBrokenBoards(unittest.TestCase):
-    def test_an_empty_line_must_get_no_answer(self):
+    def test_an_answer_to_an_empty_line_is_only_a_note(self):
         board = FakeBoard(rows="T1-T4", seed=1)
-        self.assertFailsOn("An empty line (the laptop's keep-alive) gets no answer",
-                           board=board, port=AnswersEmptyLines(board))
+        # Only a note (SKIP), never a FAIL: Genesis ignores that answer.
+        ok, results, text = run(board=board, port=AnswersEmptyLines(board, period=0))
+        self.assertTrue(ok, failed(results))
+        self.assertIn("RESULT: PASS", text)
+        self.assertIn("SKIP  An empty line (the laptop's keep-alive) got an answer: Genesis "
+                      "ignores it.", text)
+        self.assertIn("Boards should ignore empty lines", text)
 
     def assertFailsOn(self, words, **kw):
         ok, results, text = run(**kw)
@@ -163,7 +168,7 @@ class TestBrokenBoards(unittest.TestCase):
 
     def test_junk_lines(self):
         board = FakeBoard(rows="T1-T4", seed=1)
-        port = FakeSerialPort(board)
+        port = FakeSerialPort(board, period=0)
         port.junk = [b"Ready!", b"debug: adc=512"]
         port.read(10**6)              # the hello line: junk comes with the readings
         port._out = bytearray(json.dumps(board.hello()).encode() + b"\n")
@@ -184,11 +189,11 @@ class TestBrokenBoards(unittest.TestCase):
 
     def test_each_command_exactly_one_answer(self):
         board = FakeBoard(rows="T1-T4", seed=1)
-        self.assertFailsOn("No extra answer lines", board=board, port=TwoAnswers(board))
+        self.assertFailsOn("No extra answer lines", board=board, port=TwoAnswers(board, period=0))
 
     def test_board_that_never_says_hello(self):
         board = FakeBoard(seed=1)
-        port = FakeSerialPort(board, send_hello=False, hello_on_request=False)
+        port = FakeSerialPort(board, send_hello=False, hello_on_request=False, period=0)
         fails, text = self.assertFailsOn("answers the HELLO command", board=board, port=port)
         self.assertEqual(len(fails), 1)  # stops there: nothing else can be checked
         self.assertIn("baud", text)

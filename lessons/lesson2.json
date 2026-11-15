@@ -250,6 +250,7 @@
       "id": "bottom_missing",
       "description": "The bottom resistor or the ground wire may not be connected, or the top resistor may be much smaller than the bottom one (the board cannot tell which)",
       "rows": [
+        "T5",
         "T10",
         "T15"
       ],
@@ -267,19 +268,20 @@
         ]
       },
       "action": "hint",
-      "hint": "The middle row has the full 3.3 volts. Two things can do this, and the board cannot tell which. The current may not get from the middle down to ground. Or the top resistor may be much smaller than the bottom one. Look at every part between the middle and ground, and compare the color bands of the two resistors.",
+      "hint": "The middle row has the full 3.3 volts. Two things can do this, and the board cannot tell which. The current may not get from the middle down to ground: look at every part between the middle and ground (rows 10 to 15 and the black wire). Or the top resistor may be much smaller than the bottom one: compare the color bands of the two resistors (rows 5 to 10 and rows 10 to 15). The red lights show both.",
       "explain": "Two things can cause this, and the board cannot tell which. The bottom resistor may not be connected, or the ground wire may not reach it: then the loop is broken below the middle and the middle keeps the full 3.3 volts. Or the top resistor may be much smaller than the bottom one, for example 1k (brown-black-red) instead of 10k (brown-black-orange): then the middle gets almost all of the 3.3 volts, more than this board's meter can tell from the full 3.3. Both resistors should be 10k, and the bottom one should go from the middle row to the ground row.",
+      "screen": "Middle at full 3.3V|Check the bottom|and the color bands",
       "mini_lesson": {
-        "title": "No flow, no voltage drop",
-        "idea": "A resistor only lowers the voltage when current flows through it. It is like a garden hose with the end blocked: no water flows, so the pressure is the same all along the hose. With no current, every point keeps the full push of the power supply.",
-        "question": "No current is flowing through a resistor. How much voltage does it take away?",
+        "title": "What gives the middle 3.3 volts",
+        "idea": "Two resistors share the 3.3 volts like two kids share a pizza: the bigger one gets the bigger slice, but only while current flows. The middle row keeps what the top one does not take. If no current gets to ground, or the top one is much smaller, the top gets little or no slice, so the middle keeps almost all of it.",
+        "question": "What can make the middle row read the full 3.3 volts?",
         "options": [
-          "All of it",
-          "None",
-          "Exactly half"
+          "The current cannot get down to ground",
+          "A top resistor much smaller than the bottom one",
+          "Either one of these"
         ],
-        "answer": 1,
-        "why": "With no current, a resistor takes away no voltage, so the full push passes along."
+        "answer": 2,
+        "why": "In both, the top resistor takes little or none of the 3.3 volts, so the middle keeps it."
       }
     },
     {

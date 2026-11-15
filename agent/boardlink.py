@@ -7,7 +7,9 @@ events(). BoardLink adds what the laptop needs on top:
   power switch, screen, buttons, and its supply voltage ("supply_v", the
   station sends 3.3; protocol.SUPPLY_V when a board does not say). Every
   reading it hands on carries that as "nominal_v" (a laptop-only field), so
-  every check judges "low supply" against this board's own supply;
+  every check judges "low supply" against this board's own supply, and
+  "has_power_switch" (laptop only too: a board with a switch never has a
+  "+ line with no power feed", agent/lessons.py no_power_feed);
 - the lights and the screen text as the board last confirmed them (its
   ack), so the web page can show them for any board. A refused or
   unanswered command never leaves a stale picture: what the board may be
@@ -78,10 +80,12 @@ class BoardLink:
 
     def _usable_only(self, reading):
         """The reading with only usable rows, and this board's supply voltage
-        added as "nominal_v" (laptop only: the board never sends it)."""
+        added as "nominal_v" and whether it has a power switch as
+        "has_power_switch" (laptop only: the board never sends them)."""
         if not isinstance(reading, dict):
             return reading
-        reading = dict(reading, nominal_v=self.supply_v)
+        reading = dict(reading, nominal_v=self.supply_v,
+                       has_power_switch=bool(self.hello.get("has_power_switch")))
         if self.usable is None or not isinstance(reading.get("rows"), dict):
             return reading
         return dict(reading, rows={r: v for r, v in reading["rows"].items() if self.is_usable(r)},

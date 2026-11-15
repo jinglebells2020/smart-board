@@ -143,16 +143,28 @@ row 10 sits at 3.3 V and row 12 at 0 V.
 
 **Power off by hand.** The station has no power switch: after a
 dangerous mistake Genesis asks the student to pull every wire out of the
-+ line. With the station's feed wire out, the + line floats: the board
-sends `"supply_v": 0` and lists its + taps (`PT+`, `PB+`) as floating.
-That is the power off, never a sagging supply (`no_resistor` needs the +
-line to read between about 1 and 2.6 V). After such a request, the
-plan's + rows (row 5 through the red wire; every copy's in lesson 3)
-going empty counts too. Genesis then says "Good, the power is off. Now
-fix the circuit, then push the wires back into the + line.", keeps the
-mistake open (the hint button still helps with it), never says "That
-fixed it", and if the same mistake is back when the wires go in again,
-it is the same mistake, not a new one in the history.
++ line (every wire or leg of the circuit). With no current sensor, the
+safety hint of `led_backwards` and `open_circuit` ("If it is very bright
+or feels warm, pull every wire out of the + line right now") is the same
+request. The + line itself stays at 3.3 V (its feed is wired inside the
+station), so after such a request the plan's + rows (row 5 through the
+red wire; every copy's in lesson 3; row 2 in lesson 4) going empty is
+the power off. Genesis then says "Good, the power is off. Now fix the
+circuit, then push the wires back into the + line.", keeps the mistake
+open (the hint button still helps with it), never says "That fixed it",
+and if the same mistake (or, with no current sensor, its look-alike:
+`led_backwards` and `open_circuit`) is back when the wires go in again,
+it is the same mistake, not a new one in the history, and its safety
+hint comes again.
+
+**The + line with no power feed.** If the station's feed is unplugged
+(the feed header, or a loose feed wire), the board sends `"supply_v": 0`
+and lists its + taps (`PT+`, `PB+`) as floating. Genesis says "The + line
+has no power. Ask a grown-up to check the station's power plug inside."
+That is never a sagging supply (`no_resistor` needs the + line to read
+between about 1 and 2.6 V). It needs + taps in the readings, all
+floating, and a board with no power switch: otherwise `supply_v` 0 is a
+collapsed supply, a danger.
 
 ## Lesson 0: How a breadboard connects
 
@@ -289,8 +301,12 @@ in others**.
     at every part between the middle and ground, and to compare the
     colour bands of the two resistors. It never says "no current is
     flowing".
-    Detect: row 10 at least 3.2 V, not empty. Red: rows 10 and 15.
-    Mini-lesson: "No flow, no voltage drop"
+    Detect: row 10 at least 3.2 V, not empty. Red: rows 5, 10 and 15
+    (the top resistor's rows and the bottom's: the hint says which rows
+    each cause points at). Board screen: "Middle at full 3.3V / Check the
+    bottom / and the color bands". Mini-lesson: "What gives the middle
+    3.3 volts" (both causes: no current down to ground, or a much smaller
+    top resistor).
   - Top resistor (or the 3.3 V wire) not connected: 0 mA, and the middle
     touches only ground (through the bottom resistor), so 0 V.
     Detect: row 10 at most 0.12 V, not empty. Red: rows 5 and 10.

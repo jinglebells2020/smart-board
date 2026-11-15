@@ -15,7 +15,9 @@ It is made to survive real cables and young firmware:
 - after the hello it sends LED CLEAR once, so a restarted laptop and a
   board that kept running agree that every row light is off;
 - read() first takes in everything the board sent while nobody read (the
-  backlog), then returns the newest reading: never one from seconds ago;
+  backlog, even when the port pauses for a moment between its chunks, and
+  after a backlog the line the board sends next), then returns the newest
+  reading: never one from seconds ago;
 - while it is in use it sends an empty line about every 2 seconds (a
   keep-alive: the board does not answer it), so the station knows the
   laptop is still there;
@@ -24,7 +26,8 @@ It is made to survive real cables and young firmware:
 - the cable is unplugged: every call says so in plain words, and it
   tries to open the port again about once a second, until it works. On
   the station (no power switch, or the ESP32-S3's USB id) the words say
-  what a sudden stop most often means there: + joined straight to -;
+  what a sudden stop most often means there: + joined straight to -, also
+  while its port is gone (STATION_LOST_SAY);
 - silence: read() gives up after a few seconds with a plain message.
 Every problem is raised as BoardError with a message a beginner can act on.
 """
@@ -52,12 +55,27 @@ KEEP_ALIVE_S = 2.0
 # about 4 KB at a time); at most this long, so a port that never stops
 # talking cannot hold read() up.
 DRAIN_MAX_S = 0.5
+# Between two chunks of a backlog the port can say "nothing waiting" for a
+# moment (the tty refills its buffer on its own; over USB the next part needs
+# a new USB frame). So once something arrived, read() keeps taking in until
+# nothing new came for this long: longer than a few USB frames, much shorter
+# than the gap between two readings (about 200 ms on the station).
+DRAIN_QUIET_S = 0.03
+# A backlog: the readings that came in all at once span more board time
+# (their t_ms) than this beyond the time they took to arrive. While the port
+# was full the board could not send, so its newest line may still be on its
+# way (the station sends one about every 200 ms): read() then also waits for
+# the next line the board sends, still at most DRAIN_MAX_S in all.
+BACKLOG_SPAN_S = 0.3
 # When the station stops all at once, the most likely reason is a short from
 # + straight to -: its regulator runs at its limit and the S3 resets, so the
 # laptop loses it. The student must pull the USB cable (the board screen
 # cannot be reached then). docs/HARDWARE.md.
 STATION_STOPPED = ("The board stopped. If you just added a wire or part, + may be joined "
                    "straight to -: unplug the USB cable now, then find that wire.")
+# What the page says on its own when the station is lost (and the start of
+# every error until it is back).
+STATION_LOST_SAY = f"{STATION_STOPPED} When it is fixed, plug the cable back in: I keep trying."
 
 
 class BoardError(Exception):
@@ -145,6 +163,7 @@ class SerialBoard:
         self._buf = b""
         self._hello = None
         self._readings = deque(maxlen=200)
+        self._arrived = 0             # readings that ever arrived (for _drain)
         # The last power-on readings that arrived, even ones read() skipped:
         # a power_cut line takes them along, so the tutor can still see
         # what the student had built when the board cut power.
@@ -164,9 +183,14 @@ class SerialBoard:
             self._ser = self._opener()
         except (OSError, ValueError) as e:  # SerialException is an OSError
             self.connected = False
-            self.last_error = (f"Cannot open {self.port}: {e}. Is the board plugged in? "
-                               "Is another program (like the Arduino Serial Monitor) "
-                               "using the port? Close it and try again.")
+            if self.connects > 0 and self.is_station():
+                # The station was there and its port is gone: most often a
+                # hard short reset it (STATION_STOPPED), so say that first.
+                self.last_error = f"{STATION_LOST_SAY} (Cannot open {self.port}: {e}.)"
+            else:
+                self.last_error = (f"Cannot open {self.port}: {e}. Is the board plugged in? "
+                                   "Is another program (like the Arduino Serial Monitor) "
+                                   "using the port? Close it and try again.")
             raise BoardError(self.last_error) from None
         self._buf = b""
         self.connected = True
@@ -217,9 +241,8 @@ class SerialBoard:
     def _lost(self, e):
         self._close()
         if self.is_station():
-            self.last_error = (f"{STATION_STOPPED} When it is fixed, plug the cable back in: "
-                               f"I keep trying. (The board on {self.port} stopped answering: "
-                               f"{e}.)")
+            self.last_error = (f"{STATION_LOST_SAY} (The board on {self.port} stopped "
+                               f"answering: {e}.)")
         else:
             self.last_error = (f"The board on {self.port} stopped answering ({e}). Is the "
                                "USB cable still plugged in? Plug it back in: I keep trying.")
@@ -272,10 +295,39 @@ class SerialBoard:
     def _drain(self):
         """Take in everything waiting, chunk by chunk: after the laptop has
         not read for a while, the port holds seconds of readings, and only
-        the last one shows what is on the board now."""
-        deadline = time.monotonic() + DRAIN_MAX_S
-        while self._pump() and time.monotonic() < deadline:
-            pass
+        the last one shows what is on the board now.
+        - Nothing waiting: it returns at once (no wait when nothing arrived).
+        - Something arrived: it keeps taking in until nothing new came for
+          DRAIN_QUIET_S (a backlog can pause between its chunks).
+        - It was a backlog (BACKLOG_SPAN_S): it also waits for the next
+          reading the board sends, then for DRAIN_QUIET_S of quiet again.
+        Never longer than DRAIN_MAX_S in all."""
+        first = self._arrived
+        if not self._pump():
+            return
+        start = last = time.monotonic()
+        live_from = None  # waiting for a reading that arrives after this count
+        while True:
+            now = time.monotonic()
+            if now - start >= DRAIN_MAX_S:
+                return
+            if now - last >= DRAIN_QUIET_S:
+                if live_from is None and self._was_backlog(first, now - start):
+                    live_from = self._arrived
+                elif live_from is None or self._arrived > live_from:
+                    return
+            if self._pump():
+                last = time.monotonic()
+            else:
+                time.sleep(0.002)
+
+    def _was_backlog(self, first, seconds):
+        """Did the readings that arrived since count `first` span much more
+        board time than the `seconds` they took to arrive?"""
+        n = min(self._arrived - first, len(self._readings))
+        times = [r.get("t_ms") for r in list(self._readings)[-n:]] if n > 1 else []
+        times = [t for t in times if isinstance(t, (int, float)) and not isinstance(t, bool)]
+        return len(times) > 1 and (max(times) - min(times)) / 1000.0 > seconds + BACKLOG_SPAN_S
 
     def _handle(self, raw):
         text = raw.decode("utf-8", "replace").strip()
@@ -298,6 +350,7 @@ class SerialBoard:
             self._answers.append(msg)  # the answer to a HELLO command
         elif kind == "reading":
             self._readings.append(msg)
+            self._arrived += 1
             if msg.get("power_on"):
                 self._recent_on.append(msg)
         elif kind == "power_cut":

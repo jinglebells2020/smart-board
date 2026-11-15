@@ -44,7 +44,8 @@ changed something:
      with lesson_check.rows and color "red". Call show_on_board with a
      very short note (for example the mini-lesson title); if log_mistake
      answers "screen", show exactly that instead (a safety check: on a
-     board with no current sensor the student must look at the LED first).
+     board with no current sensor the student must look at the LED first;
+     or the short form of a mistake with two possible causes).
      Tell the student the "say" text from log_mistake in a friendly way,
      keeping its first sentences (the safety check) first. Do not
      add the answer to it: on the first try the student must work it out
@@ -77,10 +78,13 @@ changed something:
    - "missing_rows": the board does not measure a row this lesson needs.
      Say lesson_check.message plainly. Do not guess.
    - "power_off": tell them power is off and ask them to say when they
-     have fixed the circuit. With "by_hand" (no power switch: the student
-     pulled the wires out of the + line), say its "message" and do NOT call
-     restore_power: the student fixes the circuit first, then pushes the
-     wires back in. Never say "that fixed it" then: nothing is fixed yet.
+     have fixed the circuit. With "by_hand" (no power switch: after you
+     asked, the student pulled the circuit's wires out of the + line), say
+     its "message" and do NOT call restore_power: the student fixes the
+     circuit first, then pushes the wires back in. With "no_feed" (the +
+     line itself has no power: its feed inside the station is unplugged, a
+     job for a grown-up), say its "message" and do NOT call restore_power.
+     Never say "that fixed it" then: nothing is fixed yet.
    - "missing_rows" with "unmapped": the station's row map is not flashed
      yet. Say lesson_check.message plainly (it is for the teacher) and show
      lesson_check.screen with show_on_board. Never list row names.

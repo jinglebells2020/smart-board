@@ -347,7 +347,7 @@ The tests in Part B never use the key, even when it is set.
    | 1 | **Current skips the LED** | Hint: lots of current but 0 V on row 10. No power cut (15 mA is safe). Mini-lesson: "Current takes the easy path" |
    | 1 | **Not on the list: 150 ohm resistor** | No mini-lesson. Zip gives a clue, then the detective's question |
    | 2 | **Wrong top resistor (1k)** | Hint: the middle is much higher than half. Mini-lesson: "Bigger resistor, bigger share" |
-   | 2 | **Bottom resistor missing** | Hint: no current, full 3.3 V in the middle. Mini-lesson: "No flow, no voltage drop" |
+   | 2 | **Bottom resistor missing** | Hint: the full 3.3 V in the middle, two possible causes (nothing reaches ground below the middle, or a much smaller top resistor). Rows 5, 10 and 15 light red. Mini-lesson: "What gives the middle 3.3 volts" |
    | 2 | **Top resistor missing** | Hint: no current, 0 V in the middle. Mini-lesson: "Voltage needs a path from power" |
    | 2 | **Loose resistor leg** | Like the loose LED leg, for the middle row (row 10) of lesson 2 |
    | 2 | **Not on the list: 4.7k bottom resistor** | No mini-lesson. Row 10 lights **yellow** (careful), Zip gives a clue and the detective's two questions |
@@ -435,16 +435,25 @@ in Step 2 below still passes, but Genesis says it cannot check a lesson.
   "pure green" ones (about 3 V) barely light at 3.3 V.
 - It has **no power switch**. When the board sees a dangerous circuit
   (the + line pulled down), or the red button is pressed, Zip and the
-  station's screen say **"pull every wire out of the + line"**. When the
-  student does, Zip says "Good, the power is off. Now fix the circuit,
-  then push the wires back into the + line." Unplugging the USB cable
-  switches the whole station off.
+  station's screen say **"pull every wire out of the + line"**: every
+  wire or leg of the circuit. The + line itself stays at 3.3 V (its feed
+  is wired inside the station: never pull that). When the student does,
+  the circuit's rows go empty and Zip says "Good, the power is off. Now
+  fix the circuit, then push the wires back into the + line." Unplugging
+  the USB cable switches the whole station off.
+- If the station's feed inside comes loose (or a teacher unplugs the feed
+  header), the + line has no power at all: Zip says "The + line has no
+  power. Ask a grown-up to check the station's power plug inside." That
+  is never taken for a short.
 - It has **no current sensor**, so it cannot see every danger: an LED
   with no resistor usually does not pull the + line down (the station's
   regulator holds 3.3 V), and its rows read like a backwards LED. So for
   those mistakes Zip starts with a check the student can see: "First
   look at the LED. If it is very bright or feels warm, pull every wire
-  out of the + line right now."
+  out of the + line right now." When the student does, Zip says "Good,
+  the power is off..." too; pushed back in unchanged, or the LED moved so
+  that it reads like an open circuit, it is still the same mistake, and
+  Zip says the safety check again (never "That fixed it").
 - **If the row lights freeze, or anything on the breadboard gets warm:
   pull the USB cable first**, then look for the fault. A wire from +
   straight to - resets the station again and again and its regulator
